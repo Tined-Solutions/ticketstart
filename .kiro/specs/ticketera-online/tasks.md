@@ -29,59 +29,59 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Set up DbContext with proper configuration
     - _Requirements: 15.1, 15.5_
 
-  - [ ] 2.3 Configure JWT authentication
+  - [x] 2.3 Configure JWT authentication
     - Add JWT configuration to appsettings.json (secret key, issuer, audience, expiration)
     - Configure authentication middleware in Program.cs
     - Set up JWT bearer token validation
     - _Requirements: 1.1, 1.5_
 
-  - [ ] 2.4 Configure Cloudflare R2 storage
+  - [x] 2.4 Configure Cloudflare R2 storage
     - Add R2 credentials to appsettings.json (access key, secret key, bucket name, endpoint)
     - Configure AWS S3 client for R2 compatibility
     - _Requirements: 3.1_
 
-  - [ ] 2.5 Configure external services
+  - [x] 2.5 Configure external services
     - Add Mercado Pago credentials to appsettings.json (access token, webhook secret)
     - Add Resend API key to appsettings.json
     - Add HMAC secret key for QR code signing to appsettings.json
     - _Requirements: 5.1, 7.5, 6.2_
 
-- [ ] 3. Define data models and Entity Framework Core entities
-  - [ ] 3.1 Create User entity
+- [x] 3. Define data models and Entity Framework Core entities
+  - [x] 3.1 Create User entity
     - Define User class with Id, Email, PasswordHash, Role, CreatedAt properties
     - Define UserRole enum (Organizador, Staff, Admin)
     - Configure navigation properties for OrganizedEvents
     - _Requirements: 1.2, 15.2_
 
-  - [ ] 3.2 Create Event entity
+  - [x] 3.2 Create Event entity
     - Define Event class with Id, Name, Description, Date, Location, ImageUrl, OrganizerId, CreatedAt, UpdatedAt
     - Configure navigation properties for Organizer, TicketTypes, Tickets
     - _Requirements: 2.1, 10.1, 15.2_
 
-  - [ ] 3.3 Create TicketType entity
+  - [x] 3.3 Create TicketType entity
     - Define TicketType class with Id, EventId, Name, Price, Quantity, CreatedAt
     - Configure navigation property for Event
     - Add RowVersion property for optimistic concurrency control
     - _Requirements: 10.8, 15.2_
 
-  - [ ] 3.4 Create Reservation entity
+  - [x] 3.4 Create Reservation entity
     - Define Reservation class with Id, UserId, EventId, TicketTypeId, Quantity, ExpiresAt, Status, CreatedAt
     - Define ReservationStatus enum (Active, Expired, Confirmed, Cancelled)
     - Configure navigation properties for User, Event, TicketType
     - _Requirements: 4.1, 15.2_
 
-  - [ ] 3.5 Create Ticket entity
+  - [x] 3.5 Create Ticket entity
     - Define Ticket class with Id, EventId, TicketTypeId, PurchaserEmail, PurchaserDNI, QRCodeData, IsUsed, UsedAt, CreatedAt
     - Configure navigation properties for Event, TicketType
     - _Requirements: 6.4, 8.1, 15.2_
 
-  - [ ] 3.6 Create Transaction entity
+  - [x] 3.6 Create Transaction entity
     - Define Transaction class with Id, ReservationId, MercadoPagoId, Amount, Status, CreatedAt, UpdatedAt
     - Define TransactionStatus enum (Pending, Approved, Rejected, Refunded)
     - Configure navigation property for Reservation
     - _Requirements: 5.1, 15.2_
 
-  - [ ] 3.7 Configure DbContext and entity relationships
+  - [x] 3.7 Configure DbContext and entity relationships
     - Create ApplicationDbContext inheriting from DbContext
     - Configure all entity relationships and foreign keys
     - Configure indexes for performance (Email, EventId, ReservationId, QRCodeData)
@@ -89,7 +89,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - _Requirements: 15.2, 15.4_
 
 - [ ] 4. Create and run database migrations
-  - [ ] 4.1 Generate initial migration
+  - [x] 4.1 Generate initial migration
     - Run `dotnet ef migrations add InitialCreate` using direct connection (port 5432)
     - Review generated migration files
     - _Requirements: 15.1_
