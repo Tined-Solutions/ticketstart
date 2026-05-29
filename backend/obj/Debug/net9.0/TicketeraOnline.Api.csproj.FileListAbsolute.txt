@@ -1089,3 +1089,5 @@ D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\refint\TicketeraOnline
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\TicketeraOnline.Api.pdb
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\TicketeraOnline.Api.genruntimeconfig.cache
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\ref\TicketeraOnline.Api.dll
+C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
+C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Moq.dll

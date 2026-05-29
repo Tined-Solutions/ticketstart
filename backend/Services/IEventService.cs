@@ -54,6 +54,18 @@ public interface IEventService
     /// <exception cref="UnauthorizedAccessException">Thrown when user is not the owner and not an Admin</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event is not found</exception>
     Task DeleteEventAsync(Guid eventId, Guid userId, UserRole userRole);
+
+    /// <summary>
+    /// Uploads an event image to Cloudflare R2 storage.
+    /// Validates image file type (JPEG, PNG, WebP) and size (max 5MB).
+    /// Generates a unique GUID-based identifier for the image.
+    /// </summary>
+    /// <param name="imageStream">Stream containing the image data</param>
+    /// <param name="fileName">Original filename of the image</param>
+    /// <param name="contentType">MIME type of the image</param>
+    /// <returns>The public URL of the uploaded image in R2 storage</returns>
+    /// <exception cref="ArgumentException">Thrown when image validation fails (invalid type or size)</exception>
+    Task<string> UploadEventImageAsync(Stream imageStream, string fileName, string contentType);
 }
 
 /// <summary>

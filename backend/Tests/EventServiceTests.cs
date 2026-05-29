@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
+using Amazon.S3;
+using Moq;
 using Xunit;
 
 namespace TicketeraOnline.Api.Tests;
@@ -16,6 +19,8 @@ public class EventServiceTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly EventService _eventService;
     private readonly ILogger<EventService> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IAmazonS3 _s3Client;
 
     public EventServiceTests()
     {
@@ -26,7 +31,21 @@ public class EventServiceTests : IDisposable
 
         _context = new ApplicationDbContext(options);
         _logger = new TestLogger<EventService>();
-        _eventService = new EventService(_context, _logger);
+        
+        // Mock configuration
+        var configurationData = new Dictionary<string, string?>
+        {
+            { "CloudflareR2:BucketName", "test-bucket" },
+            { "CloudflareR2:PublicUrl", "https://test.r2.dev" }
+        };
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationData)
+            .Build();
+        
+        // Mock S3 client
+        _s3Client = Mock.Of<IAmazonS3>();
+        
+        _eventService = new EventService(_context, _logger, _configuration, _s3Client);
     }
 
     public void Dispose()
@@ -635,6 +654,36 @@ public class EventServiceTests : IDisposable
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             _eventService.DeleteEventAsync(nonExistentId, userId, UserRole.Organizador));
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_WithImageUrl_DeletesEventSuccessfully()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            ImageUrl = "https://test.r2.dev/events/test-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // Act
+        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+
+        // Assert
+        var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.Null(deletedEvent);
+        // Note: Image deletion is handled gracefully - even if it fails, event deletion succeeds
     }
 
     #endregion

@@ -141,7 +141,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - _Requirements: 1.6, 14.1, 14.2, 14.3_
 
 - [ ] 7. Implement event service and image storage
-  - [ ] 7.1 Create IEventService interface and implementation
+  - [x] 7.1 Create IEventService interface and implementation
     - Implement CreateEventAsync with ownership assignment
     - Implement GetEventByIdAsync with ticket availability calculation
     - Implement GetAllPublishedEventsAsync
@@ -149,7 +149,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Implement DeleteEventAsync with ownership validation and image cleanup
     - _Requirements: 2.1, 2.4, 2.5, 10.1, 10.3, 10.4, 10.5, 10.6, 10.7_
 
-  - [ ] 7.2 Implement image upload to Cloudflare R2
+  - [x] 7.2 Implement image upload to Cloudflare R2
     - Implement UploadEventImageAsync using AWS S3 SDK
     - Generate unique image identifiers (GUID-based)
     - Validate image file types (JPEG, PNG, WebP) and size limits (max 5MB)
