@@ -1091,3 +1091,5 @@ D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\TicketeraOnline.Api.ge
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\ref\TicketeraOnline.Api.dll
 C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
 C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Moq.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Moq.dll

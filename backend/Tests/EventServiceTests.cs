@@ -5,7 +5,9 @@ using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Amazon.S3;
+using Amazon.S3.Model;
 using Moq;
+using System.Net;
 using Xunit;
 
 namespace TicketeraOnline.Api.Tests;
@@ -20,7 +22,7 @@ public class EventServiceTests : IDisposable
     private readonly EventService _eventService;
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly IAmazonS3 _s3Client;
+    private readonly Mock<IAmazonS3> _s3ClientMock;
 
     public EventServiceTests()
     {
@@ -43,9 +45,9 @@ public class EventServiceTests : IDisposable
             .Build();
         
         // Mock S3 client
-        _s3Client = Mock.Of<IAmazonS3>();
+        _s3ClientMock = new Mock<IAmazonS3>();
         
-        _eventService = new EventService(_context, _logger, _configuration, _s3Client);
+        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object);
     }
 
     public void Dispose()
@@ -684,6 +686,79 @@ public class EventServiceTests : IDisposable
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.Null(deletedEvent);
         // Note: Image deletion is handled gracefully - even if it fails, event deletion succeeds
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_WithImageUrl_DeletesImageFromR2()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            ImageUrl = "https://test.r2.dev/events/test-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        DeleteObjectRequest? capturedRequest = null;
+        _s3ClientMock
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
+            .Callback<DeleteObjectRequest, CancellationToken>((req, ct) => capturedRequest = req)
+            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+
+        // Act
+        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+
+        // Assert
+        var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.Null(deletedEvent);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("test-bucket", capturedRequest.BucketName);
+        Assert.Equal("events/test-image.jpg", capturedRequest.Key);
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_WhenImageDeletionFails_StillDeletesEvent()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            ImageUrl = "https://test.r2.dev/events/test-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        _s3ClientMock
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
+            .ThrowsAsync(new AmazonS3Exception("Delete failed"));
+
+        // Act
+        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+
+        // Assert
+        var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.Null(deletedEvent);
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
     }
 
     #endregion

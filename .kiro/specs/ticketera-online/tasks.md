@@ -156,12 +156,12 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Return R2 storage URL
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-  - [ ] 7.3 Implement image deletion from R2
+  - [x] 7.3 Implement image deletion from R2
     - Delete associated images when events are deleted
     - Handle cases where image deletion fails gracefully
     - _Requirements: 3.6_
 
-  - [ ] 7.4 Create EventController with CRUD endpoints
+  - [x] 7.4 Create EventController with CRUD endpoints
     - Implement GET /api/events (all published events)
     - Implement GET /api/events/{id} (single event with availability)
     - Implement POST /api/events (create event, Organizador/Admin only)
