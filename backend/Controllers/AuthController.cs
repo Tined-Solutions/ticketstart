@@ -1,8 +1,13 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketeraOnline.Api.Services;
 
 namespace TicketeraOnline.Api.Controllers;
 
+/// <summary>
+/// Authentication controller for user registration and login.
+/// All endpoints are public (no authorization required).
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
@@ -16,7 +21,14 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>
+    /// Register a new user account.
+    /// Public endpoint - no authorization required.
+    /// </summary>
+    /// <param name="request">Registration details including email, password, and role</param>
+    /// <returns>JWT token and user information</returns>
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         if (request == null)
@@ -58,7 +70,14 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Authenticate a user and return a JWT token.
+    /// Public endpoint - no authorization required.
+    /// </summary>
+    /// <param name="request">Login credentials including email and password</param>
+    /// <returns>JWT token and user information</returns>
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         if (request == null)

@@ -127,14 +127,14 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 4: Role-Based Authorization Enforcement**
     - **Validates: Requirements 1.6**
 
-- [ ] 6. Implement authorization middleware and policies
+- [x] 6. Implement authorization middleware and policies
   - [x] 6.1 Create custom authorization handlers
     - Implement event ownership authorization handler
     - Implement role-based authorization policies
     - Configure authorization policies in Program.cs
     - _Requirements: 1.6, 10.7_
 
-  - [ ] 6.2 Apply authorization attributes to controllers
+  - [x] 6.2 Apply authorization attributes to controllers
     - Add [Authorize] attribute to protected endpoints
     - Add [Authorize(Roles = "Admin")] to admin-only endpoints
     - Add custom authorization requirements to event management endpoints
