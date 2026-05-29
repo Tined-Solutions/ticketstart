@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Services;
+using TicketeraOnline.Api.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Amazon.S3;
@@ -9,6 +12,9 @@ using Amazon.Runtime;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+// Register application services
+builder.Services.AddScoped<IAuthService, AuthService>();
+
 // Configure Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
@@ -56,7 +62,28 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Policy for event ownership - requires user to be the event owner or an Admin
+    options.AddPolicy("EventOwnership", policy =>
+        policy.Requirements.Add(new EventOwnershipRequirement()));
+    
+    // Policy for Organizador role
+    options.AddPolicy("RequireOrganizadorRole", policy =>
+        policy.RequireRole("Organizador", "Admin"));
+    
+    // Policy for Staff role
+    options.AddPolicy("RequireStaffRole", policy =>
+        policy.RequireRole("Staff", "Admin"));
+    
+    // Policy for Admin role only
+    options.AddPolicy("RequireAdminRole", policy =>
+        policy.RequireRole("Admin"));
+});
+
+// Register authorization handlers
+builder.Services.AddSingleton<IAuthorizationHandler, EventOwnershipHandler>();
+builder.Services.AddHttpContextAccessor();
 
 // Configure Cloudflare R2 (S3-compatible storage)
 var r2Settings = builder.Configuration.GetSection("CloudflareR2");
@@ -75,6 +102,9 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     return new AmazonS3Client(credentials, config);
 });
 
+// Add controllers
+builder.Services.AddControllers();
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -92,6 +122,8 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapControllers();
 
 var summaries = new[]
 {
@@ -119,3 +151,6 @@ record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
 }
+
+// Make Program class accessible for integration tests
+public partial class Program { }

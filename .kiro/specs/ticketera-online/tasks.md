@@ -94,28 +94,28 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Review generated migration files
     - _Requirements: 15.1_
 
-  - [ ] 4.2 Apply migration to database
+  - [x] 4.2 Apply migration to database
     - Run `dotnet ef database update` using direct connection (port 5432)
     - Verify all tables created successfully
     - Verify indexes created
     - _Requirements: 15.1, 15.4_
 
-- [ ] 5. Implement authentication service and endpoints
-  - [ ] 5.1 Create IAuthService interface and implementation
+- [x] 5. Implement authentication service and endpoints
+  - [x] 5.1 Create IAuthService interface and implementation
     - Implement RegisterAsync method with password hashing using BCrypt
     - Implement LoginAsync method with credential validation
     - Implement JWT token generation with user ID and role claims
     - Implement ValidateTokenAsync method
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [ ] 5.2 Create AuthController with registration and login endpoints
+  - [x] 5.2 Create AuthController with registration and login endpoints
     - Implement POST /api/auth/register endpoint
     - Implement POST /api/auth/login endpoint
     - Add input validation and error handling
     - Return appropriate HTTP status codes
     - _Requirements: 1.2, 1.3, 1.4, 16.2, 16.3_
 
-  - [ ]* 5.3 Write property tests for authentication
+  - [x] 5.3 Write property tests for authentication
     - **Property 1: User Registration Creates Valid Accounts**
     - **Validates: Requirements 1.2**
     - **Property 2: Valid Login Returns Valid JWT**
@@ -123,12 +123,12 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 3: Invalid Credentials Rejected**
     - **Validates: Requirements 1.4**
 
-  - [ ]* 5.4 Write property test for role-based authorization
+  - [x] 5.4 Write property test for role-based authorization
     - **Property 4: Role-Based Authorization Enforcement**
     - **Validates: Requirements 1.6**
 
 - [ ] 6. Implement authorization middleware and policies
-  - [ ] 6.1 Create custom authorization handlers
+  - [x] 6.1 Create custom authorization handlers
     - Implement event ownership authorization handler
     - Implement role-based authorization policies
     - Configure authorization policies in Program.cs
