@@ -60,7 +60,7 @@ public class EventController : ControllerBase
             var createdEvent = await _eventService.CreateEventAsync(request, userId);
             var eventDetails = await _eventService.GetEventByIdAsync(createdEvent.Id);
 
-            return CreatedAtAction(nameof(GetEvent), new { id = createdEvent.Id }, eventDetails ?? createdEvent);
+            return CreatedAtAction(nameof(GetEvent), new { id = createdEvent.Id }, eventDetails);
         }
         catch (ArgumentException ex)
         {
@@ -93,7 +93,7 @@ public class EventController : ControllerBase
             var updatedEvent = await _eventService.UpdateEventAsync(id, request, userId, userRole);
             var eventDetails = await _eventService.GetEventByIdAsync(updatedEvent.Id);
 
-            return Ok(eventDetails ?? updatedEvent);
+            return Ok(eventDetails);
         }
         catch (KeyNotFoundException)
         {
