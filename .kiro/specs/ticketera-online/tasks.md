@@ -140,7 +140,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Add custom authorization requirements to event management endpoints
     - _Requirements: 1.6, 14.1, 14.2, 14.3_
 
-- [ ] 7. Implement event service and image storage
+- [x] 7. Implement event service and image storage
   - [x] 7.1 Create IEventService interface and implementation
     - Implement CreateEventAsync with ownership assignment
     - Implement GetEventByIdAsync with ticket availability calculation
@@ -170,7 +170,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Implement POST /api/events/{id}/image (upload image, owner/Admin only)
     - _Requirements: 2.4, 2.5, 10.1, 10.5, 10.6_
 
-  - [ ]* 7.5 Write property tests for event management
+  - [x] 7.5 Write property tests for event management
     - **Property 5: Event Rendering Includes All Required Fields**
     - **Validates: Requirements 2.2**
     - **Property 6: Ticket Availability Calculation Correctness**
@@ -182,7 +182,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 32: Non-Owner Modification Prevention**
     - **Validates: Requirements 10.7**
 
-  - [ ]* 7.6 Write property tests for image storage
+  - [x]* 7.6 Write property tests for image storage
     - **Property 7: Image ID Uniqueness**
     - **Validates: Requirements 3.2**
     - **Property 8: Invalid Image File Rejection**
@@ -190,7 +190,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 9: Event Deletion Removes Associated Images**
     - **Validates: Requirements 3.6**
 
-- [ ] 8. Checkpoint - Verify authentication and event management
+- [x] 8. Checkpoint - Verify authentication and event management
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Implement reservation service with concurrency control

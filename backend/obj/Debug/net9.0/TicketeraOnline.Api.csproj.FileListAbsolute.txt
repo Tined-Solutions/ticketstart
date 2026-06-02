@@ -544,14 +544,16 @@ C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\refs\WindowsBase.dll
 C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Microsoft.AspNetCore.Mvc.Testing.dll
 C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Microsoft.AspNetCore.TestHost.dll
 C:\Users\user\Desktop\ticketstart\backend\obj\Debug\net9.0\MvcTestingAppManifest.json
-D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\testhost.exe
+C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
+C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Moq.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\testhost.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\xunit.abstractions.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\testhost.exe
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\appsettings.Development.json
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\appsettings.json
-D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\xunit.abstractions.dll
-D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\xunit.runner.visualstudio.testadapter.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\MvcTestingAppManifest.json
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\TicketeraOnline.Api.staticwebassets.endpoints.json
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\xunit.runner.visualstudio.testadapter.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\TicketeraOnline.Api.exe
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\TicketeraOnline.Api.deps.json
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\TicketeraOnline.Api.runtimeconfig.json
@@ -862,6 +864,7 @@ D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\refs\WindowsBase.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\AWSSDK.Core.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\AWSSDK.S3.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\BCrypt-Net-Next.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\FsCheck.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\FsCheck.Xunit.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\FSharp.Core.dll
@@ -901,6 +904,7 @@ D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Microsoft.TestPlatform
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Microsoft.VisualStudio.TestPlatform.Common.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Microsoft.Win32.SystemEvents.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Mono.TextTemplating.dll
+D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Moq.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Newtonsoft.Json.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Npgsql.dll
 D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
@@ -1089,7 +1093,3 @@ D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\refint\TicketeraOnline
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\TicketeraOnline.Api.pdb
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\TicketeraOnline.Api.genruntimeconfig.cache
 D:\Martin\Escritorio\Ticketstart\backend\obj\Debug\net9.0\ref\TicketeraOnline.Api.dll
-C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
-C:\Users\user\Desktop\ticketstart\backend\bin\Debug\net9.0\Moq.dll
-D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Castle.Core.dll
-D:\Martin\Escritorio\Ticketstart\backend\bin\Debug\net9.0\Moq.dll
