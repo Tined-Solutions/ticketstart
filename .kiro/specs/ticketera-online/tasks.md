@@ -193,8 +193,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
 - [x] 8. Checkpoint - Verify authentication and event management
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Implement reservation service with concurrency control
-  - [ ] 9.1 Create IReservationService interface and implementation
+- [x] 9. Implement reservation service with concurrency control
+  - [x] 9.1 Create IReservationService interface and implementation
     - Implement CreateReservationAsync with 10-minute expiration
     - Use database transactions with optimistic concurrency control (RowVersion)
     - Decrement ticket inventory atomically
@@ -204,14 +204,14 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Implement CancelReservationAsync to release reservation
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 12.6_
 
-  - [ ] 9.2 Create ReservationController with endpoints
+  - [x] 9.2 Create ReservationController with endpoints
     - Implement POST /api/reservations (create reservation)
     - Implement GET /api/reservations/{id} (get reservation status)
     - Add error handling for insufficient inventory
     - Add error handling for concurrency conflicts
     - _Requirements: 4.1, 4.3, 16.2, 16.3_
 
-  - [ ]* 9.3 Write property tests for reservations
+  - [x]* 9.3 Write property tests for reservations
     - **Property 10: Reservation Creation Sets Correct Expiration**
     - **Validates: Requirements 4.1**
     - **Property 11: Reservation Decrements Inventory**
