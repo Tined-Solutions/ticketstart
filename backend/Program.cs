@@ -16,6 +16,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
+builder.Services.AddScoped<ITicketService, TicketService>();
+
+// Register background services
+builder.Services.AddHostedService<ReservationExpirationService>();
 
 // Configure Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

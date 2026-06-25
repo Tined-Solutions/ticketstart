@@ -211,7 +211,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Add error handling for concurrency conflicts
     - _Requirements: 4.1, 4.3, 16.2, 16.3_
 
-  - [x]* 9.3 Write property tests for reservations
+  - [ ] 9.3 Write property tests for reservations
     - **Property 10: Reservation Creation Sets Correct Expiration**
     - **Validates: Requirements 4.1**
     - **Property 11: Reservation Decrements Inventory**
@@ -223,21 +223,21 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 41: Concurrent Purchase Prevention (No Overselling)**
     - **Validates: Requirements 12.6**
 
-- [ ] 10. Implement reservation expiration background service
-  - [ ] 10.1 Create ReservationExpirationService as IHostedService
+- [x] 10. Implement reservation expiration background service
+  - [x] 10.1 Create ReservationExpirationService as IHostedService
     - Implement StartAsync to start timer (check every 30 seconds)
     - Implement CheckExpiredReservations to call ReleaseExpiredReservationsAsync
     - Implement StopAsync to dispose timer
     - Register service in Program.cs
     - _Requirements: 4.5, 4.6, 4.7_
 
-  - [ ]* 10.2 Write integration test for expiration service
+  - [x] 10.2 Write integration test for expiration service
     - Test service startup and periodic execution
     - Test inventory restoration on expiration
     - _Requirements: 4.6, 4.7_
 
-- [ ] 11. Implement QR code generation and validation service
-  - [ ] 11.1 Create ITicketService interface and QR code methods
+- [x] 11. Implement QR code generation and validation service
+  - [x] 11.1 Create ITicketService interface and QR code methods
     - Implement GenerateQRCode method with HMAC-SHA256 signing
     - Format: `{ticketId}:{timestamp}:{signature}`
     - Implement VerifyQRCodeSignature method
@@ -245,7 +245,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Generate visual QR code images using QRCoder library
     - _Requirements: 6.1, 6.2, 6.3, 6.5, 6.6_
 
-  - [ ] 11.2 Implement QR code validation with double-scan prevention
+  - [x] 11.2 Implement QR code validation with double-scan prevention
     - Implement ValidateQRCodeAsync with signature verification
     - Check ticket usage status atomically
     - Check event association
@@ -253,18 +253,18 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Use database transaction to prevent double-scanning
     - _Requirements: 6.6, 6.7, 9.3, 9.4, 9.5, 9.6_
 
-  - [ ] 11.3 Implement ticket lookup functionality
+  - [x] 11.3 Implement ticket lookup functionality
     - Implement LookupTicketsAsync to query by email and DNI
     - Return all matching tickets with QR codes
     - _Requirements: 8.2, 8.3, 8.5_
 
-  - [ ] 11.4 Create TicketController with endpoints
+  - [x] 11.4 Create TicketController with endpoints
     - Implement GET /api/tickets/lookup?email={email}&dni={dni}
     - Implement POST /api/tickets/validate (Staff/Admin only)
     - Add error handling for invalid QR codes, already used tickets, wrong event
     - _Requirements: 8.1, 8.2, 9.1, 9.2, 9.7_
 
-  - [ ]* 11.5 Write property tests for QR codes
+  - [ ] 11.5 Write property tests for QR codes
     - **Property 18: QR Code Uniqueness**
     - **Validates: Requirements 6.1**
     - **Property 19: QR Code Signature Validity**
@@ -280,7 +280,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 29: Valid Ticket Marked as Used**
     - **Validates: Requirements 9.6**
 
-  - [ ]* 11.6 Write property test for ticket lookup
+  - [x] 11.6 Write property test for ticket lookup
     - **Property 26: Ticket Lookup Returns Correct Matches**
     - **Validates: Requirements 8.2, 8.3, 8.5**
 

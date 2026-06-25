@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TicketeraOnline.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bdf5e95ad53ec61e61af6852e270b9cbfa134c05")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+55f941379aba55fc216493af3e2ca0772eae3435")]
 [assembly: System.Reflection.AssemblyProductAttribute("TicketeraOnline.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TicketeraOnline.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
