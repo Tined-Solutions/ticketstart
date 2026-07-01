@@ -17,6 +17,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+// Configure Mercado Pago
+builder.Services.Configure<MercadoPagoOptions>(builder.Configuration.GetSection(MercadoPagoOptions.SectionName));
+builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>();
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
