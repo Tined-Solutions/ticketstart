@@ -1,0 +1,58 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: ASP.NET Core net9.0 Web API (backend) + React 19 SPA via Vite 8 (frontend)
+  Architecture: Monorepo with /backend (Controllers → Services → EF Core → PostgreSQL)
+    and /frontend (Vite + React). Backend uses interface-based service layer,
+    custom auth policies, background hosted services, and Cloudflare R2 for images.
+  Testing: xUnit + Moq + FsCheck (property-based) + Microsoft.AspNetCore.Mvc.Testing
+    for backend. Frontend has NO test runner configured — only ESLint linting.
+  Style: C# with implicit usings, nullable enabled; JSX without TypeScript.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Reference requirements by ID from openspec/changes/*/specs/
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Store per-domain spec files in openspec/changes/{change}/specs/{domain}/
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns (Controller → Service → EF Core)
+    tdd: true
+    test_command: dotnet test
+  verify:
+    test_command: dotnet test
+    build_command: dotnet build
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+
+testing:
+  strict_tdd: true
+  test_command: dotnet test
+  frameworks:
+    - xunit 2.9.3
+    - moq 4.20.72
+    - fscheck 3.0.0-rc3
+    - Microsoft.AspNetCore.Mvc.Testing 9.0.0
+  layers:
+    unit: true
+    integration: true
+    e2e: false
+  coverage_available: false
+  quality_tools:
+    linter: dotnet format (built-in) / ESLint (frontend)
+    type_checker: false
+    formatter: dotnet format (built-in)
+  notes: |
+    Frontend has no test infrastructure — no vitest, jest, or test script.
+    Strict TDD applies to backend work only. Frontend changes cannot
+    use TDD until a test runner is added.

@@ -294,6 +294,21 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 38: Stock Failure Triggers Refund** (Requirements 12.2)
     - **Property 39: Refund Logging** (Requirements 12.3)
 
+  - [ ] 12.6 Fix purchaser DNI on ticket creation from payment webhook
+    - **Problem:** `PaymentService.ProcessApprovedPaymentAsync` (PaymentService.cs:150) creates tickets via `_ticketService.CreateTicketsAsync(reservation.Id, email, "00000000")`, hardcoding the purchaser DNI to a placeholder.
+    - **Impact:** `Ticket.PurchaserDNI` is `IsRequired` / non-nullable (EF + migration enforce it). `TicketService.LookupTicketsAsync` filters by `Where(t => t.PurchaserEmail == email && t.PurchaserDNI == dni)` (tickets spec.md:96-106, Requirement 6.x). Any ticket created via the approved-payment webhook path will have DNI `"00000000"`, so the real lookup-by-DNI returns empty for production tickets — silent correctness bug on the only real purchase path.
+    - **Root cause:** `Reservation` model has no `PurchaserDNI` field (Reservation.cs has only Id, UserId, EventId, TicketTypeId, Quantity, ExpiresAt, Status, CreatedAt + navigations), so the payment webhook has no real DNI source at ticket-creation time.
+    - **Fix scope (delegated slice):**
+      - Add `PurchaserDNI` (string, required, max 50) to `Models/Reservation.cs`.
+      - Update `Data/ApplicationDbContext.cs` Reservation configuration if needed.
+      - Add EF Core migration (with a non-null default for existing rows, e.g. `"00000000"`, then backfill is out of scope for fresh dev DBs).
+      - Capture DNI at reservation creation: update `ReservationService` create flow + create-reservation DTO + `ReservationController` to accept `purchaserDNI`.
+      - `PaymentService.ProcessApprovedPaymentAsync`: pass `reservation.PurchaserDNI` instead of `"00000000"`.
+      - Update affected tests: `ReservationControllerTests`, `ReservationServiceTests`, `ReservationPropertyTests`, `PaymentPropertyTests`, `PaymentControllerTests` to pass a real DNI through the reservation path.
+      - Add a regression test asserting tickets created via the approved-payment webhook carry the reservation's real DNI (not `"00000000"`).
+    - _Requirements: 5.6, 6.x (tickets lookup by email + DNI), 16.5_
+    - _Status: tracked as debt — session 2026-07-01 chose to document and close rather than apply immediately, because the Task 12 diff (1145 insertions) already exceeded the 800-line review budget._
+
 - [ ] 13. Checkpoint - Verify reservation, QR, and payment systems
   - Ensure all tests pass, ask the user if questions arise.
 

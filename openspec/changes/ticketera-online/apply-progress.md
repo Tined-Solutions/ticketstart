@@ -63,6 +63,19 @@ Implemented Task 12 (payment service with Mercado Pago integration) including al
 1. `b3cfeb4` — feat(payments): implement Mercado Pago payment service with preferences, webhooks and refunds
 2. `ab080f6` — feat(payments): add PaymentController and DI registration
 
+## Verification (sdd-verify — session 2026-07-01)
+
+- Verdict: **PASS WITH WARNINGS** — no CRITICAL findings.
+- Test suite: 202/203 passing (`VerifyDatabaseSchema` pre-existing flaky, unchanged).
+- Spec scenarios: 10/10 in-scope compliant (reqs 5.1-5.3, 5.5-5.8, 12.2-12.3, 16.5).
+- Property tests: 6/6 substantive (no decorative coverage).
+- Webhook security: sound — uses `CryptographicOperations.FixedTimeEquals` (constant-time HMAC comparison, a positive upgrade over design.md's `==`).
+
+### Warnings tracked as new task 12.6
+
+1. **Placeholder DNI `"00000000"`** (`PaymentService.cs:150`) — the `Reservation` model lacks a `PurchaserDNI` field, so tickets created via the approved-payment webhook get a fake DNI. This silently breaks `TicketService.LookupTicketsAsync` (which filters by `PurchaserEmail && PurchaserDNI`) for any production ticket created through the payment path. See new task **12.6** in `tasks.md` for the full fix scope (model + migration + reservation create flow + PaymentService + tests).
+2. **Diff size 1145 insertions** across 9 backend files (was claimed ~960 — 19% understatement), 43% over the 800-line review budget. With `single-pr-default` strategy this requires maintainer-approved `size:exception` before any single PR. Not yet granted.
+
 ## Next Recommended Phase
 
-`sdd-apply` for Task 13 (checkpoint) or `sdd-verify` to run full verification.
+`sdd-apply` for Task 12.6 (DNI fix — tracked debt) OR Task 13 (checkpoint) then Task 14 (email). Session 2026-07-01 chose to document the DNI gap as tracked task 12.6 and close here; see `tasks.md` for the full fix scope.
