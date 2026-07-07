@@ -16,6 +16,8 @@ public class ReservationPropertyTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly IReservationService _reservationService;
 
+    private const string TestPurchaserDNI = "12345678";
+
     public ReservationPropertyTests()
     {
         // Setup in-memory database for testing
@@ -104,7 +106,8 @@ public class ReservationPropertyTests : IDisposable
                 scenario.UserId, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                scenario.Quantity
+                scenario.Quantity,
+                TestPurchaserDNI
             );
             var afterCreation = DateTime.UtcNow;
 
@@ -203,7 +206,8 @@ public class ReservationPropertyTests : IDisposable
                 userId, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                scenario.ReservationQuantity
+                scenario.ReservationQuantity,
+                TestPurchaserDNI
             );
 
             // Assert - Verify reservation was created
@@ -284,7 +288,8 @@ public class ReservationPropertyTests : IDisposable
                 userId, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                quantity
+                quantity,
+                TestPurchaserDNI
             );
 
             Assert.NotNull(reservation);
@@ -378,7 +383,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            10 // Reserve all 10 tickets
+            10, // Reserve all 10 tickets
+            TestPurchaserDNI
         );
 
         // Assert - Reservation 1 should succeed
@@ -396,7 +402,8 @@ public class ReservationPropertyTests : IDisposable
                 user2Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                1 // Try to reserve just 1 ticket
+                1, // Try to reserve just 1 ticket
+                TestPurchaserDNI
             );
         });
 
@@ -465,7 +472,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            12
+            12,
+            TestPurchaserDNI
         );
 
         // Assert - Reservation 1 should succeed
@@ -478,7 +486,8 @@ public class ReservationPropertyTests : IDisposable
             user2Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            8 // Exactly the remaining amount
+            8, // Exactly the remaining amount
+            TestPurchaserDNI
         );
 
         // Assert - Reservation 2 should succeed
@@ -493,7 +502,8 @@ public class ReservationPropertyTests : IDisposable
                 user3Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                1
+                1,
+                TestPurchaserDNI
             );
         });
 
@@ -579,7 +589,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            15
+            15,
+            TestPurchaserDNI
         );
 
         // Assert - Reservation 1 should succeed
@@ -592,7 +603,8 @@ public class ReservationPropertyTests : IDisposable
             user2Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            5
+            5,
+            TestPurchaserDNI
         );
 
         // Assert - Reservation 2 should succeed
@@ -607,7 +619,8 @@ public class ReservationPropertyTests : IDisposable
                 user3Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                1
+                1,
+                TestPurchaserDNI
             );
         });
 
@@ -692,7 +705,8 @@ public class ReservationPropertyTests : IDisposable
             user2Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            10
+            10,
+            TestPurchaserDNI
         );
 
         // Assert - New reservation should succeed because expired reservations don't count
@@ -1132,7 +1146,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            6
+            6,
+            TestPurchaserDNI
         );
 
         // Assert - First reservation should succeed
@@ -1147,7 +1162,8 @@ public class ReservationPropertyTests : IDisposable
                 user2Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                6
+                6,
+                TestPurchaserDNI
             );
         });
 
@@ -1220,7 +1236,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            3
+            3,
+            TestPurchaserDNI
         );
 
         Assert.NotNull(reservation1);
@@ -1232,7 +1249,8 @@ public class ReservationPropertyTests : IDisposable
             user2Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            2
+            2,
+            TestPurchaserDNI
         );
 
         Assert.NotNull(reservation2);
@@ -1246,7 +1264,8 @@ public class ReservationPropertyTests : IDisposable
                 user3Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                1
+                1,
+                TestPurchaserDNI
             );
         });
 
@@ -1334,7 +1353,8 @@ public class ReservationPropertyTests : IDisposable
             user1Id, 
             eventEntity.Id, 
             ticketType.Id, 
-            3
+            3,
+            TestPurchaserDNI
         );
 
         Assert.NotNull(reservation1);
@@ -1348,7 +1368,8 @@ public class ReservationPropertyTests : IDisposable
                 user2Id, 
                 eventEntity.Id, 
                 ticketType.Id, 
-                3
+                3,
+                TestPurchaserDNI
             );
         });
 

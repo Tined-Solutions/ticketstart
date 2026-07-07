@@ -82,6 +82,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(r => r.TicketTypeId);
             entity.HasIndex(r => r.UserId);
             entity.Property(r => r.Quantity).IsRequired();
+            entity.Property(r => r.PurchaserDNI).IsRequired().HasMaxLength(50);
             entity.Property(r => r.ExpiresAt).IsRequired();
             entity.Property(r => r.Status).IsRequired();
             entity.Property(r => r.CreatedAt).IsRequired();

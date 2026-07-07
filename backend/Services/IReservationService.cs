@@ -17,11 +17,12 @@ public interface IReservationService
     /// <param name="eventId">Event identifier</param>
     /// <param name="ticketTypeId">Ticket type identifier</param>
     /// <param name="quantity">Number of tickets to reserve</param>
+    /// <param name="purchaserDNI">Purchaser DNI (required, max 50 characters)</param>
     /// <returns>Created reservation with identifier</returns>
-    /// <exception cref="ArgumentException">Thrown when quantity is invalid or insufficient tickets available</exception>
+    /// <exception cref="ArgumentException">Thrown when quantity is invalid, DNI is invalid, or insufficient tickets available</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event or ticket type not found</exception>
     /// <exception cref="InvalidOperationException">Thrown on concurrency conflicts</exception>
-    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity);
+    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI);
 
     /// <summary>
     /// Validates if a reservation exists, is active, and not expired.
@@ -74,6 +75,7 @@ public class CreateReservationRequest
     public Guid EventId { get; set; }
     public Guid TicketTypeId { get; set; }
     public int Quantity { get; set; }
+    public string PurchaserDNI { get; set; } = string.Empty;
 }
 
 /// <summary>

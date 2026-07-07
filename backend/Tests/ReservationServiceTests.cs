@@ -17,6 +17,8 @@ public class ReservationServiceTests : IDisposable
     private readonly ReservationService _reservationService;
     private readonly ILogger<ReservationService> _logger;
 
+    private const string TestPurchaserDNI = "12345678";
+
     public ReservationServiceTests()
     {
         // Setup in-memory database
@@ -91,10 +93,11 @@ public class ReservationServiceTests : IDisposable
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
         var userId = Guid.NewGuid();
         var quantity = 5;
+        var purchaserDNI = "12345678";
         var beforeCreate = DateTime.UtcNow;
 
         // Act
-        var result = await _reservationService.CreateReservationAsync(userId, eventEntity.Id, ticketType.Id, quantity);
+        var result = await _reservationService.CreateReservationAsync(userId, eventEntity.Id, ticketType.Id, quantity, purchaserDNI);
 
         // Assert
         Assert.NotNull(result);
@@ -103,11 +106,28 @@ public class ReservationServiceTests : IDisposable
         Assert.Equal(eventEntity.Id, result.EventId);
         Assert.Equal(ticketType.Id, result.TicketTypeId);
         Assert.Equal(quantity, result.Quantity);
+        Assert.Equal(purchaserDNI, result.PurchaserDNI);
         Assert.Equal(ReservationStatus.Active, result.Status);
         
         // Validate 10-minute expiration (Requirement 4.1)
         var expectedExpiration = beforeCreate.AddMinutes(10);
         Assert.InRange(result.ExpiresAt, expectedExpiration.AddSeconds(-5), expectedExpiration.AddSeconds(5));
+    }
+
+    [Fact]
+    public async Task CreateReservationAsync_WithPurchaserDNI_StoresDNI()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var userId = Guid.NewGuid();
+        var purchaserDNI = "87654321";
+
+        // Act
+        var result = await _reservationService.CreateReservationAsync(userId, eventEntity.Id, ticketType.Id, 3, purchaserDNI);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(purchaserDNI, result.PurchaserDNI);
     }
 
     [Fact]
@@ -118,7 +138,7 @@ public class ReservationServiceTests : IDisposable
         var quantity = 3;
 
         // Act
-        var result = await _reservationService.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, quantity);
+        var result = await _reservationService.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, quantity, TestPurchaserDNI);
 
         // Assert
         Assert.NotNull(result);
@@ -135,15 +155,15 @@ public class ReservationServiceTests : IDisposable
         var quantity = 10;
 
         // Act - Create first reservation
-        await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, quantity);
+        await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, quantity, TestPurchaserDNI);
 
         // Assert - Check that subsequent reservation calculation accounts for active reservation
-        var reservation2 = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 15);
+        var reservation2 = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 15, TestPurchaserDNI);
         Assert.NotNull(reservation2);
         
         // Try to reserve more than available (100 - 10 - 15 = 75 available)
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 76));
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 76, TestPurchaserDNI));
     }
 
     [Fact]
@@ -154,10 +174,68 @@ public class ReservationServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 0));
-        
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 0, TestPurchaserDNI));
+
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, -5));
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, -5, TestPurchaserDNI));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public async Task CreateReservationAsync_ThrowsOnEmptyOrWhitespaceDNI(string invalidDNI)
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 1, invalidDNI));
+
+        Assert.Contains("Purchaser DNI is required", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateReservationAsync_ThrowsOnNullDNI()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 1, null!));
+
+        Assert.Contains("Purchaser DNI is required", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateReservationAsync_ThrowsOnDniOver50Chars()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var longDNI = new string('1', 51);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 1, longDNI));
+
+        Assert.Contains("must not exceed 50 characters", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateReservationAsync_AcceptsDniAtExactly50Chars()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var dni50 = new string('9', 50);
+
+        // Act
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 1, dni50);
+
+        // Assert
+        Assert.NotNull(reservation);
+        Assert.Equal(dni50, reservation.PurchaserDNI);
     }
 
     [Fact]
@@ -169,7 +247,7 @@ public class ReservationServiceTests : IDisposable
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, quantity));
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, quantity, TestPurchaserDNI));
         
         Assert.Contains("Insufficient tickets available", exception.Message);
     }
@@ -183,7 +261,7 @@ public class ReservationServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, nonExistentTicketTypeId, 5));
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, nonExistentTicketTypeId, 5, TestPurchaserDNI));
     }
 
     [Fact]
@@ -211,10 +289,10 @@ public class ReservationServiceTests : IDisposable
 
         // Act - Try to reserve 85 tickets (100 total - 20 sold = 80 available)
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 85));
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 85, TestPurchaserDNI));
 
         // Can reserve 80
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 80);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 80, TestPurchaserDNI);
         Assert.NotNull(reservation);
     }
 
@@ -240,7 +318,7 @@ public class ReservationServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         // Act - Should be able to reserve tickets, ignoring expired reservation
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 100);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 100, TestPurchaserDNI);
         
         // Assert
         Assert.NotNull(reservation);
@@ -256,7 +334,7 @@ public class ReservationServiceTests : IDisposable
     {
         // Arrange - Validates Requirement 4.4
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5, TestPurchaserDNI);
 
         // Act
         var result = await _reservationService.ValidateReservationAsync(reservation.Id);
@@ -478,7 +556,7 @@ public class ReservationServiceTests : IDisposable
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5, TestPurchaserDNI);
 
         // Act
         var result = await _reservationService.ConfirmReservationAsync(reservation.Id);
@@ -560,7 +638,7 @@ public class ReservationServiceTests : IDisposable
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 10);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 10, TestPurchaserDNI);
 
         // Act
         var result = await _reservationService.CancelReservationAsync(reservation.Id);
@@ -575,13 +653,13 @@ public class ReservationServiceTests : IDisposable
     {
         // Arrange - Validates inventory restoration
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 20);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 20, TestPurchaserDNI);
 
         // Act
         await _reservationService.CancelReservationAsync(reservation.Id);
 
         // Assert - Should be able to reserve full quantity again
-        var newReservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 100);
+        var newReservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 100, TestPurchaserDNI);
         Assert.NotNull(newReservation);
     }
 
@@ -630,7 +708,7 @@ public class ReservationServiceTests : IDisposable
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
-        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5, TestPurchaserDNI);
 
         // Act
         var result = await _reservationService.GetReservationByIdAsync(reservation.Id);

@@ -236,7 +236,8 @@ public class ReservationExpirationServiceTests
                 Guid.NewGuid(), 
                 eventId, 
                 ticketTypeId, 
-                100);
+                100,
+                "12345678");
             
             Assert.NotNull(newReservation);
             Assert.Equal(100, newReservation.Quantity);

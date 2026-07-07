@@ -28,7 +28,7 @@ public class ReservationService : IReservationService
     /// Decrements ticket inventory atomically using database transactions and optimistic concurrency control.
     /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6
     /// </summary>
-    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity)
+    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
     {
         _logger.LogInformation("Creating reservation for user {UserId}, event {EventId}, ticketType {TicketTypeId}, quantity {Quantity}",
             userId, eventId, ticketTypeId, quantity);
@@ -38,6 +38,19 @@ public class ReservationService : IReservationService
         {
             _logger.LogWarning("Invalid quantity {Quantity} for reservation", quantity);
             throw new ArgumentException("Quantity must be greater than zero", nameof(quantity));
+        }
+
+        // Validate purchaser DNI
+        if (string.IsNullOrWhiteSpace(purchaserDNI))
+        {
+            _logger.LogWarning("Purchaser DNI is required for reservation");
+            throw new ArgumentException("Purchaser DNI is required", nameof(purchaserDNI));
+        }
+
+        if (purchaserDNI.Length > 50)
+        {
+            _logger.LogWarning("Purchaser DNI exceeds maximum length of 50 characters");
+            throw new ArgumentException("Purchaser DNI must not exceed 50 characters", nameof(purchaserDNI));
         }
 
         // Use transaction with retry logic for optimistic concurrency
@@ -96,6 +109,7 @@ public class ReservationService : IReservationService
                         EventId = eventId,
                         TicketTypeId = ticketTypeId,
                         Quantity = quantity,
+                        PurchaserDNI = purchaserDNI,
                         ExpiresAt = now.AddMinutes(ReservationExpirationMinutes), // Requirement 4.1: 10-minute expiration
                         Status = ReservationStatus.Active,
                         CreatedAt = now

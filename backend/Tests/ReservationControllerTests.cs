@@ -43,7 +43,8 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 2
+            Quantity = 2,
+            PurchaserDNI = "12345678"
         };
 
         var reservation = new Reservation
@@ -52,13 +53,14 @@ public class ReservationControllerTests
             EventId = request.EventId,
             TicketTypeId = request.TicketTypeId,
             Quantity = request.Quantity,
+            PurchaserDNI = request.PurchaserDNI,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
             Status = ReservationStatus.Active,
             CreatedAt = DateTime.UtcNow
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ReturnsAsync(reservation);
 
         // Act
@@ -79,6 +81,30 @@ public class ReservationControllerTests
     }
 
     [Fact]
+    public async Task CreateReservation_Returns400WhenDniOmitted()
+    {
+        // Arrange - request body without purchaserDNI defaults to empty string
+        var request = new CreateReservationRequest
+        {
+            EventId = Guid.NewGuid(),
+            TicketTypeId = Guid.NewGuid(),
+            Quantity = 2
+            // PurchaserDNI omitted → defaults to string.Empty
+        };
+
+        _mockReservationService
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
+            .ThrowsAsync(new ArgumentException("Purchaser DNI is required", nameof(request.PurchaserDNI)));
+
+        // Act
+        var result = await _controller.CreateReservation(request);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequestResult.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateReservation_WithAuthenticatedUser_PassesUserIdToService()
     {
         // Arrange
@@ -87,7 +113,8 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 1
+            Quantity = 1,
+            PurchaserDNI = "12345678"
         };
 
         var reservation = new Reservation
@@ -97,6 +124,7 @@ public class ReservationControllerTests
             EventId = request.EventId,
             TicketTypeId = request.TicketTypeId,
             Quantity = request.Quantity,
+            PurchaserDNI = request.PurchaserDNI,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
             Status = ReservationStatus.Active,
             CreatedAt = DateTime.UtcNow
@@ -116,7 +144,7 @@ public class ReservationControllerTests
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(userId, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(userId, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ReturnsAsync(reservation);
 
         // Act
@@ -127,7 +155,7 @@ public class ReservationControllerTests
         Assert.Equal(201, createdResult.StatusCode);
         
         _mockReservationService.Verify(
-            s => s.CreateReservationAsync(userId, request.EventId, request.TicketTypeId, request.Quantity),
+            s => s.CreateReservationAsync(userId, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI),
             Times.Once);
     }
 
@@ -150,11 +178,12 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 0
+            Quantity = 0,
+            PurchaserDNI = "12345678"
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ThrowsAsync(new ArgumentException("Quantity must be greater than zero", nameof(request.Quantity)));
 
         // Act
@@ -173,11 +202,12 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 10
+            Quantity = 10,
+            PurchaserDNI = "12345678"
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ThrowsAsync(new ArgumentException("Insufficient tickets available. Requested: 10, Available: 5", nameof(request.Quantity)));
 
         // Act
@@ -196,11 +226,12 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 2
+            Quantity = 2,
+            PurchaserDNI = "12345678"
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ThrowsAsync(new KeyNotFoundException($"Ticket type {request.TicketTypeId} not found for event {request.EventId}"));
 
         // Act
@@ -219,11 +250,12 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 2
+            Quantity = 2,
+            PurchaserDNI = "12345678"
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ThrowsAsync(new InvalidOperationException("Unable to create reservation due to concurrent updates. Please try again."));
 
         // Act
@@ -242,11 +274,12 @@ public class ReservationControllerTests
         {
             EventId = Guid.NewGuid(),
             TicketTypeId = Guid.NewGuid(),
-            Quantity = 2
+            Quantity = 2,
+            PurchaserDNI = "12345678"
         };
 
         _mockReservationService
-            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity))
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
             .ThrowsAsync(new Exception("Unexpected database error"));
 
         // Act

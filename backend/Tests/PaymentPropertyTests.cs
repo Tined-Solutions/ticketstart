@@ -21,6 +21,7 @@ public class PaymentPropertyTests : IDisposable
     private readonly Mock<IMercadoPagoClient> _mockMpClient;
     private readonly Mock<ILogger<PaymentService>> _mockLogger;
     private readonly PaymentService _paymentService;
+    private readonly TicketService _ticketService;
     private readonly IOptions<MercadoPagoOptions> _options;
 
     public PaymentPropertyTests()
@@ -44,13 +45,13 @@ public class PaymentPropertyTests : IDisposable
             .Build();
 
         var ticketLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<TicketService>();
-        var ticketService = new TicketService(_context, ticketConfig, ticketLogger);
+        _ticketService = new TicketService(_context, ticketConfig, ticketLogger);
 
         _paymentService = new PaymentService(
             _context,
             _mockMpClient.Object,
             _options,
-            ticketService,
+            _ticketService,
             _mockLogger.Object);
     }
 
@@ -104,6 +105,7 @@ public class PaymentPropertyTests : IDisposable
             EventId = eventEntity.Id,
             TicketTypeId = ticketType.Id,
             Quantity = quantity,
+            PurchaserDNI = "12345678",
             ExpiresAt = expired ? DateTime.UtcNow.AddMinutes(-1) : DateTime.UtcNow.AddMinutes(10),
             Status = ReservationStatus.Active,
             CreatedAt = DateTime.UtcNow
@@ -199,6 +201,39 @@ public class PaymentPropertyTests : IDisposable
 
         var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
         Assert.Equal(reservation.Quantity, tickets.Count);
+    }
+
+    [Fact]
+    public async Task Property15_ApprovedWebhook_TicketsCarryReservationDNIAndAreLookupable()
+    {
+        // Regression: tickets created via the approved-payment webhook must carry the reservation's real DNI.
+        var (user, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+        reservation.PurchaserDNI = "44332211";
+        await _context.SaveChangesAsync();
+
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-dni",
+            ExternalReference = reservation.Id.ToString(),
+            Status = "approved"
+        };
+        var signature = ComputeSignature(payload, _options.Value.WebhookSecret);
+
+        var result = await _paymentService.ProcessWebhookAsync(payload, signature);
+
+        Assert.True(result.Success);
+
+        var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
+        Assert.Equal(reservation.Quantity, tickets.Count);
+        Assert.All(tickets, t =>
+        {
+            Assert.Equal(user.Email, t.PurchaserEmail);
+            Assert.Equal(reservation.PurchaserDNI, t.PurchaserDNI);
+            Assert.NotEqual("00000000", t.PurchaserDNI);
+        });
+
+        var lookedUp = await _ticketService.LookupTicketsAsync(user.Email, reservation.PurchaserDNI);
+        Assert.Equal(tickets.Count, lookedUp.Count());
     }
 
     #endregion

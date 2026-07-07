@@ -294,7 +294,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 38: Stock Failure Triggers Refund** (Requirements 12.2)
     - **Property 39: Refund Logging** (Requirements 12.3)
 
-  - [ ] 12.6 Fix purchaser DNI on ticket creation from payment webhook
+  - [x] 12.6 Fix purchaser DNI on ticket creation from payment webhook
     - **Problem:** `PaymentService.ProcessApprovedPaymentAsync` (PaymentService.cs:150) creates tickets via `_ticketService.CreateTicketsAsync(reservation.Id, email, "00000000")`, hardcoding the purchaser DNI to a placeholder.
     - **Impact:** `Ticket.PurchaserDNI` is `IsRequired` / non-nullable (EF + migration enforce it). `TicketService.LookupTicketsAsync` filters by `Where(t => t.PurchaserEmail == email && t.PurchaserDNI == dni)` (tickets spec.md:96-106, Requirement 6.x). Any ticket created via the approved-payment webhook path will have DNI `"00000000"`, so the real lookup-by-DNI returns empty for production tickets — silent correctness bug on the only real purchase path.
     - **Root cause:** `Reservation` model has no `PurchaserDNI` field (Reservation.cs has only Id, UserId, EventId, TicketTypeId, Quantity, ExpiresAt, Status, CreatedAt + navigations), so the payment webhook has no real DNI source at ticket-creation time.
@@ -307,7 +307,15 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
       - Update affected tests: `ReservationControllerTests`, `ReservationServiceTests`, `ReservationPropertyTests`, `PaymentPropertyTests`, `PaymentControllerTests` to pass a real DNI through the reservation path.
       - Add a regression test asserting tickets created via the approved-payment webhook carry the reservation's real DNI (not `"00000000"`).
     - _Requirements: 5.6, 6.x (tickets lookup by email + DNI), 16.5_
-    - _Status: tracked as debt — session 2026-07-01 chose to document and close rather than apply immediately, because the Task 12 diff (1145 insertions) already exceeded the 800-line review budget._
+
+- [ ] 12.7 Guard purchaser DNI sentinel in payment webhook (deferred from 12.6 review)
+  - **Problem:** `PaymentService.ProcessApprovedPaymentAsync` has no guard against `reservation.PurchaserDNI` being empty/whitespace or the legacy migration sentinel "00000000". Pre-existing reservations (pre-deploy) flowing through the webhook would mint tickets with the placeholder DNI, silently re-introducing the Task 12.6 bug.
+  - **Why deferred:** Project is pre-production with no legacy Active reservations; the regression window is theoretical, not real. Chosen 2026-07-07 to keep velocity for the 30-day bulk presentation.
+  - **Fix scope:**
+    - In `PaymentService.ProcessApprovedPaymentAsync`: before `CreateTicketsAsync`, if `string.IsNullOrWhiteSpace(reservation.PurchaserDNI) || reservation.PurchaserDNI == "00000000"`, log a structured warning (reservation.Id, paymentId) and fail the webhook (do not mint tickets with placeholder).
+    - Test in `PaymentPropertyTests.cs`: legacy reservation with `PurchaserDNI = "00000000"` → webhook does not create tickets and logs warning.
+  - _Requirements: 5.6, 6.x, 16.5_
+  - _Status: deferred — track for post-presentation hardening._
 
 - [ ] 13. Checkpoint - Verify reservation, QR, and payment systems
   - Ensure all tests pass, ask the user if questions arise.

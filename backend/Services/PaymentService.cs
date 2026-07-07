@@ -147,7 +147,7 @@ public class PaymentService : IPaymentService
             await _context.SaveChangesAsync();
 
             var email = reservation.User?.Email ?? "guest@ticketera.com";
-            await _ticketService.CreateTicketsAsync(reservation.Id, email, "00000000");
+            await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI);
 
             _context.Transactions.Add(new Transaction
             {
