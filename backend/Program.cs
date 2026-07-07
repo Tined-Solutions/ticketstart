@@ -23,6 +23,11 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.Configure<MercadoPagoOptions>(builder.Configuration.GetSection(MercadoPagoOptions.SectionName));
 builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>();
 
+// Configure Resend email
+builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
+builder.Services.AddHttpClient<IResendClient, ResendClient>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
 
