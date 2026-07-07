@@ -1,0 +1,17 @@
+# .NET
+backend/bin/
+backend/obj/
+*.user
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# General
+.vs/
+.vscode/
+*.log
+
+# SDD artifacts
+.atl/
