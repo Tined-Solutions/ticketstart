@@ -118,3 +118,56 @@ Recommended work-unit commits (per `work-unit-commits` skill):
 ## Next Recommended Phase
 
 `sdd-verify` for the full Task 14 slice, then proceed to Task 15 (metrics service) or Task 12.7 hardening.
+
+---
+
+## Task 14 4R-fix: merge-blocking review findings
+
+### Completed Fixes
+
+- [x] R4-B1 HTML-escaping regression tests
+- [x] R4-B2 Edge-case tests
+- [x] R2-B1 ResendOptions startup validation
+- [x] R3-W1 Dead imports cleanup
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Tests/EmailPropertyTests.cs` | Modified | Added 4 property tests covering HTML escaping and edge cases. |
+| `backend/Program.cs` | Modified | Added fail-fast validation for `ResendOptions.ApiKey` and `ResendOptions.FromEmail`. |
+| `backend/Services/EmailService.cs` | Modified | Removed unused `using System.Globalization;` and `using System.Text;`. |
+
+### TDD Cycle Evidence
+
+| Fix | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|-----|-----------|-------|------------|-----|-------|-------------|----------|
+| R4-B1 | `Tests/EmailPropertyTests.cs` | Unit | 12/12 | Written | Passed (impl already escaped) | 2 cases (ticket email + refund reason) | Clean |
+| R4-B2 | `Tests/EmailPropertyTests.cs` | Unit | 12/12 | Written | Passed (defensive branches already existed) | 2 cases (empty list + null `TicketType`) | Clean |
+| R2-B1 | N/A | N/A | N/A | N/A | Build passes | N/A | Clean |
+| R3-W1 | N/A | N/A | N/A | N/A | Build passes | N/A | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 227
+- **Baseline before 4R-fix**: 223
+- **Net new passing**: +4
+- **Pre-existing flaky failure**: `VerifyDatabaseSchema` (Supabase tenant/user not reachable from this environment)
+
+### Deviations from Design
+
+None — implementation matches design; only tests and startup validation were added.
+
+### Issues Found
+
+- One full-suite run showed a transient failure in `QRCodePropertyTests.Property21_SignatureVerification_RejectsTamperedData`; re-running the test in isolation and the full suite again passed. This appears to be a pre-existing flaky/intermittent test, not caused by the 4R-fix changes.
+- `VerifyDatabaseSchema` continues to fail due to live Supabase connectivity, as documented previously.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~EmailPropertyTests`: 16/16 passing.
+- `dotnet test --verbosity normal`: 227 passing, 1 pre-existing flaky failure.
+
+### Commits
+
+- `fix(email): cubre tests de HTML escaping, edgecases y valida ResendOptions al arranque`

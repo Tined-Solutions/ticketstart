@@ -175,6 +175,74 @@ public class EmailPropertyTests
         Assert.Contains("img-qr-b", captured.Html);
     }
 
+    [Fact]
+    public async Task Property22_TicketEmail_EscapesPurchaserEmailHtmlEntities()
+    {
+        var eventEntity = CreateEvent("Safe HTML Event");
+        var ticketType = CreateTicketType(eventEntity, "General", 80m);
+        var tickets = new[] { CreateTicket(eventEntity, ticketType, "qr-escape") };
+        var maliciousEmail = "<script>alert(1)</script>";
+
+        _mockTicketService
+            .Setup(t => t.GenerateQRCodeImage(It.IsAny<string>()))
+            .Returns("base64-escape-qr");
+
+        ResendEmailRequest? captured = null;
+        _mockResendClient
+            .Setup(c => c.SendEmailAsync(It.IsAny<ResendEmailRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ResendEmailRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(new ResendEmailResponse { Id = "email-escape-123" });
+
+        var result = await _emailService.SendTicketEmailAsync(maliciousEmail, tickets, eventEntity);
+
+        Assert.True(result.Success);
+        Assert.NotNull(captured);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", captured!.Html);
+        Assert.DoesNotContain("<script>", captured.Html);
+        Assert.DoesNotContain("</script>", captured.Html);
+    }
+
+    [Fact]
+    public async Task Property22_TicketEmail_TicketTypeNull_SucceedsWithDefaultNameAndZeroPrice()
+    {
+        var eventEntity = CreateEvent("Null Type Event");
+        var tickets = new[]
+        {
+            new Ticket
+            {
+                Id = Guid.NewGuid(),
+                EventId = eventEntity.Id,
+                TicketTypeId = Guid.NewGuid(),
+                PurchaserEmail = "nulltype@example.com",
+                PurchaserDNI = "12345678",
+                QRCodeData = "qr-nulltype",
+                IsUsed = false,
+                UsedAt = null,
+                CreatedAt = DateTime.UtcNow,
+                Event = eventEntity,
+                TicketType = null!
+            }
+        };
+
+        _mockTicketService
+            .Setup(t => t.GenerateQRCodeImage(It.IsAny<string>()))
+            .Returns("base64-nulltype-qr");
+
+        ResendEmailRequest? captured = null;
+        _mockResendClient
+            .Setup(c => c.SendEmailAsync(It.IsAny<ResendEmailRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ResendEmailRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(new ResendEmailResponse { Id = "email-nulltype-123" });
+
+        var result = await _emailService.SendTicketEmailAsync("nulltype@example.com", tickets, eventEntity);
+
+        Assert.True(result.Success);
+        Assert.NotNull(captured);
+        Assert.Contains("Ticket 1: Ticket", captured!.Html);
+        Assert.Contains("<strong>Price:</strong> $0.00", captured.Html);
+        Assert.Contains("<strong>Total amount:</strong> $0.00", captured.Html);
+    }
+
     #endregion
 
     #region Property 23: Email Contains Event Details
@@ -305,6 +373,26 @@ public class EmailPropertyTests
         Assert.Contains(expectedTotal.ToString("0.00", CultureInfo.InvariantCulture), captured!.Html);
         Assert.Contains("VIP Pass", captured.Html);
         Assert.Contains("Standard Pass", captured.Html);
+    }
+
+    [Fact]
+    public async Task Property24_TicketEmail_EmptyTicketList_SucceedsWithZeroCountAndTotal()
+    {
+        var eventEntity = CreateEvent("Empty Ticket Event");
+        var tickets = Enumerable.Empty<Ticket>();
+
+        ResendEmailRequest? captured = null;
+        _mockResendClient
+            .Setup(c => c.SendEmailAsync(It.IsAny<ResendEmailRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ResendEmailRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(new ResendEmailResponse { Id = "email-empty-123" });
+
+        var result = await _emailService.SendTicketEmailAsync("empty@example.com", tickets, eventEntity);
+
+        Assert.True(result.Success);
+        Assert.NotNull(captured);
+        Assert.Contains("You have purchased <strong>0</strong> ticket(s).", captured!.Html);
+        Assert.Contains("<strong>Total amount:</strong> $0.00", captured.Html);
     }
 
     #endregion
@@ -445,6 +533,31 @@ public class EmailPropertyTests
 
         Assert.NotNull(captured);
         Assert.Equal(_options.Value.FromEmail, captured!.From);
+    }
+
+    [Fact]
+    public async Task Property40_RefundEmail_EscapesReasonHtmlEntities()
+    {
+        const string maliciousReason = "Refund <reason> with & \"quotes\" and 'apostrophe'";
+
+        ResendEmailRequest? captured = null;
+        _mockResendClient
+            .Setup(c => c.SendEmailAsync(It.IsAny<ResendEmailRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ResendEmailRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(new ResendEmailResponse { Id = "email-refund-escape-123" });
+
+        var result = await _emailService.SendRefundNotificationAsync("escape@example.com", 99m, maliciousReason);
+
+        Assert.True(result.Success);
+        Assert.NotNull(captured);
+        Assert.Contains("&lt;reason&gt;", captured!.Html);
+        Assert.Contains("&amp;", captured.Html);
+        Assert.Contains("&quot;quotes&quot;", captured.Html);
+        Assert.Contains("&#39;apostrophe&#39;", captured.Html);
+        Assert.DoesNotContain("<reason>", captured.Html);
+        Assert.DoesNotContain(" & ", captured.Html);
+        Assert.DoesNotContain("\"quotes\"", captured.Html);
+        Assert.DoesNotContain("'apostrophe'", captured.Html);
     }
 
     #endregion

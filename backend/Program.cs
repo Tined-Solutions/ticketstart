@@ -28,6 +28,14 @@ builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(Resen
 builder.Services.AddHttpClient<IResendClient, ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+var resendSettings = builder.Configuration.GetSection("Resend");
+var resendApiKey = resendSettings["ApiKey"] ?? throw new InvalidOperationException("Resend ApiKey is not configured");
+if (string.IsNullOrWhiteSpace(resendApiKey))
+    throw new InvalidOperationException("Resend ApiKey is not configured");
+var resendFromEmail = resendSettings["FromEmail"] ?? throw new InvalidOperationException("Resend FromEmail is not configured");
+if (string.IsNullOrWhiteSpace(resendFromEmail))
+    throw new InvalidOperationException("Resend FromEmail is not configured");
+
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
 
