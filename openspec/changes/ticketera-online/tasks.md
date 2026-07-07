@@ -317,11 +317,11 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
   - _Requirements: 5.6, 6.x, 16.5_
   - _Status: deferred — track for post-presentation hardening._
 
-- [ ] 13. Checkpoint - Verify reservation, QR, and payment systems
+- [x] 13. Checkpoint - Verify reservation, QR, and payment systems
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. Implement email service with Resend integration
-  - [ ] 14.1 Create IEmailService interface and implementation
+- [x] 14. Implement email service with Resend integration
+  - [x] 14.1 Create IEmailService interface and implementation
     - Implement SendTicketEmailAsync with QR codes embedded
     - Include event details (name, date, location) in email
     - Include purchase confirmation details
@@ -330,13 +330,13 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Log all email attempts and results
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 12.4_
 
-  - [ ] 14.2 Create email templates
+  - [x] 14.2 Create email templates
     - Design HTML email template for ticket confirmation
     - Design HTML email template for refund notification
     - Include QR code images in ticket email
     - _Requirements: 7.2, 7.3, 7.4_
 
-  - [ ]* 14.3 Write property tests for email delivery
+  - [x]* 14.3 Write property tests for email delivery
     - **Property 22: Email Contains All Ticket QR Codes** (Requirements 7.2)
     - **Property 23: Email Contains Event Details** (Requirements 7.3)
     - **Property 24: Email Contains Purchase Confirmation** (Requirements 7.4)
