@@ -147,7 +147,7 @@ public class EventController : ControllerBase
 
     [HttpPost("{id:guid}/image")]
     [Authorize(Policy = "EventOwnership")]
-    public async Task<IActionResult> UploadEventImage(Guid id, [FromForm] IFormFile image)
+    public async Task<IActionResult> UploadEventImage(Guid id, IFormFile image)
     {
         if (image == null || image.Length == 0)
         {
