@@ -171,3 +171,74 @@ None — implementation matches design; only tests and startup validation were a
 ### Commits
 
 - `fix(email): cubre tests de HTML escaping, edgecases y valida ResendOptions al arranque`
+
+---
+
+## Task 15: Metrics service for organizer dashboard
+
+### Completed Tasks
+
+- [x] 15.1 Create IMetricsService interface and implementation
+- [x] 15.2 Create MetricsController with endpoints
+- [x] 15.3 Write property tests for metrics calculations
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Services/IMetricsService.cs` | Created | `IMetricsService` interface with `GetEventMetricsAsync` and `GetOrganizerMetricsAsync`; `EventMetrics` DTO with `Id`, `EventId`, `EventName`, `EventDate`, `TicketsSold`, `TotalRevenue`, `RemainingInventory`, `TicketsScanned`. |
+| `backend/Services/MetricsService.cs` | Created | EF Core-backed implementation calculating tickets sold, revenue, remaining inventory (total quantity − sold − active non-expired reservations), and scanned tickets in real time. |
+| `backend/Controllers/MetricsController.cs` | Created | `GET /api/metrics/events/{id}` with `[Authorize(Policy = "EventOwnership")]`; `GET /api/metrics/organizer` with `[Authorize(Policy = "RequireOrganizadorRole")]`. |
+| `backend/Program.cs` | Modified | Registered `IMetricsService`/`MetricsService` as scoped. |
+| `backend/Tests/MetricsPropertyTests.cs` | Created | Property tests for Properties 33-37 plus edge cases (no events, no sales, expired reservations, multiple ticket types, non-existent event). |
+| `backend/Tests/MetricsControllerTests.cs` | Created | Controller unit tests for OK, 404, 401, 500, Admin role access, and organizer metrics list. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Tasks 15.1, 15.2, 15.3 complete. |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 15.1/15.3 | `Tests/MetricsPropertyTests.cs` | Unit | 228/228 (flaky excluded) | Written | Passed | 10 cases (Properties 33-37 + edge cases) | Clean |
+| 15.2 | `Tests/MetricsControllerTests.cs` | Unit | 238/238 (flaky excluded) | Written | Passed | 7 cases (OK, 404, 401, 500, Admin, list, no user) | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 245
+- **Baseline passing (before Task 15)**: 228
+- **Net new passing**: +17
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: `CalculateMetricsAsync` is deterministic but depends on DbContext queries
+
+### Deviations from Design
+
+1. `EventMetrics` DTO includes additional fields (`Id`, `EventName`, `EventDate`) beyond the design.md shape (`EventId`, `TotalTicketsSold`, `TotalRevenue`, `RemainingInventory`, `TicketsScanned`). This matches the task specification for Task 15.1 and the organizer endpoint response example in design.md, which includes `eventName`.
+2. Remaining inventory calculation subtracts active non-expired reservations (`Status == Active && ExpiresAt > UtcNow`) rather than just `Status == Active`. This aligns with the existing `ReservationService` definition of "active" and prevents expired reservations from incorrectly reducing inventory.
+
+### Issues Found
+
+- The pre-existing `VerifyDatabaseSchema` test did not fail in this batch (the full suite passed cleanly), but it remains dependent on live Supabase connectivity and may flake in environments without access.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~MetricsPropertyTests`: 10/10 passing.
+- `dotnet test --filter FullyQualifiedName~MetricsControllerTests`: 7/7 passing.
+- `dotnet test` full suite: 245 passing, 0 failed.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `feat(metrics): add IMetricsService interface and EventMetrics DTO`
+   - `backend/Services/IMetricsService.cs`
+2. `feat(metrics): implement real-time metrics calculations`
+   - `backend/Services/MetricsService.cs`
+3. `feat(metrics): add authorized metrics endpoints`
+   - `backend/Controllers/MetricsController.cs`, `backend/Program.cs` registration
+4. `test(metrics): add property and controller tests`
+   - `backend/Tests/MetricsPropertyTests.cs`, `backend/Tests/MetricsControllerTests.cs`
+
+### Next Recommended Phase
+
+`sdd-verify` for the full Task 15 slice.

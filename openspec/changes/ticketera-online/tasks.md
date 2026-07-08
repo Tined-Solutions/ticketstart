@@ -343,8 +343,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 25: Email Delivery Retry on Failure** (Requirements 7.6)
     - **Property 40: Refund Notification Email** (Requirements 12.4)
 
-- [ ] 15. Implement metrics service for organizer dashboard
-  - [ ] 15.1 Create IMetricsService interface and implementation
+- [x] 15. Implement metrics service for organizer dashboard
+  - [x] 15.1 Create IMetricsService interface and implementation
     - Implement GetEventMetricsAsync to calculate metrics for single event
     - Calculate total tickets sold from Ticket table
     - Calculate total revenue from Ticket and TicketType tables
@@ -353,12 +353,12 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Implement GetOrganizerMetricsAsync to get metrics for all organizer's events
     - _Requirements: 11.1, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8_
 
-  - [ ] 15.2 Create MetricsController with endpoints
+  - [x] 15.2 Create MetricsController with endpoints
     - Implement GET /api/metrics/events/{id} (Organizador owner/Admin only)
     - Implement GET /api/metrics/organizer (Organizador/Admin only)
     - _Requirements: 11.7_
 
-  - [ ]* 15.3 Write property tests for metrics calculations
+  - [x]* 15.3 Write property tests for metrics calculations
     - **Property 33: Dashboard Displays Owner's Events Only** (Requirements 11.2)
     - **Property 34: Tickets Sold Calculation Correctness** (Requirements 11.3)
     - **Property 35: Revenue Calculation Correctness** (Requirements 11.4)

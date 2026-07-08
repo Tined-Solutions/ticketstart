@@ -1,0 +1,232 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Moq;
+using System.Security.Claims;
+using TicketeraOnline.Api.Controllers;
+using TicketeraOnline.Api.Models;
+using TicketeraOnline.Api.Services;
+using Xunit;
+
+namespace TicketeraOnline.Api.Tests;
+
+/// <summary>
+/// Unit tests for MetricsController.
+/// Validates: Requirements 11.7
+/// </summary>
+public class MetricsControllerTests
+{
+    private readonly Mock<IMetricsService> _mockMetricsService;
+    private readonly Mock<ILogger<MetricsController>> _mockLogger;
+    private readonly MetricsController _controller;
+
+    public MetricsControllerTests()
+    {
+        _mockMetricsService = new Mock<IMetricsService>();
+        _mockLogger = new Mock<ILogger<MetricsController>>();
+        _controller = new MetricsController(_mockMetricsService.Object, _mockLogger.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+    }
+
+    #region GET /api/metrics/events/{id}
+
+    [Fact]
+    public async Task GetEventMetrics_ServiceReturnsMetrics_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var metrics = new EventMetrics
+        {
+            Id = eventId,
+            EventId = eventId,
+            EventName = "Test Event",
+            EventDate = DateTime.UtcNow.AddDays(30),
+            TicketsSold = 42,
+            TotalRevenue = 4200m,
+            RemainingInventory = 58,
+            TicketsScanned = 5
+        };
+
+        SetAuthenticatedUser(userId, UserRole.Organizador);
+        _mockMetricsService.Setup(s => s.GetEventMetricsAsync(eventId)).ReturnsAsync(metrics);
+
+        // Act
+        var result = await _controller.GetEventMetrics(eventId);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsType<EventMetrics>(okResult.Value);
+        Assert.Equal(eventId, value.EventId);
+        Assert.Equal(metrics.EventName, value.EventName);
+        Assert.Equal(metrics.TicketsSold, value.TicketsSold);
+        Assert.Equal(metrics.TotalRevenue, value.TotalRevenue);
+        Assert.Equal(metrics.RemainingInventory, value.RemainingInventory);
+        Assert.Equal(metrics.TicketsScanned, value.TicketsScanned);
+    }
+
+    [Fact]
+    public async Task GetEventMetrics_ServiceReturnsNull_ReturnsNotFound()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        SetAuthenticatedUser(userId, UserRole.Organizador);
+        _mockMetricsService.Setup(s => s.GetEventMetricsAsync(eventId)).ReturnsAsync((EventMetrics?)null);
+
+        // Act
+        var result = await _controller.GetEventMetrics(eventId);
+
+        // Assert
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(404, notFoundResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetEventMetrics_UnauthenticatedUser_ReturnsUnauthorized()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        // No authenticated user
+
+        // Act
+        var result = await _controller.GetEventMetrics(eventId);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(401, unauthorizedResult.StatusCode);
+    }
+
+    #endregion
+
+    #region GET /api/metrics/organizer
+
+    [Fact]
+    public async Task GetOrganizerMetrics_ReturnsOkWithMetrics()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var metrics = new List<EventMetrics>
+        {
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Event 1",
+                EventDate = DateTime.UtcNow.AddDays(10),
+                TicketsSold = 10,
+                TotalRevenue = 1000m,
+                RemainingInventory = 90,
+                TicketsScanned = 2
+            },
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Event 2",
+                EventDate = DateTime.UtcNow.AddDays(20),
+                TicketsSold = 25,
+                TotalRevenue = 2500m,
+                RemainingInventory = 75,
+                TicketsScanned = 8
+            }
+        };
+
+        SetAuthenticatedUser(userId, UserRole.Organizador);
+        _mockMetricsService.Setup(s => s.GetOrganizerMetricsAsync(userId)).ReturnsAsync(metrics);
+
+        // Act
+        var result = await _controller.GetOrganizerMetrics();
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsAssignableFrom<IEnumerable<EventMetrics>>(okResult.Value);
+        Assert.Equal(2, value.Count());
+    }
+
+    [Fact]
+    public async Task GetOrganizerMetrics_NoUserId_ReturnsUnauthorized()
+    {
+        // Arrange
+        // No authenticated user
+
+        // Act
+        var result = await _controller.GetOrganizerMetrics();
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(401, unauthorizedResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetOrganizerMetrics_AdminRole_ReturnsOk()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var metrics = new List<EventMetrics>
+        {
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Admin View Event",
+                EventDate = DateTime.UtcNow.AddDays(15),
+                TicketsSold = 5,
+                TotalRevenue = 500m,
+                RemainingInventory = 95,
+                TicketsScanned = 1
+            }
+        };
+
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockMetricsService.Setup(s => s.GetOrganizerMetricsAsync(adminId)).ReturnsAsync(metrics);
+
+        // Act
+        var result = await _controller.GetOrganizerMetrics();
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsAssignableFrom<IEnumerable<EventMetrics>>(okResult.Value);
+        Assert.Single(value);
+    }
+
+    [Fact]
+    public async Task GetEventMetrics_ServiceThrowsException_ReturnsInternalServerError()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        SetAuthenticatedUser(userId, UserRole.Organizador);
+        _mockMetricsService.Setup(s => s.GetEventMetricsAsync(eventId)).ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var result = await _controller.GetEventMetrics(eventId);
+
+        // Assert
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, statusCodeResult.StatusCode);
+    }
+
+    #endregion
+
+    private void SetAuthenticatedUser(Guid userId, UserRole role)
+    {
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Role, role.ToString())
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+        };
+    }
+}
