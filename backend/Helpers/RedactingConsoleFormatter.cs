@@ -22,14 +22,21 @@ public sealed class RedactingConsoleFormatter : ConsoleFormatter
         IExternalScopeProvider? scopeProvider,
         TextWriter textWriter)
     {
-        var originalMessage = logEntry.Formatter(logEntry.State, logEntry.Exception);
-        var redactedMessage = LogRedactor.RedactMessage(originalMessage);
-
-        textWriter.WriteLine($"[{logEntry.LogLevel}] {logEntry.Category}[{logEntry.EventId.Id}]: {redactedMessage}");
-
-        if (logEntry.Exception != null)
+        try
         {
-            textWriter.WriteLine(LogRedactor.RedactMessage(logEntry.Exception.ToString()));
+            var originalMessage = logEntry.Formatter(logEntry.State, logEntry.Exception);
+            var redactedMessage = LogRedactor.RedactMessage(originalMessage);
+
+            textWriter.WriteLine($"[{logEntry.LogLevel}] {logEntry.Category}[{logEntry.EventId.Id}]: {redactedMessage}");
+
+            if (logEntry.Exception != null)
+            {
+                textWriter.WriteLine(LogRedactor.RedactMessage(logEntry.Exception.ToString()));
+            }
+        }
+        catch
+        {
+            // Logging must never fail the request.
         }
     }
 }

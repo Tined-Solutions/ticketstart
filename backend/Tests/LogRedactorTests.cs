@@ -165,6 +165,50 @@ public class LogRedactorTests
         Assert.Contains("[REDACTED]", output);
     }
 
+    [Fact]
+    public void RedactingConsoleFormatter_RedactsBearerTokenInFreeFormMessage()
+    {
+        var formatter = new RedactingConsoleFormatter();
+        var token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjMifQ.SflKxwRJSMeKKF2QT4fwpMe";
+        var message = $"Authorization: Bearer {token}";
+        var entry = new LogEntry<object>(
+            LogLevel.Warning,
+            "TestCategory",
+            new EventId(2),
+            state: new object(),
+            exception: null,
+            formatter: (state, ex) => message);
+
+        var sb = new StringBuilder();
+        using var writer = new StringWriter(sb);
+
+        formatter.Write(in entry, scopeProvider: null, writer);
+
+        var output = sb.ToString();
+        Assert.DoesNotContain(token, output);
+        Assert.Contains("[REDACTED]", output);
+    }
+
+    [Fact]
+    public void RedactingConsoleFormatter_SwallowsFormatterException()
+    {
+        var formatter = new RedactingConsoleFormatter();
+        var entry = new LogEntry<object>(
+            LogLevel.Information,
+            "TestCategory",
+            new EventId(3),
+            state: new object(),
+            exception: null,
+            formatter: (state, ex) => throw new InvalidOperationException("Formatter failure"));
+
+        var sb = new StringBuilder();
+        using var writer = new StringWriter(sb);
+
+        var exception = Record.Exception(() => formatter.Write(in entry, scopeProvider: null, writer));
+
+        Assert.Null(exception);
+    }
+
     #endregion
 
     #region R1-NF-1: Inline email redaction in controller-rendered messages
