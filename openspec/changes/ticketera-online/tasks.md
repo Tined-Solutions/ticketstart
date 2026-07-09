@@ -426,6 +426,13 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Fix R3-1: drive Property 51 from real `LogRedactor.SensitiveKeys`; add negative property for non-sensitive keys.
     - Fix R3-2: convert Property 47 to parameterized `[Theory]` against the spec matrix.
     - Fix R3-3: assert `StackTrace` key in Property 46.
+    - [x] 17.4.1 Micro-slice hardening (fresh-context 4R re-review)
+      - Fix R1-NF-1: email leak in TicketController logs.
+      - Fix R4-N-1: `OperationCanceledException` throws on already-cancelled token.
+      - Fix R4-N-2: self-protection catch missing `Response.HasStarted` guard.
+      - Fix R3-NF-2: `LogError` overload missing exception object.
+      - Non-blocking: add formatter self-protection (R1-NF-3) and end-to-end Bearer/JWT test (R3-NF-4).
+      - Non-blocking deferred: base64 over-redaction (R3-NF-3).
     - _Requirements: 16.1, 16.2, 16.3, 16.5, 16.6, 16.7_
 
 - [ ] 18. Checkpoint - Verify backend completeness

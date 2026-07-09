@@ -713,3 +713,79 @@ THIS IS ORTHOGONAL TO TASK 17 LOGGING — track separately as a security inciden
 ### Pending test warning (inherited from Task 16)
 
 - `verify-report-task16.md` WARNING #1 was RESOLVED in commit `4696381` (Task 16.5 added pagination 200-cap regression tests). No outstanding warnings from Task 16.
+
+---
+
+## Task 17.4.1 — Completed
+
+### Completed Fixes
+
+- [x] R1-NF-1 Email leak in `TicketController` lookup/error logs.
+- [x] R4-N-1 `OperationCanceledException` path no longer falls through to `WriteAsJsonAsync` on a cancelled token.
+- [x] R4-N-2 Self-protection catch now returns early when `Response.HasStarted`.
+- [x] R3-NF-2 `GlobalExceptionHandler` passes the exception object to `LogError` so structured sinks receive it.
+- [x] R1-NF-3 `RedactingConsoleFormatter.Write` swallows formatter/redactor exceptions so logging never fails the request.
+- [x] R3-NF-4 End-to-end formatter test for Bearer/JWT in free-form rendered messages.
+- [ ] R3-NF-3 Base64 over-redaction in `RedactLongSecretLikeStrings` — deferred to 17.4.2.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Controllers/TicketController.cs` | Modified | Hashes email via `LogRedactor.HashIdentifier(email)` in lookup request and error log templates; placeholders renamed to `{EmailHash}`. |
+| `backend/Middleware/GlobalExceptionHandler.cs` | Modified | `OperationCanceledException` branch sets 499 and returns true before writing body; self-protection catch returns true when `Response.HasStarted`; error log uses `LogError(Exception, ...)` overload. |
+| `backend/Helpers/RedactingConsoleFormatter.cs` | Modified | Wrapped `Write` body in try/catch to prevent logging failures from propagating. |
+| `backend/Tests/LogRedactorTests.cs` | Modified | Added `RedactingConsoleFormatter_RedactsInlineEmailInRenderedMessage`, `RedactingConsoleFormatter_RedactsBearerTokenInFreeFormMessage`, and `RedactingConsoleFormatter_SwallowsFormatterException`. |
+| `backend/Tests/ErrorHandlingPropertyTests.cs` | Modified | Added `Property47d_OperationCanceled_WithCancelledToken_ReturnsTrueWithoutWriting`, `Property47e_HandlerSelfProtection_ResponseAlreadyStarted_ReturnsTrueWithoutWriting`, and asserted `entry.Exception != null` in `Property46_Exception_LogsStructuredFields`. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Added and marked Task 17.4.1 complete; noted deferred R3-NF-3. |
+
+### TDD Cycle Evidence
+
+| Fix | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|-----|-----------|-------|------------|-----|-------|-------------|----------|
+| R1-NF-1 | `Tests/LogRedactorTests.cs` | Unit | 328/328 | Written | Passed | Inline email + hash verification | Extracted `CollectingLogger<T>` helper |
+| R4-N-1 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 329/329 | Written | Passed | Cancelled token + body-empty assertion | Clean |
+| R4-N-2 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 330/330 | Written | Passed | Custom `StartedResponseFeature` simulating sent headers | Clean |
+| R3-NF-2 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 331/331 | Modified first | Passed | Property 46 asserts exception object | Clean |
+| R1-NF-3 | `Tests/LogRedactorTests.cs` | Unit | 331/331 | Written | Passed | Throwing formatter | Clean |
+| R3-NF-4 | `Tests/LogRedactorTests.cs` | Unit | 332/332 | Written | Passed | Bearer JWT in free-form message | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 333
+- **Baseline passing (before Task 17.4.1)**: 328
+- **Net new passing**: +5
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: None
+
+### Deviations from Design
+
+- None for this slice — all changes align with the 4R merge-blocking findings.
+
+### Issues Found
+
+- `DefaultHttpContext` built from a bare `FeatureCollection` requires both `IHttpRequestFeature` and `IHttpResponseBodyFeature` to avoid `NullReferenceException` when tests read `Response.Body`; resolved with `HttpRequestFeature` + `StreamResponseBodyFeature`.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~LogRedactorTests`: 34/34 passing.
+- `dotnet test --filter FullyQualifiedName~ErrorHandlingPropertyTests`: 23/23 passing.
+- `dotnet test` full suite: 333 passing, 0 failed, 0 skipped.
+
+### Commits
+
+- `fix(logging): hashea email en TicketController lookup logs (R1-NF-1)`
+- `fix(handler): evita escribir body cuando OperationCanceledException usa token cancelado (R4-N-1)`
+- `fix(handler): protege self-protection catch con guarda Response.HasStarted (R4-N-2)`
+- `fix(handler): pasa objeto Exception a LogError para sinks estructurados (R3-NF-2)`
+- `fix(logging): self-protection en RedactingConsoleFormatter y test end-to-end Bearer/JWT (R1-NF-3, R3-NF-4)`
+
+### Next Recommended Phase
+
+Focused 4R re-review (R1 + R4 lenses minimum) on the new `HEAD` commit. If PASS, run `sdd-verify` for the whole Task 17 + 17.4 + 17.4.1 slice. If new blockers surface, address in 17.4.2 before verify.
+
+### Deferred to 17.4.2 / Future
+
+- **R3-NF-3**: `RedactLongSecretLikeStrings` over-redacts 33+ char base64 (QR data, blob IDs, encoded reservation blobs). Add a `LogRedactorTests` `[Theory]` with 40+ char legitimate base64 strings and refine the regex if it fails.
+- **R2 advisory debt** and **Supabase credential leak** remain tracked separately.
