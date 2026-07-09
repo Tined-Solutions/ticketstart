@@ -70,6 +70,11 @@ public class GlobalExceptionHandler : IExceptionHandler
         }
         catch (Exception)
         {
+            if (httpContext.Response.HasStarted)
+            {
+                return true;
+            }
+
             httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
             httpContext.Response.ContentType = "application/problem+json";
             await httpContext.Response.WriteAsync("{\"code\":\"INTERNAL_ERROR\",\"message\":\"An internal error occurred.\"}");

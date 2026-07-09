@@ -1,5 +1,6 @@
 using FsCheck;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -204,6 +205,20 @@ public class ErrorHandlingPropertyTests
         Assert.True(handled);
         Assert.Equal(0, context.Response.Body.Length);
         Assert.DoesNotContain(logger.Entries, e => e.LogLevel == LogLevel.Error);
+    }
+
+    [Fact]
+    public void Property47e_HandlerSelfProtection_ResponseAlreadyStarted_ReturnsTrueWithoutWriting()
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateStartedHttpContext("/api/test", "GET");
+        var exception = new InvalidOperationException("something failed");
+
+        var handled = handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Result;
+
+        Assert.True(handled);
+        Assert.Equal(0, context.Response.Body.Length);
     }
 
     #endregion
@@ -476,6 +491,27 @@ public class ErrorHandlingPropertyTests
         return context;
     }
 
+    private static DefaultHttpContext CreateStartedHttpContext(string path, string method)
+    {
+        var body = new MemoryStream();
+        var features = new FeatureCollection();
+        features.Set<IHttpRequestFeature>(new HttpRequestFeature
+        {
+            Method = method,
+            Path = path,
+            PathBase = "",
+            QueryString = "",
+            RawTarget = path,
+            Scheme = "http",
+            Headers = new HeaderDictionary(),
+            Body = Stream.Null
+        });
+        features.Set<IHttpResponseFeature>(new StartedResponseFeature { Body = body });
+        features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(body));
+        var context = new DefaultHttpContext(features);
+        return context;
+    }
+
     private static ControllerContext CreateStaffControllerContext(Guid userId)
     {
         var claims = new List<Claim>
@@ -645,6 +681,35 @@ public class ErrorHandlingPropertyTests
         public TestDbException(string message, int errorCode) : base(message, errorCode)
         {
         }
+    }
+
+    /// <summary>
+    /// Response feature that simulates a response whose headers have already been sent.
+    /// Any attempt to mutate the status code throws, mirroring real ASP.NET Core behavior.
+    /// </summary>
+    private sealed class StartedResponseFeature : IHttpResponseFeature
+    {
+        private int _statusCode = StatusCodes.Status200OK;
+
+        public int StatusCode
+        {
+            get => _statusCode;
+            set => throw new InvalidOperationException("The response has already started.");
+        }
+
+        public string? ReasonPhrase { get; set; }
+
+        public IHeaderDictionary Headers { get; set; } = new HeaderDictionary();
+
+        public Stream Body { get; set; } = Stream.Null;
+
+        public bool HasStarted => true;
+
+        public void OnStarting(Func<object, Task> callback, object state) { }
+
+        public void OnCompleted(Func<object, Task> callback, object state) { }
+
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     /// <summary>
