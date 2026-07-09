@@ -617,4 +617,99 @@ None for this slice — all changes align with the 4R merge-blocking findings.
 
 ### Next Recommended Phase
 
-`sdd-verify` for Task 17 (including 17.4 hardening); the orchestrator will decide whether a 4R re-review is needed based on diff size.
+**⚠ HANDOFF — Task 17.4 re-review surfaced NEW merge-blocking findings. DO NOT proceed to `sdd-verify` yet.**
+
+A fresh-context 4R re-review of commit `fa2533c` returned:
+- R1 Risk: **MERGE_BLOCKING** (R1-2 PARTIAL — email still leaks)
+- R4 Resilience: **MERGE_BLOCKING** (R4-1 PARTIAL — handler self-protection incomplete)
+- R2 Readability: ADVISORY (no blockers, deferred debt grew)
+- R3 Reliability: ADVISORY (R3-3 PARTIAL — exception object not captured by logger)
+
+A follow-up micro-slice **Task 17.4.1** is required before re-running 4R. The next session should:
+1. Run `sdd-apply` for Task 17.4.1 with the 4 CRITICAL fixes listed below.
+2. Re-run focused 4R re-review (R1 + R4 lenses minimum) on the new commit.
+3. Only after PASS, run `sdd-verify` for the whole Task 17 + 17.4 + 17.4.1 slice.
+4. Then continue to Task 18 (backend checkpoint), frontend 19-29, integration 30, docs 31, final checkpoint 32, and finally open the single PR.
+
+---
+
+## Task 17.4.1 — Pending micro-slice (4 CRITICAL fixes from re-review)
+
+### Must-fix CRITICAL findings (4)
+
+1. **Email leak in TicketController logs (R1-NF-1)**
+   - Location: `backend/Controllers/TicketController.cs:45` and `:88`
+   - Symptom: Template `"Ticket lookup request for email {Email} and DNI {DniHash}"` interpolates `email` RAW. The global `RedactingConsoleFormatter` only matches `key=value` / `key:value` shapes; structured-template interpolation `"email user@example.com"` is NOT redacted. Verified end-to-end.
+   - Fix: Mirror the DNI fix — hash `email` via `LogRedactor.HashIdentifier(email)` and rename placeholder to `{EmailHash}`. Alternatively add an email-domain regex failover to `RedactMessage`. Hashing is the more robust choice (no regex false positives on legitimate traffic).
+   - Test: Add a property that runs a real controller emission through `RedactingConsoleFormatter` (not just `key=value` form) — the existing `RedactingConsoleFormatter_RedactsMessageBeforeWriting` uses `token=super-secret-token-123` which does NOT exercise the inline-interpolation path. Add a test method like `RedactingConsoleFormatter_RedactsInlineEmailInRenderedMessage`.
+
+2. **`OperationCanceledException` path throws on already-cancelled token (R4-N-1)**
+   - Location: `backend/Middleware/GlobalExceptionHandler.cs:37-65` (the 499 branch)
+   - Symptom: The 499 branch logs `Information` then FALLS THROUGH to `Response.StatusCode = 499; ... await WriteAsJsonAsync(problemDetails, cancellationToken)`. When `OperationCanceledException` fired, the `cancellationToken` is almost certainly already cancelled, so `WriteAsJsonAsync` throws `OperationCanceledException` → lands in outer catch → tries to write 500 fallback → also throws (client gone). The exception propagates out of `TryHandleAsync`, defeating the special-case.
+   - Fix: `return true` immediately after the `Information` log in the 499 branch — DO NOT write a response body. The client already disconnected; the 499 is just a metric/status marker.
+   - Test: Add a test that throws `OperationCanceledException` with `CancellationToken.Cancelled` and asserts `TryHandleAsync` returns `true` without invoking `WriteAsJsonAsync` (or without throwing).
+
+3. **Self-protection catch missing `Response.HasStarted` guard (R4-N-2)**
+   - Location: `backend/Middleware/GlobalExceptionHandler.cs:69-75` (the catch block)
+   - Symptom: The catch writes raw bytes regardless of response state. If the try body already started writing (e.g. `WriteAsJsonAsync` flushed headers before the JSON serializer blew up, or a controller wrote then threw), `Response.StatusCode =` throws `InvalidOperationException` and self-protection is defeated.
+   - Fix: At the top of the catch, add `if (httpContext.Response.HasStarted) return true;` BEFORE setting StatusCode/ContentType/WriteAsync. The pipeline will handle the partial response.
+   - Test: Add a test that mocks a started response (or pre-writes to Response.Body) and asserts the catch returns `true` without attempting to write.
+
+4. **Logger uses string-template overload — exception object never captured (R3-NF-2)**
+   - Location: `backend/Middleware/GlobalExceptionHandler.cs:42-50`
+   - Symptom: `_logger.LogError("...{StackTrace}", exception.GetType().Name, ..., exception.StackTrace)` uses the `LogError(string, params object[])` overload. The exception object itself is never passed to the logging pipeline. Structured-log sinks (Serilog, OTel, ELK, App Insights) receive zero `Exception` field — only the pre-stringified `StackTrace` inside the message template. `CollectingLogger<T>.LogEntry.Exception` is `null` for every entry, which is why Property 46 cannot assert `entry.Exception != null`.
+   - Fix: Change the call to the `LogError(Exception exception, string message, params object[] args)` overload — pass `exception` as the FIRST positional argument before the template. Keep the same structured fields in the template (`ExceptionType`, `Method`, `Path`, `CorrelationId`, `ErrorCode`, `StackTrace`) but now the exception object flows to structured sinks too.
+   - Test: Add `Assert.NotNull(entry.Exception)` to Property 46 (`Property46_ErrorLoggingFormat_AllRequiredFieldsPresent`). Today the test silently accepts the contract violation.
+
+### Recommended non-blocking findings (include if time permits)
+
+5. **`RedactingConsoleFormatter.Write` has no self-protection try/catch** (R1-NF-3, R4-mirror) — if `logEntry.Formatter(state, exception)` throws (object ToString throw) or `RedactMessage` throws on pathological input, the exception propagates out of the `_logger.X` call site. The handler's outer try/catch DOES cover some of these (via the new self-protection catch), but other call sites outside the handler are unprotected. Wrap `Write` body in `try { ... } catch { /* swallow — logging must never fail the request */ }`.
+
+6. **`RedactLongSecretLikeStrings` over-redacts 33+ char base64** (R3-NF-3) — `LogRedactor.cs:131-134` regex `\b[A-Za-z0-9+/]{33,}={0,2}\b` catches legitimate base64 payloads (QR data, blob IDs, encoded reservation blobs). Add a `LogRedactorTests` `[Theory]` with 40+ char legitimate base64 strings to assert survival OR refine the regex.
+
+7. **End-to-end formatter test missing Bearer/JWT-in-free-form-text path** (R3-NF-4) — Property 51 only exercises `RedactQueryString`. The Bearer/JWT/long-secret regex paths in `RedactMessage` are tested only by synthetic `LogRedactorTests` against literal strings. No test pipes a real captured log entry (e.g. an `InvalidOperationException` whose `Message` contains `Bearer abc...` or `eyJ...`) through `RedactingConsoleFormatter` to confirm end-to-end redaction. Add a test that constructs a real `LogEntry<object>` with a Bearer/JWT body in the rendered message and asserts the formatter output is redacted.
+
+### Deferred findings (acknowledged, not in 17.4.1 scope)
+
+8. **R2 advisory items** (TryLogAuditAsync hoist to `TicketeraControllerBase`, `ApiErrorCodes` static catalogue, `ProblemDetails.Title` RFC 7807 misuse) — kept deferred per user choice. Note: the magic-string debt GREW in 17.4 with new codes `"PROCESSING_FAILED"`, `"INTERNAL_ERROR"`, `"failed"`. A near-term slice `17.5 — ApiErrorCodes catalogue + ProblemDetailsFactory` is recommended to consolidate before frontend depends on the inline strings.
+9. **R4-5 EF Core resilience / R4-6 Sentry-OpenTelemetry / R4-4 audit idempotency** — all routed to Task 30 (integration tests).
+10. **Supabase DB password in `backend/appsettings.json:10-11`** (R1-NF-2 from re-review) — pre-existing leaked credential in git history (NOT introduced by Task 17). The user acknowledged and chose to triage separately in a future session. **Read later in this file for the dedicated handoff note.**
+
+---
+
+## Security Triage — Deferred (Supabase credential leak)
+
+THIS IS ORTHOGONAL TO TASK 17 LOGGING — track separately as a security incident.
+
+- **Issue**: `backend/appsettings.json` lines 10-11 commit a real Supabase DB pooler hostname + project-ref username (`postgres.sgymtpzqpmxvlcxkynrw`) + cleartext password `BocaJunior14135010` to git history. Present since at least commit `5fd1826` (Task 17 initial apply), likely older.
+- **Other secrets in `appsettings.json`** (`Jwt.SecretKey`, `CloudflareR2.*`, `MercadoPago.*`, `Resend.ApiKey`, `QRCode.HmacSecretKey`) are placeholder templates — fine.
+- **Required remediation** (in priority order, NOT for this SDD change — open a dedicated `security/credential-rotation` change):
+  1. Rotate the Supabase DB password immediately via Supabase dashboard.
+  2. Move connection strings to `dotnet user-secrets` (dev), environment variables (staging/prod), or a secrets manager (AWS Secrets Manager / Azure Key Vault / HashiCorp Vault).
+  3. Replace the committed credentials in `appsettings.json` with placeholder templates like the other keys.
+  4. Scrub git history with `git filter-repo --invert-paths --path backend/appsettings.json` (or targeted `filter-repo --replace-text`) — coordinate with maintainers before rewriting history; force-push required.
+  5. Add `appsettings.Production.json` / `appsettings.Development.json` to `.gitignore` if present, and add a CI check that greps for `password=` patterns in `appsettings*.json`.
+- **Severity**: HIGH. The redaction work in Task 17.4 is moot while the live credential sits in repo history.
+- **Why deferred this session**: User explicitly chose "Lo dejamos para después" at session close. A future session should pick this up as priority 1 before any public exposure of the repo.
+
+---
+
+## Session close state
+
+- Branch: `dev`
+- HEAD: `fa2533c` (`fix(logging): endurece redaction, webhook 2xx, self-protection handler y property tests 17.4`)
+- Backend tests: **328 passing / 0 failing / 0 skipped**
+- OpenSDD artifacts: hybrid mode (Engram + files under `openspec/changes/ticketera-online/`)
+- Pipeline status: Task 17 in progress — apply done, hardening done, re-review done, 17.4.1 micro-slice PENDING, then 4R re-review, then `sdd-verify`, then Task 18+.
+
+### Where to pick up
+
+1. Run `sdd-apply` for Task 17.4.1 with the 4 CRITICAL fixes above. Strict TDD mode active; baseline 328 tests.
+2. After the micro-slice commits, re-run a focused 4R re-review (R1 + R4 lenses minimum) on the new commit.
+3. If PASS, run `sdd-verify` for Task 17 (covers 17.1, 17.2, 17.3, 17.4, 17.4.1).
+4. If 4R re-review surfaces NEW blockers, address in 17.4.2 (or fold into 17.4.1 if still in the same slice) before verify.
+5. Only after `sdd-verify` PASS: continue to Task 18 (backend checkpoint completeness), then frontend 19-29, integration 30, docs 31, final checkpoint 32, and open the single PR.
+
+### Pending test warning (inherited from Task 16)
+
+- `verify-report-task16.md` WARNING #1 was RESOLVED in commit `4696381` (Task 16.5 added pagination 200-cap regression tests). No outstanding warnings from Task 16.
