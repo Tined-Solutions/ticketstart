@@ -1,0 +1,24 @@
+# Line endings: normalize all text files to LF in both the index and the
+# working tree, across all platforms (Windows + WSL/Linux). This eliminates
+# CRLF/LF noise from editors that auto-convert on save.
+# VS, VS Code and Rider all handle LF natively on Windows.
+* text=auto eol=lf
+
+# Binary files — never normalize, never diff as text, never merge-conflict on lines
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.zip  binary
+*.dll  binary
+*.exe  binary
+*.so   binary
+*.dylib binary
+*.nupkg binary
+*.snupkg binary
+
+# Lock files — treat as binary to avoid merge noise
+*.lock binary
