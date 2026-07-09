@@ -120,12 +120,37 @@ public class PaymentControllerTests
         var signature = "invalid-signature";
 
         _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
-            .ReturnsAsync(new WebhookResult { Success = false, Error = "Invalid webhook signature", PaymentId = payload.PaymentId });
+            .ReturnsAsync(new WebhookResult { Success = false, Error = "Invalid webhook signature", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Authentication });
 
         var result = await _controller.Webhook(payload, signature);
 
         var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Equal(401, unauthorizedResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Webhook_ProcessingFailure_ReturnsOkWithFailedStatus()
+    {
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-123",
+            ExternalReference = Guid.NewGuid().ToString(),
+            Status = "approved"
+        };
+        var signature = "valid-signature";
+
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+            .ReturnsAsync(new WebhookResult { Success = false, Error = "Internal processing error", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Processing });
+
+        var result = await _controller.Webhook(payload, signature);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+        dynamic? value = okResult.Value as dynamic;
+        Assert.NotNull(value);
+        Assert.Equal(payload.PaymentId, value!.paymentId);
+        Assert.Equal("failed", value.status);
+        Assert.Equal("PROCESSING_FAILED", value.error);
     }
 
     private void SetAuthenticatedUser(Guid userId)

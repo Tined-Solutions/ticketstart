@@ -415,6 +415,19 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 50: QR Validation Audit Logging** (Requirements 16.6)
     - **Property 51: Sensitive Data Protection in Logs** (Requirements 16.7)
 
+  - [x] 17.4 Harden error handling and logging (post-4R review)
+    - Fix R1-1: global redacting console formatter protecting every `_logger.*` call site.
+    - Fix R1-2: hash DNI in `TicketController` lookup logs; add PII keys to `LogRedactor`.
+    - Fix R1-3: complete `LogRedactor.SensitiveKeys` denylist and add regex failover for Bearer/JWT/long secrets.
+    - Fix R1-4: drop raw `{Error}` from webhook warning log.
+    - Fix R4-1: wrap `GlobalExceptionHandler.TryHandleAsync` in self-protection catch; special-case `OperationCanceledException` as 499 / Information log.
+    - Fix R4-2: webhook authentication failure → 401; processing failure → 200 OK with `{paymentId, status: "failed", error: "PROCESSING_FAILED"}`.
+    - Fix R4-3: add audit-write-failure variants for Properties 49 and 50; wrap audit catch logger call in inner try/catch.
+    - Fix R3-1: drive Property 51 from real `LogRedactor.SensitiveKeys`; add negative property for non-sensitive keys.
+    - Fix R3-2: convert Property 47 to parameterized `[Theory]` against the spec matrix.
+    - Fix R3-3: assert `StackTrace` key in Property 46.
+    - _Requirements: 16.1, 16.2, 16.3, 16.5, 16.6, 16.7_
+
 - [ ] 18. Checkpoint - Verify backend completeness
   - Ensure all tests pass, ask the user if questions arise.
 

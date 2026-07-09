@@ -530,3 +530,91 @@ Task 17 — implement global error handling and structured logging.
 ### Next Recommended Phase
 
 `sdd-verify` for Task 17; the orchestrator will run 4R review first.
+
+---
+
+## Task 17.4: Harden error handling and logging (post-4R review)
+
+### Completed Fixes
+
+- [x] R1-1 Global redacting console formatter protecting all `_logger.*` call sites.
+- [x] R1-2 DNI hashed in `TicketController` lookup logs; PII keys added to `LogRedactor`.
+- [x] R1-3 Complete `LogRedactor.SensitiveKeys` denylist + regex failover for Bearer/JWT/long secrets.
+- [x] R1-4 Drop raw `{Error}` from webhook warning log.
+- [x] R4-1 `GlobalExceptionHandler` self-protection catch + `OperationCanceledException` → 499 / Information.
+- [x] R4-2 Webhook auth failure → 401; processing failure → 200 OK with opaque failed status.
+- [x] R4-3 Audit-write-failure variants for Properties 49 and 50; inner try/catch around audit logger call.
+- [x] R3-1 Property 51 driven from real `SensitiveKeys`; negative property for non-sensitive keys.
+- [x] R3-2 Property 47 converted to parameterized `[Theory]` against spec matrix.
+- [x] R3-3 `StackTrace` key asserted in Property 46.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Helpers/LogRedactor.cs` | Modified | Expanded `SensitiveKeys` denylist (signature, x-signature, bearer, pan, cardholder, external_reference, qr_code_data, qrdata, refresh-token, email, dni, phone, document, documentnumber, document_number); removed duplicate `refresh_token`; added regex failover for Bearer tokens, JWT prefixes, and long secret-like strings; added `HashIdentifier` helper. |
+| `backend/Helpers/RedactingConsoleFormatter.cs` | Created | Global console formatter that pipes every emitted message through `LogRedactor.RedactMessage` before stdout. |
+| `backend/Program.cs` | Modified | Registers the redacting console formatter and configures console logging to use it. |
+| `backend/Controllers/TicketController.cs` | Modified | Hashes DNI before logging in lookup request and error paths; added `Helpers` using. |
+| `backend/Controllers/PaymentController.cs` | Modified | Drops raw `{Error}` from webhook warning log; distinguishes auth failures (401) from processing failures (200 with opaque status); wraps audit catch logger call in inner try/catch. |
+| `backend/Middleware/GlobalExceptionHandler.cs` | Modified | Wraps `TryHandleAsync` body in self-protection catch writing hardcoded 500 JSON; special-cases `OperationCanceledException` as 499 with Information log. |
+| `backend/Services/IPaymentService.cs` | Modified | Added `WebhookFailureType` enum and `FailureType` property to `WebhookResult`. |
+| `backend/Services/PaymentService.cs` | Modified | Sets `FailureType = Authentication` for signature failures and `Processing` for other failures. |
+| `backend/Tests/LogRedactorTests.cs` | Created | Unit tests for denylist, regex failover, DNI hashing, and the redacting console formatter. |
+| `backend/Tests/ErrorHandlingPropertyTests.cs` | Modified | Property 47 converted to `[Theory]`; added 499/self-protection tests; Property 46 asserts `StackTrace`; Property 51 uses real `SensitiveKeys` plus negative cases; added audit-failure variants for Properties 49 and 50. |
+| `backend/Tests/PaymentControllerTests.cs` | Modified | Updated invalid-signature mock with `FailureType = Authentication`; added processing-failure 200 test. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Added and marked Task 17.4 complete. |
+
+### TDD Cycle Evidence
+
+| Fix | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|-----|-----------|-------|------------|-----|-------|-------------|----------|
+| R1-1 | `Tests/LogRedactorTests.cs` | Unit | 283/283 | Written | Passed | Formatter + message cases | Clean |
+| R1-2 | `Tests/LogRedactorTests.cs` | Unit | 283/283 | Written | Passed | Stable hash + different inputs | Clean |
+| R1-3 | `Tests/LogRedactorTests.cs` | Unit | 283/283 | Written | Passed | 18 sensitive keys + regex cases + negative cases | Clean |
+| R1-4 | `Tests/PaymentControllerTests.cs` | Unit | 6/6 | Written | Passed | Auth vs processing failure | Clean |
+| R4-1 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 8/8 | Written | Passed | 499 + throwing logger self-protection | Clean |
+| R4-2 | `Tests/PaymentControllerTests.cs` | Unit | 6/6 | Written | Passed | 401, 200 failed, 200 success | Clean |
+| R4-3 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 8/8 | Written | Passed | Payment webhook + QR validation audit failure | Clean |
+| R3-1 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 8/8 | Written | Passed | All sensitive keys + non-sensitive negative | Clean |
+| R3-2 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 8/8 | Written | Passed | 7 exception × status-code mappings | Clean |
+| R3-3 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 8/8 | Written | Passed | StackTrace key presence | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 328
+- **Baseline passing (before Task 17.4)**: 283
+- **Net new passing**: +45
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: `LogRedactor.HashIdentifier`, regex redaction helpers
+
+### Deviations from Design
+
+None for this slice — all changes align with the 4R merge-blocking findings.
+
+### Deviations acknowledged (NOT in 17.4 slice)
+
+- **R4-5 EF Core `EnableRetryOnFailure` / resilience pipeline**: Deferred to Task 30 (integration tests). The current `AddDbContext` already calls `EnableRetryOnFailure` for transient Npgsql failures; a dedicated integration test slice will validate end-to-end resilience.
+- **R4-6 Sentry/OpenTelemetry**: Deferred to Task 30 (integration tests) / post-MVP observability slice. No external telemetry SDKs are added in this hardening.
+- **R4-4 Audit idempotency key / duplicate-call protection**: Deferred to Task 30 (integration tests). The existing single-call audit behavior is correct for this slice.
+- **R2 advisory items** (TryLogAuditAsync hoist, ApiErrorCodes, doc comment "whitelist" wording): Explicitly excluded per scope — only merge-blocking findings were addressed.
+
+### Issues Found
+
+- None. Full suite passed cleanly.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~LogRedactorTests`: 31/31 passing.
+- `dotnet test --filter FullyQualifiedName~ErrorHandlingPropertyTests`: 21/21 passing.
+- `dotnet test --filter FullyQualifiedName~PaymentControllerTests`: 6/6 passing.
+- `dotnet test` full suite: 328 passing, 0 failed, 0 skipped.
+
+### Commits
+
+- `fix(logging): endurece redaction, webhook 2xx, self-protection handler y property tests 17.4`
+
+### Next Recommended Phase
+
+`sdd-verify` for Task 17 (including 17.4 hardening); the orchestrator will decide whether a 4R re-review is needed based on diff size.

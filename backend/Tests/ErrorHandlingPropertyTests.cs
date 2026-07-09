@@ -8,6 +8,7 @@ using System.Data.Common;
 using System.Security.Claims;
 using System.Text.Json;
 using TicketeraOnline.Api.Controllers;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Middleware;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -116,7 +117,8 @@ public class ErrorHandlingPropertyTests
                 var keys = entry.State?.Select(kv => kv.Key).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>();
                 return keys.Contains("ExceptionType")
                     && keys.Contains("Path")
-                    && keys.Contains("Method");
+                    && keys.Contains("Method")
+                    && keys.Contains("StackTrace");
             });
 
         Check.QuickThrowOnFailure(prop);
@@ -131,23 +133,60 @@ public class ErrorHandlingPropertyTests
     /// For any error condition, the system SHALL return the appropriate HTTP status code (400 for validation errors, 401 for authentication errors, 403 for authorization errors, 404 for not found, 409 for conflicts, 500 for server errors).
     /// **Validates: Requirements 16.2**
     /// </summary>
-    [Fact]
-    public void Property47_ExceptionTypes_ReturnExpectedStatusCodes()
+    [Theory]
+    [InlineData(typeof(ArgumentException), StatusCodes.Status400BadRequest, "VALIDATION_ERROR")]
+    [InlineData(typeof(UnauthorizedAccessException), StatusCodes.Status401Unauthorized, "UNAUTHORIZED")]
+    [InlineData(typeof(ForbiddenException), StatusCodes.Status403Forbidden, "FORBIDDEN")]
+    [InlineData(typeof(KeyNotFoundException), StatusCodes.Status404NotFound, "NOT_FOUND")]
+    [InlineData(typeof(DbUpdateConcurrencyException), StatusCodes.Status409Conflict, "CONFLICT")]
+    [InlineData(typeof(TestDbException), StatusCodes.Status500InternalServerError, "INTERNAL_ERROR")]
+    [InlineData(typeof(Exception), StatusCodes.Status500InternalServerError, "INTERNAL_ERROR")]
+    public void Property47_StatusCodeMapping_MatchesSpecMatrix(Type exceptionType, int expectedStatusCode, string expectedCode)
     {
-        var prop = PropStatic.ForAll(
-            new CustomArbitrary<StatusCodeScenario>(GenStatusCodeScenario()),
-            scenario =>
-            {
-                var logger = new CollectingLogger<GlobalExceptionHandler>();
-                var handler = new GlobalExceptionHandler(logger);
-                var context = CreateHttpContext("/api/test", "GET");
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/test", "GET");
+        var exception = CreateExceptionInstance(exceptionType);
 
-                handler.TryHandleAsync(context, scenario.Exception, CancellationToken.None).AsTask().Wait();
+        handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Wait();
+        var problem = ReadResponseBody<ProblemDetails>(context);
 
-                return context.Response.StatusCode == scenario.ExpectedStatusCode;
-            });
+        Assert.Equal(expectedStatusCode, context.Response.StatusCode);
+        Assert.NotNull(problem);
+        Assert.Equal(expectedStatusCode, problem!.Status);
+        Assert.Equal(expectedCode, problem.Title);
+    }
 
-        Check.QuickThrowOnFailure(prop);
+    [Fact]
+    public void Property47b_OperationCanceled_Returns499AndLogsInformation()
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/test", "GET");
+        var exception = new OperationCanceledException("client disconnected");
+
+        handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Wait();
+
+        Assert.Equal(499, context.Response.StatusCode);
+        Assert.Contains(logger.Entries, e => e.LogLevel == LogLevel.Information);
+        Assert.DoesNotContain(logger.Entries, e => e.LogLevel == LogLevel.Error);
+    }
+
+    [Fact]
+    public void Property47c_HandlerSelfProtection_CatchesLoggerFailureAndReturns500()
+    {
+        var logger = new ThrowingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/test", "GET");
+        context.Response.Body = new MemoryStream();
+        var exception = new InvalidOperationException("something failed");
+
+        handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Wait();
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        var body = ReadRawResponseBody(context);
+        Assert.Contains("INTERNAL_ERROR", body);
+        Assert.Contains("An internal error occurred", body);
     }
 
     #endregion
@@ -232,6 +271,29 @@ public class ErrorHandlingPropertyTests
         Check.QuickThrowOnFailure(prop);
     }
 
+    [Fact]
+    public void Property49b_PaymentWebhook_AuditFailure_StillReturnsOkAndLogsError()
+    {
+        var logger = new CollectingLogger<PaymentController>();
+        var audit = new FailingAuditLogService();
+        var paymentService = new Mock<IPaymentService>();
+        var payload = new WebhookPayload { PaymentId = "pay-123", ExternalReference = Guid.NewGuid().ToString(), Status = "approved" };
+        var signature = "valid-signature";
+        paymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+
+        var controller = new PaymentController(paymentService.Object, logger, audit)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var result = Task.Run(() => controller.Webhook(payload, signature)).Result;
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+        Assert.Contains(logger.Entries, e => e.LogLevel == LogLevel.Error && e.Message.Contains("Audit logging failed"));
+    }
+
     #endregion
 
     #region Property 50: QR Validation Audit Logging
@@ -278,6 +340,40 @@ public class ErrorHandlingPropertyTests
         Check.QuickThrowOnFailure(prop);
     }
 
+    [Fact]
+    public void Property50b_QrValidation_AuditFailure_StillReturnsOkAndLogsError()
+    {
+        var logger = new CollectingLogger<TicketController>();
+        var audit = new FailingAuditLogService();
+        var ticketService = new Mock<ITicketService>();
+        var request = new ValidateQRCodeRequest { QRCodeData = "qr-data", EventId = Guid.NewGuid() };
+        var ticketId = Guid.NewGuid();
+        ticketService.Setup(s => s.ValidateQRCodeAsync(request.QRCodeData, request.EventId))
+            .ReturnsAsync(new QRCodeValidationResult
+            {
+                IsValid = true,
+                Ticket = new Ticket
+                {
+                    Id = ticketId,
+                    EventId = request.EventId,
+                    Event = new Event { Id = request.EventId, Name = "Test Event" },
+                    TicketType = new TicketType { Id = Guid.NewGuid(), Name = "General" },
+                    PurchaserEmail = "test@example.com"
+                }
+            });
+
+        var controller = new TicketController(ticketService.Object, logger, audit)
+        {
+            ControllerContext = CreateStaffControllerContext(Guid.NewGuid())
+        };
+
+        var result = Task.Run(() => controller.ValidateQRCode(request)).Result;
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(200, okResult.StatusCode);
+        Assert.Contains(logger.Entries, e => e.LogLevel == LogLevel.Error && e.Message.Contains("Audit logging failed"));
+    }
+
     #endregion
 
     #region Property 51: Sensitive Data Protection in Logs
@@ -290,8 +386,9 @@ public class ErrorHandlingPropertyTests
     [Fact]
     public void Property51_SensitiveQueryString_LogDoesNotExposeSecret()
     {
+        var sensitiveKeys = LogRedactor.SensitiveKeys.ToArray();
         var prop = PropStatic.ForAll(
-            new CustomArbitrary<SensitiveQueryScenario>(GenSensitiveQueryScenario()),
+            new CustomArbitrary<SensitiveQueryScenario>(GenSensitiveQueryScenarioFromKeys(sensitiveKeys)),
             scenario =>
             {
                 var logger = new CollectingLogger<GlobalExceptionHandler>();
@@ -310,6 +407,27 @@ public class ErrorHandlingPropertyTests
             });
 
         Check.QuickThrowOnFailure(prop);
+    }
+
+    /// <summary>
+    /// Property 51-negative: non-sensitive keys are preserved in logs.
+    /// </summary>
+    [Theory]
+    [InlineData("eventId", "550e8400-e29b-41d4-a716-446655440000")]
+    [InlineData("page", "2")]
+    [InlineData("correlationId", "abc-123")]
+    public void Property51_Negative_NonSensitiveQueryString_IsPreservedInLog(string key, string value)
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/test", "GET", $"?{key}={value}");
+        var exception = new InvalidOperationException("Something went wrong");
+
+        handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Wait();
+
+        var entry = logger.Entries.FirstOrDefault(e => e.LogLevel == LogLevel.Error);
+        Assert.NotNull(entry);
+        Assert.Contains(value, entry.Message);
     }
 
     #endregion
@@ -355,6 +473,7 @@ public class ErrorHandlingPropertyTests
         };
     }
 
+
     private static T? ReadResponseBody<T>(HttpContext context) where T : class
     {
         context.Response.Body.Seek(0, SeekOrigin.Begin);
@@ -363,6 +482,21 @@ public class ErrorHandlingPropertyTests
         if (string.IsNullOrWhiteSpace(json))
             return null;
         return JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+
+    private static string ReadRawResponseBody(HttpContext context)
+    {
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(context.Response.Body);
+        return reader.ReadToEnd();
+    }
+
+    private static Exception CreateExceptionInstance(Type exceptionType)
+    {
+        if (exceptionType == typeof(TestDbException))
+            return new TestDbException("sample message", 1);
+
+        return (Exception)Activator.CreateInstance(exceptionType, "sample message")!;
     }
 
     private static Gen<DbExceptionScenario> GenDbExceptionScenario()
@@ -413,7 +547,7 @@ public class ErrorHandlingPropertyTests
             select new WebhookScenario(
                 new WebhookPayload { PaymentId = paymentId, ExternalReference = externalRef, Status = status },
                 signature,
-                new WebhookResult { Success = success, PaymentId = paymentId, Error = success ? null : "Invalid" });
+                new WebhookResult { Success = success, PaymentId = paymentId, Error = success ? null : "Invalid", FailureType = success ? WebhookFailureType.None : WebhookFailureType.Processing });
     }
 
     private static Gen<QrValidationScenario> GenQrValidationScenario()
@@ -446,13 +580,6 @@ public class ErrorHandlingPropertyTests
                 });
     }
 
-    private static Gen<SensitiveQueryScenario> GenSensitiveQueryScenario()
-    {
-        return
-            from secret in GenSafeString()
-            from key in GenStatic.Elements(new[] { "password", "apiKey", "token", "refreshToken" })
-            select new SensitiveQueryScenario($"?{key}={secret}&other=value", secret);
-    }
 
     private static Gen<string> GenSafeString()
     {
@@ -467,6 +594,14 @@ public class ErrorHandlingPropertyTests
     {
         return GenStatic.ArrayOf(GenStatic.Choose(0, 255).Select(i => (byte)i), 16)
             .Select(bytes => new Guid(bytes));
+    }
+
+    private static Gen<SensitiveQueryScenario> GenSensitiveQueryScenarioFromKeys(string[] keys)
+    {
+        return
+            from secret in GenSafeString()
+            from key in GenStatic.Elements(keys)
+            select new SensitiveQueryScenario($"?{key}={secret}&other=value", secret);
     }
 
     #endregion
@@ -536,6 +671,32 @@ public class ErrorHandlingPropertyTests
         public Task<IEnumerable<AuditLogEntry>> GetAllLogsAsync() => Task.FromResult<IEnumerable<AuditLogEntry>>(new List<AuditLogEntry>());
 
         public Task<IEnumerable<AuditLogEntry>> GetLogsForUserAsync(Guid userId) => Task.FromResult<IEnumerable<AuditLogEntry>>(new List<AuditLogEntry>());
+    }
+
+    /// <summary>
+    /// Audit log service that simulates a persistence failure.
+    /// </summary>
+    private sealed class FailingAuditLogService : IAuditLogService
+    {
+        public Task LogActionAsync(AuditLogContext context)
+            => throw new InvalidOperationException("Audit persistence failure");
+
+        public Task<IEnumerable<AuditLogEntry>> GetAllLogsAsync() => Task.FromResult<IEnumerable<AuditLogEntry>>(new List<AuditLogEntry>());
+
+        public Task<IEnumerable<AuditLogEntry>> GetLogsForUserAsync(Guid userId) => Task.FromResult<IEnumerable<AuditLogEntry>>(new List<AuditLogEntry>());
+    }
+
+    /// <summary>
+    /// Logger that throws on every log call, used to verify handler self-protection.
+    /// </summary>
+    private sealed class ThrowingLogger<T> : ILogger<T>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => throw new InvalidOperationException("Logger failure");
     }
 
     #endregion

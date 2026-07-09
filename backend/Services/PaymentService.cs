@@ -98,7 +98,8 @@ public class PaymentService : IPaymentService
             {
                 Success = false,
                 Error = "Invalid webhook signature",
-                PaymentId = payload.PaymentId
+                PaymentId = payload.PaymentId,
+                FailureType = WebhookFailureType.Authentication
             };
         }
 
@@ -109,7 +110,8 @@ public class PaymentService : IPaymentService
             {
                 Success = false,
                 Error = "Invalid external reference",
-                PaymentId = payload.PaymentId
+                PaymentId = payload.PaymentId,
+                FailureType = WebhookFailureType.Processing
             };
         }
 
@@ -125,7 +127,8 @@ public class PaymentService : IPaymentService
             {
                 Success = false,
                 Error = "Reservation not found",
-                PaymentId = payload.PaymentId
+                PaymentId = payload.PaymentId,
+                FailureType = WebhookFailureType.Processing
             };
         }
 
@@ -186,7 +189,8 @@ public class PaymentService : IPaymentService
             {
                 Success = false,
                 Error = refund.Error,
-                PaymentId = paymentId
+                PaymentId = paymentId,
+                FailureType = WebhookFailureType.Processing
             };
         }
 

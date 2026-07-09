@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 
@@ -41,7 +42,7 @@ public class TicketController : TicketeraControllerBase
         [FromQuery] string email,
         [FromQuery] string dni)
     {
-        _logger.LogInformation("Ticket lookup request for email {Email} and DNI {DNI}", email, dni);
+        _logger.LogInformation("Ticket lookup request for email {Email} and DNI {DniHash}", email, LogRedactor.HashIdentifier(dni));
 
         // Validate input
         if (string.IsNullOrWhiteSpace(email))
@@ -84,7 +85,7 @@ public class TicketController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ticket lookup for email {Email} and DNI {DNI}", email, dni);
+            _logger.LogError(ex, "Error during ticket lookup for email {Email} and DNI {DniHash}", email, LogRedactor.HashIdentifier(dni));
             return StatusCode(500, new { error = "An error occurred while looking up tickets" });
         }
     }
@@ -180,9 +181,16 @@ public class TicketController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
-                context.Action, context.Resource, context.ResourceId);
+            try
+            {
+                _logger.LogError(ex,
+                    "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
+                    context.Action, context.Resource, context.ResourceId);
+            }
+            catch
+            {
+                // Logger failure must not break the request.
+            }
         }
     }
 }

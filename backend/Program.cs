@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Services;
 using TicketeraOnline.Api.Authorization;
 using TicketeraOnline.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -15,9 +17,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configure structured logging using built-in Microsoft.Extensions.Logging.
 // Message templates with named placeholders produce structured fields for stdout consumers.
+// All stdout output is piped through LogRedactor before writing.
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+builder.Logging.AddConsole(options => options.FormatterName = "redacted");
+builder.Logging.AddConsoleFormatter<RedactingConsoleFormatter, SimpleConsoleFormatterOptions>();
 
 // Add services to the container.
 // Register application services

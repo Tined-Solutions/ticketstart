@@ -63,6 +63,17 @@ public class WebhookResult
     public bool Success { get; set; }
     public string? Error { get; set; }
     public string PaymentId { get; set; } = string.Empty;
+    public WebhookFailureType FailureType { get; set; } = WebhookFailureType.None;
+}
+
+/// <summary>
+/// Classifies a webhook failure so the controller can choose the right HTTP status.
+/// </summary>
+public enum WebhookFailureType
+{
+    None,
+    Authentication,
+    Processing
 }
 
 /// <summary>

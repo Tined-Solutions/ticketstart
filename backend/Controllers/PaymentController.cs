@@ -103,8 +103,14 @@ public class PaymentController : TicketeraControllerBase
 
             if (!result.Success)
             {
-                _logger.LogWarning("Webhook processing failed for payment {PaymentId}: {Error}", result.PaymentId, result.Error);
-                return Unauthorized(new { error = result.Error });
+                if (result.FailureType == WebhookFailureType.Authentication)
+                {
+                    _logger.LogWarning("Webhook authentication failed for payment {PaymentId}", result.PaymentId);
+                    return Unauthorized(new { error = "Invalid webhook signature" });
+                }
+
+                _logger.LogWarning("Webhook processing failed for payment {PaymentId}", result.PaymentId);
+                return Ok(new { paymentId = result.PaymentId, status = "failed", error = "PROCESSING_FAILED" });
             }
 
             _logger.LogInformation("Webhook processed successfully for payment {PaymentId}", result.PaymentId);
@@ -126,9 +132,16 @@ public class PaymentController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
-                context.Action, context.Resource, context.ResourceId);
+            try
+            {
+                _logger.LogError(ex,
+                    "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
+                    context.Action, context.Resource, context.ResourceId);
+            }
+            catch
+            {
+                // Logger failure must not break the request.
+            }
         }
     }
 }
