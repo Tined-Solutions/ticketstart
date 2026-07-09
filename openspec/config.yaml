@@ -1,5 +1,6 @@
 # openspec/config.yaml
 schema: spec-driven
+artifact_store: hybrid
 
 context: |
   Tech stack: ASP.NET Core net9.0 Web API (backend) + React 19 SPA via Vite 8 (frontend)
@@ -9,6 +10,8 @@ context: |
   Testing: xUnit + Moq + FsCheck (property-based) + Microsoft.AspNetCore.Mvc.Testing
     for backend. Frontend has NO test runner configured — only ESLint linting.
   Style: C# with implicit usings, nullable enabled; JSX without TypeScript.
+  Test count: ~202 passing, 1 flaky (VerifyDatabaseSchema needs live Supabase). No coverage configured.
+  Existing SDD change: ticketera-online fully lifecycle-tracked in openspec/changes/ticketera-online/.
 
 rules:
   proposal:
