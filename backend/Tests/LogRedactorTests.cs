@@ -1,8 +1,14 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
+using Moq;
 using System.Text;
+using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Helpers;
+using TicketeraOnline.Api.Models;
+using TicketeraOnline.Api.Services;
 using Xunit;
 
 namespace TicketeraOnline.Api.Tests;
@@ -158,6 +164,94 @@ public class LogRedactorTests
         Assert.DoesNotContain("super-secret-token-123", output);
         Assert.Contains("[REDACTED]", output);
     }
+
+    #endregion
+
+    #region R1-NF-1: Inline email redaction in controller-rendered messages
+
+    /// <summary>
+    /// Verifies that a real TicketController lookup log emission, which places the
+    /// email inline in the rendered message (not as key=value), does not contain the
+    /// raw email after passing through the redacting console formatter.
+    /// </summary>
+    [Fact]
+    public void RedactingConsoleFormatter_RedactsInlineEmailInRenderedMessage()
+    {
+        var email = "user@example.com";
+        var dni = "12345678";
+        var collectingLogger = new CollectingLogger<TicketController>();
+
+        var ticketService = new Mock<ITicketService>();
+        ticketService
+            .Setup(s => s.LookupTicketsAsync(email, dni))
+            .ReturnsAsync(new List<Ticket>());
+
+        var auditService = new Mock<IAuditLogService>();
+        var controller = new TicketController(
+            ticketService.Object,
+            collectingLogger,
+            auditService.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        Task.Run(() => controller.LookupTickets(email, dni)).Wait();
+
+        var emitted = collectingLogger.Entries
+            .FirstOrDefault(e => e.Message.Contains("Ticket lookup request", StringComparison.Ordinal));
+        Assert.NotNull(emitted);
+
+        var formatter = new RedactingConsoleFormatter();
+        var entry = new LogEntry<object>(
+            emitted.LogLevel,
+            "TicketController",
+            emitted.EventId,
+            state: new object(),
+            exception: emitted.Exception,
+            formatter: (state, ex) => emitted.Message);
+
+        var sb = new StringBuilder();
+        using var writer = new StringWriter(sb);
+        formatter.Write(in entry, scopeProvider: null, writer);
+
+        var output = sb.ToString();
+        Assert.DoesNotContain(email, output);
+    }
+
+    #endregion
+
+    #region Test Doubles
+
+    /// <summary>
+    /// Captures log entries emitted by controller tests in this fixture.
+    /// </summary>
+    private sealed class CollectingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(new LogEntry(logLevel, eventId, exception, formatter(state, exception)));
+        }
+    }
+
+    private sealed record LogEntry(
+        LogLevel LogLevel,
+        EventId EventId,
+        Exception? Exception,
+        string Message);
 
     #endregion
 }

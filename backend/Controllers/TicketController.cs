@@ -42,7 +42,7 @@ public class TicketController : TicketeraControllerBase
         [FromQuery] string email,
         [FromQuery] string dni)
     {
-        _logger.LogInformation("Ticket lookup request for email {Email} and DNI {DniHash}", email, LogRedactor.HashIdentifier(dni));
+        _logger.LogInformation("Ticket lookup request for email {EmailHash} and DNI {DniHash}", LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
 
         // Validate input
         if (string.IsNullOrWhiteSpace(email))
@@ -85,7 +85,7 @@ public class TicketController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ticket lookup for email {Email} and DNI {DniHash}", email, LogRedactor.HashIdentifier(dni));
+            _logger.LogError(ex, "Error during ticket lookup for email {EmailHash} and DNI {DniHash}", LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
             return StatusCode(500, new { error = "An error occurred while looking up tickets" });
         }
     }
