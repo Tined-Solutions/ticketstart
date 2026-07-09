@@ -365,20 +365,30 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - **Property 36: Remaining Inventory Calculation Correctness** (Requirements 11.5)
     - **Property 37: Scanned Tickets Count Correctness** (Requirements 11.6)
 
-- [ ] 16. Implement admin endpoints and audit logging
-  - [ ] 16.1 Create AdminController with system-wide endpoints
+- [x] 16. Implement admin endpoints and audit logging
+  - [x] 16.1 Create AdminController with system-wide endpoints
     - Implement GET /api/admin/users (Admin only)
     - Implement GET /api/admin/events (Admin only, all events)
     - _Requirements: 14.4, 14.5_
 
-  - [ ] 16.2 Implement audit logging for admin actions
+  - [x] 16.2 Implement audit logging for admin actions
     - Create audit log table/entity
     - Log all admin actions with timestamp, user ID, action type, resource ID
     - _Requirements: 14.6_
 
-  - [ ]* 16.3 Write property tests for admin capabilities
+  - [x]* 16.3 Write property tests for admin capabilities
     - **Property 42: Admin Access to All Events** (Requirements 14.1, 14.2, 14.3)
     - **Property 43: Admin Action Audit Logging** (Requirements 14.6)
+
+  - [x] 16.4 Harden admin endpoints and audit coverage (post-4R review)
+    - Introduce `AuditActionType` and `AuditResourceType` enums with EF Core string conversions.
+    - Add `AuditLogContext`, best-effort audit logging with `ILogger`, and deterministic log ordering (`Timestamp desc, Id desc`).
+    - Paginate `GET /api/admin/users` and `GET /api/admin/events` with a hard 200-row cap.
+    - Add `GET /api/admin/audit-logs` with optional `userId` filter.
+    - Create `TicketeraControllerBase` for shared `TryGetUserId` helper and remove duplicated controller code.
+    - Wire audit logging into `EventController` admin update/delete paths.
+    - Update and expand `AdminControllerTests`, `EventControllerTests`, and `AdminPropertyTests` for new behavior and FsCheck v3 API.
+    - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6_
 
 - [ ] 17. Implement global error handling and logging
   - [ ] 17.1 Create global exception handler

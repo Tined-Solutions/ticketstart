@@ -242,3 +242,167 @@ Recommended work-unit commits (per `work-unit-commits` skill):
 ### Next Recommended Phase
 
 `sdd-verify` for the full Task 15 slice.
+
+---
+
+## Task 16: Admin endpoints and audit logging
+
+### Completed Tasks
+
+- [x] 16.1 Create AdminController with system-wide endpoints
+- [x] 16.2 Implement audit logging for admin actions
+- [x] 16.3 Write property tests for admin capabilities
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Controllers/AdminController.cs` | Created | `AdminController` with `GET /api/admin/users` and `GET /api/admin/events`, both protected by `[Authorize(Policy = "RequireAdminRole")]`. Logs audit entries for each view action. |
+| `backend/Services/IAdminService.cs` | Created | `IAdminService` interface plus `UserSummary` and `EventSummary` DTOs. |
+| `backend/Services/AdminService.cs` | Created | EF Core-backed implementation returning all users and all events regardless of ownership; `UserSummary.PasswordHash` is explicitly nulled. |
+| `backend/Services/IAuditLogService.cs` | Created | `IAuditLogService` interface with `LogActionAsync`, `GetAllLogsAsync`, and `GetLogsForUserAsync`; `AuditLogEntry` DTO. |
+| `backend/Services/AuditLogService.cs` | Created | EF Core-backed audit log writer/reader. |
+| `backend/Models/AuditLog.cs` | Created | `AuditLog` entity: `Id`, `UserId`, `ActionType`, `ResourceType`, `ResourceId`, `Details`, `Timestamp`. |
+| `backend/Data/ApplicationDbContext.cs` | Modified | Added `DbSet<AuditLog>` and entity configuration with indexes on `UserId`, `ActionType`, and `Timestamp`. |
+| `backend/Migrations/20260708230158_AddAuditLog.cs` | Created | EF Core migration creating the `AuditLogs` table with required indexes. |
+| `backend/Migrations/20260708230158_AddAuditLog.Designer.cs` | Created | Auto-generated migration designer snapshot. |
+| `backend/Migrations/ApplicationDbContextModelSnapshot.cs` | Modified | Snapshot updated with `AuditLog` entity. |
+| `backend/Program.cs` | Modified | Registered `IAdminService`/`AdminService` and `IAuditLogService`/`AuditLogService` as scoped. |
+| `backend/Tests/AdminPropertyTests.cs` | Created | Property tests for Properties 42 (admin access to all events) and 43 (audit logging) plus user-list and password-hash security cases. |
+| `backend/Tests/AdminControllerTests.cs` | Created | Controller unit tests for OK, 401, and 500 paths for both admin endpoints, including audit-log verification. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Tasks 16.1, 16.2, 16.3 complete. |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 16.1/16.3 | `Tests/AdminPropertyTests.cs` | Unit | 245/245 | Written | Passed | 3 cases (all events, no events, ownership metadata) | Extracted `CreateEvent` helper |
+| 16.1/16.3 | `Tests/AdminControllerTests.cs` | Unit | 245/245 | Written | Passed | 5 cases (users OK, events OK, events 401, both 500, audit verify) | Clean |
+| 16.2/16.3 | `Tests/AdminPropertyTests.cs` | Unit | 245/245 | Written | Passed | 4 cases (view log, multiple actions, different admins, user list without password hash) | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 258
+- **Baseline passing (before Task 16)**: 245
+- **Net new passing**: +13
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: `MapToEntry` (audit log mapping)
+
+### Deviations from Design
+
+1. `UserSummary` includes a nullable `PasswordHash` property that is always set to `null` by `AdminService`. This lets the test explicitly verify the password hash is not exposed, while keeping the DTO serializable. A stricter alternative would be to omit the property entirely; the current approach is a deliberate trade-off for testability.
+2. Admin modify/delete actions on events are authorized through the existing `EventOwnership` policy (which allows Admin), but audit logging is currently emitted only for the new `AdminController` view endpoints. The audit service interface supports any action type, so extending coverage to `EventService` admin paths is a future slice if required.
+3. `AuditLog.ResourceId` is nullable to support collection-level actions such as "view all users" or "view all events" where no single resource ID exists.
+
+### Issues Found
+
+- None. Full suite passed cleanly; `VerifyDatabaseSchema` did not fail in this batch.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~AdminPropertyTests`: 8/8 passing.
+- `dotnet test --filter FullyQualifiedName~AdminControllerTests`: 5/5 passing.
+- `dotnet test` full suite: 258 passing, 0 failed.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `feat(admin): add audit log entity and EF migration`
+   - `backend/Models/AuditLog.cs`, `backend/Data/ApplicationDbContext.cs`, migration files, snapshot update
+2. `feat(admin): add audit log service`
+   - `backend/Services/IAuditLogService.cs`, `backend/Services/AuditLogService.cs`
+3. `feat(admin): add admin service and controller with system-wide endpoints`
+   - `backend/Services/IAdminService.cs`, `backend/Services/AdminService.cs`, `backend/Controllers/AdminController.cs`, `backend/Program.cs` registration
+4. `test(admin): add property and controller tests for admin capabilities`
+   - `backend/Tests/AdminPropertyTests.cs`, `backend/Tests/AdminControllerTests.cs`
+
+### Next Recommended Phase
+
+`sdd-verify` for the full Task 16 slice.
+
+---
+
+## Task 16.4: Harden admin endpoints and audit coverage (post-4R review)
+
+### Completed Tasks
+
+- [x] 16.4 Harden admin endpoints and audit coverage (post-4R review)
+  - Introduce `AuditActionType` and `AuditResourceType` enums with EF Core string conversions.
+  - Add `AuditLogContext`, best-effort audit logging with `ILogger`, and deterministic log ordering (`Timestamp desc, Id desc`).
+  - Paginate `GET /api/admin/users` and `GET /api/admin/events` with a hard 200-row cap.
+  - Add `GET /api/admin/audit-logs` with optional `userId` filter.
+  - Create `TicketeraControllerBase` for shared `TryGetUserId` helper and remove duplicated controller code.
+  - Wire audit logging into `EventController` admin update/delete paths.
+  - Update and expand `AdminControllerTests`, `EventControllerTests`, and `AdminPropertyTests` for new behavior and FsCheck v3 API.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Models/AuditLog.cs` | Modified | Added `AuditActionType` and `AuditResourceType` enums; `AuditLog` uses enums for `ActionType`/`ResourceType`. |
+| `backend/Data/ApplicationDbContext.cs` | Modified | Added `.HasConversion<string>()` for audit enums and `MaxLength` constraints. |
+| `backend/Services/IAuditLogService.cs` | Modified | Replaced `AuditLogEntry` DTO with `AuditLogContext` record; added `GetAllLogsAsync`/`GetLogsForUserAsync` using enums. |
+| `backend/Services/AuditLogService.cs` | Modified | Added `ILogger<AuditLogService>`; catches audit persistence exceptions and logs warnings; orders by `Timestamp desc, Id desc`. |
+| `backend/Services/PagedResult.cs` | Created | Generic paginated result shape (`Items`, `Total`, `Page`, `PageSize`). |
+| `backend/Services/IAdminService.cs` | Modified | `GetAllUsersAsync`/`GetAllEventsAsync` now return `PagedResult<T>` and accept `page`/`pageSize`. |
+| `backend/Services/AdminService.cs` | Modified | Implements pagination with a hard 200-row cap; `UserSummary` no longer exposes `PasswordHash`. |
+| `backend/Controllers/TicketeraControllerBase.cs` | Created | Shared controller base with `TryGetUserId` helper and common `Problem` helpers. |
+| `backend/Controllers/AdminController.cs` | Modified | Uses paginated service results; adds `GET /api/admin/audit-logs` with optional `userId` filter. |
+| `backend/Controllers/EventController.cs` | Modified | Inherits from `TicketeraControllerBase`; audits admin update/delete actions with best-effort failure handling. |
+| `backend/Controllers/MetricsController.cs` | Modified | Inherits from `TicketeraControllerBase`; removed duplicated `TryGetUserId`. |
+| `backend/Tests/AdminControllerTests.cs` | Modified | Updated for paginated DTOs; added audit-failure, audit-logs endpoint, and JSON password-hash contract tests. |
+| `backend/Tests/EventControllerTests.cs` | Created | Unit tests for admin update/delete audit logging and audit-failure paths. |
+| `backend/Tests/AdminPropertyTests.cs` | Modified | Rewritten using FsCheck v3 Fluent API (`GenStatic` alias + `GenLinq` query syntax); added edge-case facts and deterministic ordering test. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Added and marked Task 16.4 complete. |
+| `openspec/changes/ticketera-online/design.md` | Modified | Added audit-write atomicity note to Admin Panel Component. |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 16.4 | `Tests/AdminPropertyTests.cs` | Unit | 273/273 | Written (compile fix) | Passed | FsCheck v3 Fluent API + edge cases | `GenLinq` query-syntax helpers |
+| 16.4 | `Tests/AdminControllerTests.cs` | Unit | 273/273 | Written | Passed | Pagination, audit-logs endpoint, audit failure | Clean |
+| 16.4 | `Tests/EventControllerTests.cs` | Unit | 273/273 | Written | Passed | Admin update/delete audit + failure paths | Clean |
+
+### Test Summary
+
+- **Total tests passing**: 273
+- **Baseline passing (before Task 16.4)**: 258
+- **Net new passing**: +15
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: `GuidGen`, `SafeStringGen`, `BuildScenario`
+
+### Deviations from Design
+
+1. Admin audit logging for modify/delete is emitted from the controller layer (`EventController`) rather than inside `EventService`. This preserves the existing service API and keeps the audit write best-effort; a future slice could move it into the service/UoW if full atomicity is required.
+2. Pagination uses a hard 200-row cap on `pageSize` instead of configurable max; this is a deliberate guard against accidental large result sets.
+
+### Issues Found
+
+- `AdminPropertyTests.cs` initially failed to compile against FsCheck v3 because the original code used the F# module API (`map`, `bind`, `forAll`, etc.) and lowercase identifiers. Resolved by switching to the FsCheck.Fluent API and adding small LINQ-query helper extension methods (`GenLinq`).
+
+### Verification
+
+- `dotnet test backend/TicketeraOnline.Api.csproj --no-build`: 273 passing, 0 failed, 0 skipped.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `refactor(admin): introduce shared TicketeraControllerBase and paginated admin DTOs`
+   - `backend/Controllers/TicketeraControllerBase.cs`, `backend/Services/PagedResult.cs`, `backend/Services/IAdminService.cs`, `backend/Services/AdminService.cs`, `backend/Controllers/AdminController.cs`
+2. `feat(admin): add audit enums, context, and retrieval endpoint`
+   - `backend/Models/AuditLog.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Services/IAuditLogService.cs`, `backend/Services/AuditLogService.cs`, `backend/Controllers/AdminController.cs`
+3. `feat(events): wire best-effort audit logging into admin update/delete`
+   - `backend/Controllers/EventController.cs`
+4. `test(admin): harden admin and event controller tests for audit and pagination`
+   - `backend/Tests/AdminControllerTests.cs`, `backend/Tests/EventControllerTests.cs`, `backend/Tests/AdminPropertyTests.cs`
+
+### Next Recommended Phase
+
+`sdd-verify` for the full Task 16 slice (including 16.4 hardening).

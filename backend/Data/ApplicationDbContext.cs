@@ -22,6 +22,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Reservation> Reservations { get; set; }
     public DbSet<Ticket> Tickets { get; set; }
     public DbSet<Transaction> Transactions { get; set; }
+    public DbSet<AuditLog> AuditLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +143,25 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(t => t.ReservationId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // AuditLog entity configuration
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.HasIndex(a => a.UserId);
+            entity.HasIndex(a => a.ActionType);
+            entity.HasIndex(a => a.Timestamp);
+            entity.Property(a => a.ActionType)
+                .IsRequired()
+                .HasMaxLength(100)
+                .HasConversion<string>();
+            entity.Property(a => a.ResourceType)
+                .IsRequired()
+                .HasMaxLength(100)
+                .HasConversion<string>();
+            entity.Property(a => a.Details).HasMaxLength(1000);
+            entity.Property(a => a.Timestamp).IsRequired();
         });
     }
 }

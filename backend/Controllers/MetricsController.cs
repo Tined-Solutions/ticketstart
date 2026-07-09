@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 
@@ -12,7 +11,7 @@ namespace TicketeraOnline.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/metrics")]
-public class MetricsController : ControllerBase
+public class MetricsController : TicketeraControllerBase
 {
     private readonly IMetricsService _metricsService;
     private readonly ILogger<MetricsController> _logger;
@@ -79,12 +78,5 @@ public class MetricsController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { error = "An error occurred while retrieving organizer metrics" });
         }
-    }
-
-    private bool TryGetUserId(out Guid userId)
-    {
-        userId = Guid.Empty;
-        var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdValue, out userId);
     }
 }

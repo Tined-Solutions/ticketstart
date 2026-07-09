@@ -551,6 +551,8 @@ public class ReservationExpirationService : IHostedService
 - System audit logs
 - Role-based access (Admin only)
 
+**Audit-write atomicity:** Audit log persistence is best-effort. `AuditLogService` catches and logs persistence exceptions so an audit-write failure does not roll back the originating business operation. Full atomicity (business transaction + audit log in one database transaction) is intentionally out of scope for this slice.
+
 #### 8. Authentication Components
 **Responsibility:** User registration and login
 

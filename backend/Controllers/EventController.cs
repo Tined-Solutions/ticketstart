@@ -8,14 +8,16 @@ namespace TicketeraOnline.Api.Controllers;
 
 [ApiController]
 [Route("api/events")]
-public class EventController : ControllerBase
+public class EventController : TicketeraControllerBase
 {
     private readonly IEventService _eventService;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<EventController> _logger;
 
-    public EventController(IEventService eventService, ILogger<EventController> logger)
+    public EventController(IEventService eventService, IAuditLogService auditLogService, ILogger<EventController> logger)
     {
         _eventService = eventService;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
@@ -93,6 +95,11 @@ public class EventController : ControllerBase
             var updatedEvent = await _eventService.UpdateEventAsync(id, request, userId, userRole);
             var eventDetails = await _eventService.GetEventByIdAsync(updatedEvent.Id);
 
+            if (userRole == UserRole.Admin)
+            {
+                await TryLogAuditAsync(userId, new AuditLogContext(userId, AuditActionType.UpdateEvent, AuditResourceType.Event, id, "Admin updated event"));
+            }
+
             return Ok(eventDetails);
         }
         catch (KeyNotFoundException)
@@ -127,6 +134,12 @@ public class EventController : ControllerBase
         try
         {
             await _eventService.DeleteEventAsync(id, userId, userRole);
+
+            if (userRole == UserRole.Admin)
+            {
+                await TryLogAuditAsync(userId, new AuditLogContext(userId, AuditActionType.DeleteEvent, AuditResourceType.Event, id, "Admin deleted event"));
+            }
+
             return NoContent();
         }
         catch (KeyNotFoundException)
@@ -203,11 +216,18 @@ public class EventController : ControllerBase
         }
     }
 
-    private bool TryGetUserId(out Guid userId)
+    private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
-        userId = Guid.Empty;
-        var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdValue, out userId);
+        try
+        {
+            await _auditLogService.LogActionAsync(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Audit logging failed for admin {AdminId} action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
+                adminId, context.Action, context.Resource, context.ResourceId);
+        }
     }
 
     private bool TryGetUserRole(out UserRole userRole)
