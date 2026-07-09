@@ -2,7 +2,7 @@
 
 ## Summary
 - Status: PASS
-- Test result: 273 passing / 0 failing / 0 skipped
+- Test result: 275 passing / 0 failing / 0 skipped
 - Spec conformance: 5/6 requirements met (1 frontend-only, N/A for backend)
 - Property tests verified: Property 42 (FsCheck real, 100 iterations default), Property 43 (FsCheck real, 100 iterations default)
 
@@ -12,7 +12,7 @@ None.
 
 ## WARNING Findings
 
-1. **Pagination 200-row cap untested.** `AdminService.GetAllUsersAsync` and `GetAllEventsAsync` enforce `Math.Min(pageSize, 200)` (AdminService.cs:29, 66), but no test passes `pageSize > 200` and asserts the result is capped at 200. The cap is correctly implemented but has no covering regression test.
+1. **Pagination 200-row cap untested.** `AdminService.GetAllUsersAsync` and `GetAllEventsAsync` enforce `Math.Min(pageSize, 200)` (AdminService.cs:29, 66), but no test passes `pageSize > 200` and asserts the result is capped at 200. The cap is correctly implemented but has no covering regression test. **[RESOLVED 2026-07-09]** Covered by `GetAllUsers_PageSizeOver200_IsCappedTo200` and `GetAllEvents_PageSizeOver200_IsCappedTo200` in `AdminPropertyTests.cs`.
 
 2. **Requirement 14.5 (frontend admin interfaces)** is a frontend-only requirement with no backend implementation expected in this slice. Marked N/A, not a gap.
 
@@ -50,7 +50,7 @@ None.
 |---------|---------------|----------|-------|
 | R3 CRITICAL #1 (admin modify/delete audit) | EventController.cs:98-101, 138-141 | yes | Admin update/delete paths emit audit entries via `TryLogAuditAsync`. EventControllerTests verify both success and failure paths. |
 | R4 CRITICAL (audit failure path) | AdminController.cs:110-122, EventController.cs:219-231 | yes | `TryLogAuditAsync` catches exceptions, logs structured error, and the business response (200 OK / 204 No Content) is still returned. AdminControllerTests.GetAllUsers_AuditLogFails_StillReturnsOkWithData + EventControllerTests verify. |
-| R4 HIGH (pagination) | AdminService.cs:28-29, 65-66 | yes | `Math.Min(pageSize, 200)` enforced. Controller accepts `page`/`pageSize` query params. WARNING: no test asserts the 200 cap explicitly. |
+| R4 HIGH (pagination) | AdminService.cs:28-29, 65-66 | yes | `Math.Min(pageSize, 200)` enforced. Controller accepts `page`/`pageSize` query params. Regression tests `GetAllUsers_PageSizeOver200_IsCappedTo200` and `GetAllEvents_PageSizeOver200_IsCappedTo200` now assert the cap. |
 | R4 HIGH (atomicity decision) | design.md:554 | yes | Audit-write atomicity note added: "best-effort. AuditLogService catches and logs persistence exceptions so an audit-write failure does not roll back the originating business operation." |
 | R3 HIGH (audit retrieval endpoint + tests) | AdminController.cs:86-108 | yes | GET /api/admin/audit-logs with optional `userId` filter. AdminControllerTests.GetAuditLogs_NoFilter_ReturnsAllLogs and GetAuditLogs_WithUserIdFilter_CallsGetLogsForUserAsync verify. |
 | R2 HIGH (enum refactor) | AuditLog.cs:49-64 | yes | `AuditActionType` and `AuditResourceType` enums defined. `HasConversion<string>()` in ApplicationDbContext.cs:155-162. No string literals in call sites or test assertions. |
@@ -62,9 +62,9 @@ None.
 
 ```
 La serie de pruebas se ejecutó correctamente.
-Pruebas totales: 273
-     Correcto: 273
- Tiempo total: 7,5115 Segundos
+Pruebas totales: 275
+     Correcto: 275
+ Tiempo total: 9 segundos
 
 Compilación correcta.
     0 Advertencia(s)
@@ -73,8 +73,8 @@ Compilación correcta.
 Tiempo transcurrido 00:00:09.07
 ```
 
-Full `dotnet test` output: 273 passing, 0 failing, 0 skipped. Matches the claimed baseline of 273.
+Full `dotnet test` output: 275 passing, 0 failing, 0 skipped. Matches the updated baseline of 275.
 
 ## Next recommended phase
 
-`sdd-archive` — all tasks complete, all tests passing, all 4R findings resolved. One WARNING (pagination cap untested) is non-blocking but recommended for a future hardening pass.
+`sdd-archive` — all tasks complete, all tests passing, all 4R findings resolved, and all WARNINGs resolved (WARNING #2 was already N/A).

@@ -406,3 +406,55 @@ Recommended work-unit commits (per `work-unit-commits` skill):
 ### Next Recommended Phase
 
 `sdd-verify` for the full Task 16 slice (including 16.4 hardening).
+
+---
+
+## Task 16.5 — Pagination cap regression test
+
+### Completed Tasks
+
+- [x] 16.5 Add regression tests for the AdminService 200-row pagination cap
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Tests/AdminPropertyTests.cs` | Modified | Added `GetAllUsers_PageSizeOver200_IsCappedTo200` and `GetAllEvents_PageSizeOver200_IsCappedTo200`. |
+| `openspec/changes/ticketera-online/verify-report-task16.md` | Modified | Marked WARNING #1 as RESOLVED; updated test counts and execution evidence. |
+| `openspec/changes/ticketera-online/apply-progress.md` | Modified | Documented this micro-fix. |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 16.5 | `Tests/AdminPropertyTests.cs` | Unit | 273/273 | Written (regression test for existing cap) | Passed (cap already implemented) | 2 cases (users + events) | None needed |
+
+### Test Summary
+
+- **Total tests passing**: 275
+- **Baseline passing (before Task 16.5)**: 273
+- **Net new passing**: +2
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: None
+
+### Deviations from Design
+
+None — implementation matches design; only missing regression tests were added.
+
+### Issues Found
+
+None.
+
+### Verification
+
+- `dotnet test --filter "FullyQualifiedName~PageSizeOver200"`: 2/2 passing.
+- `dotnet test` full suite: 275 passing, 0 failed, 0 skipped.
+
+### Commits
+
+- `test(admin): cubre cap de 200 filas en paginacion de AdminService`
+
+### Next Recommended Phase
+
+Task 17 — implement global error handling and structured logging.

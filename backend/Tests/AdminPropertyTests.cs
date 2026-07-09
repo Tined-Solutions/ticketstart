@@ -128,6 +128,19 @@ public class AdminPropertyTests : IDisposable
         Assert.Equal(organizerId, eventList[0].OrganizerId);
     }
 
+    /// <summary>
+    /// Property 42 (Pagination cap): A requested page size above the 200-row hard cap is clamped to 200.
+    /// </summary>
+    [Fact]
+    public async Task GetAllEvents_PageSizeOver200_IsCappedTo200()
+    {
+        // Act
+        var result = await _adminService.GetAllEventsAsync(1, 500);
+
+        // Assert
+        Assert.Equal(200, result.PageSize);
+    }
+
     #endregion
 
     #region Property 43: Admin Action Audit Logging
@@ -361,6 +374,19 @@ public class AdminPropertyTests : IDisposable
         Assert.Single(userList);
         Assert.Equal(user.Email, userList[0].Email);
         Assert.Null(userList[0].GetType().GetProperty("PasswordHash"));
+    }
+
+    /// <summary>
+    /// Admin user access (Pagination cap): A requested page size above the 200-row hard cap is clamped to 200.
+    /// </summary>
+    [Fact]
+    public async Task GetAllUsers_PageSizeOver200_IsCappedTo200()
+    {
+        // Act
+        var result = await _adminService.GetAllUsersAsync(1, 500);
+
+        // Assert
+        Assert.Equal(200, result.PageSize);
     }
 
     /// <summary>
