@@ -119,7 +119,8 @@ public class ErrorHandlingPropertyTests
                 return keys.Contains("ExceptionType")
                     && keys.Contains("Path")
                     && keys.Contains("Method")
-                    && keys.Contains("StackTrace");
+                    && keys.Contains("StackTrace")
+                    && entry.Exception != null;
             });
 
         Check.QuickThrowOnFailure(prop);

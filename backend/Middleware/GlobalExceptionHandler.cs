@@ -43,6 +43,7 @@ public class GlobalExceptionHandler : IExceptionHandler
             else
             {
                 _logger.LogError(
+                    exception,
                     "Unhandled exception {ExceptionType} on {Method} {Path} with correlation {CorrelationId} — {ErrorCode}: {Message} {StackTrace}",
                     exception.GetType().Name,
                     method,
