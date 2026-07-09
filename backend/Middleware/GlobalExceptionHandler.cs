@@ -37,6 +37,8 @@ public class GlobalExceptionHandler : IExceptionHandler
             if (exception is OperationCanceledException)
             {
                 _logger.LogInformation("Client disconnected during request");
+                httpContext.Response.StatusCode = 499;
+                return true;
             }
             else
             {

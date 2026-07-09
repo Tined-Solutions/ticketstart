@@ -189,6 +189,23 @@ public class ErrorHandlingPropertyTests
         Assert.Contains("An internal error occurred", body);
     }
 
+    [Fact]
+    public void Property47d_OperationCanceled_WithCancelledToken_ReturnsTrueWithoutWriting()
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/test", "GET");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var exception = new OperationCanceledException();
+
+        var handled = handler.TryHandleAsync(context, exception, cts.Token).AsTask().Result;
+
+        Assert.True(handled);
+        Assert.Equal(0, context.Response.Body.Length);
+        Assert.DoesNotContain(logger.Entries, e => e.LogLevel == LogLevel.Error);
+    }
+
     #endregion
 
     #region Property 48: User-Friendly Error Messages
