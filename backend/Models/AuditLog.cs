@@ -51,7 +51,9 @@ public enum AuditActionType
     ViewUsers,
     ViewEvents,
     UpdateEvent,
-    DeleteEvent
+    DeleteEvent,
+    ProcessWebhook,
+    ValidateQr
 }
 
 /// <summary>
@@ -60,5 +62,7 @@ public enum AuditActionType
 public enum AuditResourceType
 {
     User,
-    Event
+    Event,
+    Payment,
+    Ticket
 }

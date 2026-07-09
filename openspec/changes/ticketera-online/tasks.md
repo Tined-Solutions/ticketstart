@@ -390,8 +390,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Update and expand `AdminControllerTests`, `EventControllerTests`, and `AdminPropertyTests` for new behavior and FsCheck v3 API.
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6_
 
-- [ ] 17. Implement global error handling and logging
-  - [ ] 17.1 Create global exception handler
+- [x] 17. Implement global error handling and logging
+  - [x] 17.1 Create global exception handler
     - Implement IExceptionHandler for centralized error handling
     - Map exceptions to appropriate HTTP status codes
     - Return user-friendly error messages
@@ -399,13 +399,13 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Ensure sensitive data is not exposed in logs or error messages
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.7_
 
-  - [ ] 17.2 Configure logging infrastructure
+  - [x] 17.2 Configure logging infrastructure
     - Configure structured logging (Serilog or built-in logging)
     - Add log levels (Debug, Info, Warning, Error)
     - Configure log output (console, file, or external service)
     - _Requirements: 16.1, 16.5, 16.6_
 
-  - [ ]* 17.3 Write property tests for error handling
+  - [x] 17.3 Write property tests for error handling
     - **Property 44: Database Connection Failure Handling** (Requirements 15.5)
     - **Property 45: Database Error Logging** (Requirements 15.6)
     - **Property 46: Error Logging Format** (Requirements 16.1)

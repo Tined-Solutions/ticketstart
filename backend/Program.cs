@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Services;
 using TicketeraOnline.Api.Authorization;
+using TicketeraOnline.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
@@ -11,6 +12,12 @@ using Amazon.S3;
 using Amazon.Runtime;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure structured logging using built-in Microsoft.Extensions.Logging.
+// Message templates with named placeholders produce structured fields for stdout consumers.
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
 
 // Add services to the container.
 // Register application services
@@ -113,6 +120,10 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton<IAuthorizationHandler, EventOwnershipHandler>();
 builder.Services.AddHttpContextAccessor();
 
+// Register global exception handler and problem details
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 // Configure Cloudflare R2 (S3-compatible storage)
 var r2Settings = builder.Configuration.GetSection("CloudflareR2");
 var r2AccessKey = r2Settings["AccessKey"] ?? throw new InvalidOperationException("R2 AccessKey is not configured");
@@ -174,6 +185,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Global exception handler must be early in the pipeline to catch errors from auth and endpoints.
+app.UseExceptionHandler();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -16,14 +16,16 @@ namespace TicketeraOnline.Api.Tests;
 public class PaymentControllerTests
 {
     private readonly Mock<IPaymentService> _mockPaymentService;
+    private readonly Mock<IAuditLogService> _mockAuditLogService;
     private readonly Mock<ILogger<PaymentController>> _mockLogger;
     private readonly PaymentController _controller;
 
     public PaymentControllerTests()
     {
         _mockPaymentService = new Mock<IPaymentService>();
+        _mockAuditLogService = new Mock<IAuditLogService>();
         _mockLogger = new Mock<ILogger<PaymentController>>();
-        _controller = new PaymentController(_mockPaymentService.Object, _mockLogger.Object)
+        _controller = new PaymentController(_mockPaymentService.Object, _mockLogger.Object, _mockAuditLogService.Object)
         {
             ControllerContext = new ControllerContext
             {

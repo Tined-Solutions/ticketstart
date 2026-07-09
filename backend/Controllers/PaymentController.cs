@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 
 namespace TicketeraOnline.Api.Controllers;
@@ -9,15 +10,20 @@ namespace TicketeraOnline.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/payments")]
-public class PaymentController : ControllerBase
+public class PaymentController : TicketeraControllerBase
 {
     private readonly IPaymentService _paymentService;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<PaymentController> _logger;
 
-    public PaymentController(IPaymentService paymentService, ILogger<PaymentController> logger)
+    public PaymentController(
+        IPaymentService paymentService,
+        ILogger<PaymentController> logger,
+        IAuditLogService auditLogService)
     {
         _paymentService = paymentService;
         _logger = logger;
+        _auditLogService = auditLogService;
     }
 
     /// <summary>
@@ -88,6 +94,13 @@ public class PaymentController : ControllerBase
         {
             var result = await _paymentService.ProcessWebhookAsync(payload, signature);
 
+            await TryLogAuditAsync(new AuditLogContext(
+                UserId: Guid.Empty,
+                Action: AuditActionType.ProcessWebhook,
+                Resource: AuditResourceType.Payment,
+                ResourceId: null,
+                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}"));
+
             if (!result.Success)
             {
                 _logger.LogWarning("Webhook processing failed for payment {PaymentId}: {Error}", result.PaymentId, result.Error);
@@ -102,6 +115,20 @@ public class PaymentController : ControllerBase
             _logger.LogError(ex, "Unexpected error processing webhook for payment {PaymentId}", payload.PaymentId);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { error = "An unexpected error occurred while processing the webhook" });
+        }
+    }
+
+    private async Task TryLogAuditAsync(AuditLogContext context)
+    {
+        try
+        {
+            await _auditLogService.LogActionAsync(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
+                context.Action, context.Resource, context.ResourceId);
         }
     }
 }

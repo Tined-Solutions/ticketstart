@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 
 namespace TicketeraOnline.Api.Controllers;
@@ -10,17 +11,20 @@ namespace TicketeraOnline.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/tickets")]
-public class TicketController : ControllerBase
+public class TicketController : TicketeraControllerBase
 {
     private readonly ITicketService _ticketService;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<TicketController> _logger;
 
     public TicketController(
         ITicketService ticketService,
-        ILogger<TicketController> logger)
+        ILogger<TicketController> logger,
+        IAuditLogService auditLogService)
     {
         _ticketService = ticketService;
         _logger = logger;
+        _auditLogService = auditLogService;
     }
 
     /// <summary>
@@ -151,12 +155,34 @@ public class TicketController : ControllerBase
                 _logger.LogWarning("QR code validation failed: {Error}", result.Error);
             }
 
+            _ = TryGetUserId(out var userId);
+            await TryLogAuditAsync(new AuditLogContext(
+                UserId: userId,
+                Action: AuditActionType.ValidateQr,
+                Resource: AuditResourceType.Ticket,
+                ResourceId: result.Ticket?.Id,
+                Details: $"QR validation for event {request.EventId}; valid={result.IsValid}"));
+
             return Ok(response);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during QR code validation for event {EventId}", request.EventId);
             return StatusCode(500, new { error = "An error occurred while validating the QR code" });
+        }
+    }
+
+    private async Task TryLogAuditAsync(AuditLogContext context)
+    {
+        try
+        {
+            await _auditLogService.LogActionAsync(context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Audit logging failed for action {ActionType} resource {ResourceType} id {ResourceId}; continuing with response",
+                context.Action, context.Resource, context.ResourceId);
         }
     }
 }

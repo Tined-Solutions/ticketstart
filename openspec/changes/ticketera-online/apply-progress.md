@@ -458,3 +458,75 @@ None.
 ### Next Recommended Phase
 
 Task 17 — implement global error handling and structured logging.
+
+---
+
+## Task 17: Global error handling and structured logging
+
+### Completed Tasks
+
+- [x] 17.1 Create global exception handler (`IExceptionHandler`)
+- [x] 17.2 Configure structured logging infrastructure
+- [x] 17.3 Write property tests for error handling (Properties 44-51)
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Middleware/GlobalExceptionHandler.cs` | Created | `IExceptionHandler` implementation mapping exceptions to HTTP status codes, writing `ProblemDetails` responses, and emitting structured logs with redacted paths/messages. |
+| `backend/Helpers/LogRedactor.cs` | Created | Defensive redaction helper for query strings and free-form messages; whitelists sensitive keys. |
+| `backend/Models/Exceptions.cs` | Created | `ForbiddenException` for explicit 403 mapping in the global handler. |
+| `backend/Models/AuditLog.cs` | Modified | Added `AuditActionType.ProcessWebhook`, `AuditActionType.ValidateQr`, `AuditResourceType.Payment`, `AuditResourceType.Ticket`. |
+| `backend/Controllers/PaymentController.cs` | Modified | Inherits `TicketeraControllerBase`; injects `IAuditLogService`; logs a best-effort audit entry for every processed webhook. |
+| `backend/Controllers/TicketController.cs` | Modified | Inherits `TicketeraControllerBase`; injects `IAuditLogService`; logs a best-effort audit entry for every QR validation. |
+| `backend/Program.cs` | Modified | Registers `GlobalExceptionHandler`, `ProblemDetails`, and configures built-in structured logging levels. |
+| `backend/Tests/PaymentControllerTests.cs` | Modified | Updated constructor to supply `IAuditLogService` mock. |
+| `backend/Tests/ErrorHandlingPropertyTests.cs` | Created | FsCheck v3 property tests covering Properties 44-51 plus test doubles (`CollectingLogger`, `FakeAuditLogService`, `TestDbException`). |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 17.1 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written (handler didn't exist) | Passed | 6 exception types + redaction | Extracted `LogRedactor` |
+| 17.2 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | Structured-field assertions | None needed |
+| 17.3/Prop 44 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 DbException iterations | None needed |
+| 17.3/Prop 45 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 iterations | None needed |
+| 17.3/Prop 46 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 iterations | None needed |
+| 17.3/Prop 47 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 7 status-code scenarios × 100 | None needed |
+| 17.3/Prop 48 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 sensitive-message iterations | None needed |
+| 17.3/Prop 49 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 webhook scenarios | None needed |
+| 17.3/Prop 50 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 QR validation scenarios | None needed |
+| 17.3/Prop 51 | `Tests/ErrorHandlingPropertyTests.cs` | Unit | 275/275 | Written | Passed | 100 sensitive-query iterations | Fixed redaction of path+query |
+
+### Test Summary
+
+- **Total tests passing**: 283
+- **Baseline passing (before Task 17)**: 275
+- **Net new passing**: +8
+- **Layers used**: Unit (all)
+- **Approval tests**: None — no refactoring tasks
+- **Pure functions created**: `LogRedactor.RedactQueryString`, `LogRedactor.RedactMessage`
+
+### Deviations from Design
+
+1. The global exception handler returns `ProblemDetails` (standard ASP.NET Core) instead of the anonymous `error { code, message }` shape shown in `design.md` line 1285-1292. This keeps the API consistent with `AddProblemDetails()` and gives clients `status`, `title`, `detail`, and `instance`.
+2. `InvalidOperationException` is mapped to HTTP 500 rather than 409, because the existing codebase uses `InvalidOperationException` for many non-conflict scenarios (expired reservations, missing config, etc.). Only `DbUpdateConcurrencyException` maps to 409.
+3. Built-in `Microsoft.Extensions.Logging` is used instead of Serilog. No extra sinks are required for stdout-only backend logging, and message templates already produce structured fields.
+
+### Issues Found
+
+- Initial `Property51` test exposed that passing `path + queryString` to `LogRedactor.RedactQueryString` caused the path to be mis-parsed as a query key, leaking the secret. Fixed by separating path and query redaction in `GlobalExceptionHandler`.
+- No pre-existing flaky failures in this batch; `VerifyDatabaseSchema` passed in the full-suite run.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~ErrorHandlingPropertyTests`: 8/8 passing.
+- `dotnet test` full suite: 283 passing, 0 failed, 0 skipped.
+
+### Commits
+
+- `feat(logging): implementa IExceptionHandler, logging estructurado y property tests 44-51`
+
+### Next Recommended Phase
+
+`sdd-verify` for Task 17; the orchestrator will run 4R review first.
