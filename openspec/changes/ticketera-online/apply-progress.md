@@ -950,3 +950,63 @@ Strict TDD was NOT active for this frontend task. Tests were written alongside i
 ### Next Recommended Phase
 
 Task 21 — implement event catalog and browsing components.
+
+---
+
+## Task 21: Implement event catalog and browsing components
+
+### Completed Tasks
+
+- [x] 21.1 Create event catalog component
+- [x] 21.2 Create event detail component
+- [x] 21.3 Write unit tests for event browsing components
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/EventList.jsx` | Modified | Replaced placeholder with full event catalog: fetches `/api/events` on mount, displays responsive grid of event cards with image/placeholder, name, formatted date, and location; supports loading skeletons, error state with retry, empty state, and keyboard/click navigation to `/events/:id`. |
+| `frontend/src/pages/EventDetail.jsx` | Modified | Replaced placeholder with full event detail: fetches `/api/events/:id`, displays event image, name, description, date, location; lists ticket types with price and availability; per-ticket-type quantity selector with increment/decrement and sold-out handling; "Reservar entradas" button navigates to `/checkout` with selected quantities, totals, and event metadata via router state; includes loading, error, and back-to-catalog states. |
+| `frontend/src/pages/Home.jsx` | Modified | Replaced placeholder with a simple hero section linking to the full event catalog and a brief feature list. |
+| `frontend/src/pages/EventList.test.jsx` | Created | Unit tests for event catalog: renders cards from API, loading skeletons, error state with retry, empty state, and navigation to detail via click and Enter key. |
+| `frontend/src/pages/EventDetail.test.jsx` | Created | Unit tests for event detail: renders event info and ticket types, loading and error states, quantity increment/decrement and availability cap, disabled reserve button when no tickets selected, reserve navigation to checkout with correct state, and back link to catalog. |
+
+### Test Summary
+
+- **Frontend test files**: 4
+- **Frontend tests passing**: 36/36 (20 from Task 20 + 16 new from Task 21)
+- **Backend tests passing**: 333 (unchanged)
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task. Tests were written alongside implementation (standard development practices).
+
+| Task | Test File | Layer | Tests | Status |
+|------|-----------|-------|-------|--------|
+| 21.1 | `src/pages/EventList.test.jsx` | Unit | 6/6 | Passed |
+| 21.2 | `src/pages/EventDetail.test.jsx` | Unit | 10/10 | Passed |
+
+### Deviations from Design
+
+1. **Checkout state shape**: The router state passed to `/checkout` includes `eventId`, `eventName`, `eventDate`, `eventLocation`, `eventImageUrl`, `selections` (ticket type id, name, price, quantity), `totalTickets`, and `totalPrice`. This is richer than the design.md's reservation endpoint shape because the reservation API is not called until Task 22; the detail page pre-assembles the cart so the checkout component can render a summary immediately.
+2. **Ticket availability display**: The component uses `ticketType.available` when provided by the backend and falls back to `ticketType.quantity`. This matches the task prompt's event data shape (`ticketTypes: [{ ..., available }]`) and the design.md property that availability should be computed by the backend.
+3. **No filters/search in catalog**: The design.md mentions filter/search as an optional enhancement; this slice keeps the catalog simple as required by the task spec.
+4. **AbortController cleanup**: Both event pages use `AbortController` to cancel in-flight requests on unmount/retry, avoiding stale state updates after navigation.
+
+### Issues Found
+
+- None. `npm run lint`, `npm run build`, and `npm test` all pass.
+
+### Verification
+
+- `npm run lint`: passes with no errors.
+- `npm run build`: production build succeeds.
+- `npm test`: 36/36 frontend tests pass.
+
+### Commits
+
+- `feat(frontend): implementa catalogo de eventos, detalle y tests — Task 21`
+
+### Next Recommended Phase
+
+Task 22 — implement reservation and checkout flow.

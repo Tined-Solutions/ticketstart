@@ -486,8 +486,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test successful login/registration flows
     - Test error handling and display
 
-- [ ] 21. Implement event catalog and browsing components
-  - [ ] 21.1 Create event catalog component
+- [x] 21. Implement event catalog and browsing components
+  - [x] 21.1 Create event catalog component
     - Fetch events from GET /api/events
     - Display events in grid or list view
     - Show event cards with image, name, date, location
@@ -495,7 +495,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Add loading and error states
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 21.2 Create event detail component
+  - [x] 21.2 Create event detail component
     - Fetch single event from GET /api/events/{id}
     - Display full event information
     - Display ticket types with prices and availability
@@ -503,7 +503,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Add "Reserve Tickets" button
     - _Requirements: 2.2, 2.3, 2.5, 2.6_
 
-  - [ ]* 21.3 Write unit tests for event browsing components
+  - [x]* 21.3 Write unit tests for event browsing components
     - Test event catalog rendering
     - Test event detail display
     - Test navigation between pages
