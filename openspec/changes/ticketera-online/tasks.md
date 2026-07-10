@@ -510,21 +510,21 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test empty state handling
 
 - [ ] 22. Implement reservation and checkout flow
-  - [ ] 22.1 Create reservation component
+  - [x] 22.1 Create reservation component
     - Call POST /api/reservations to create reservation
     - Display reservation confirmation with expiration time
     - Implement countdown timer showing remaining time
     - Handle reservation expiration (clear state, show notification)
     - _Requirements: 4.1, 4.3, 4.8, 4.9_
 
-  - [ ] 22.2 Create checkout component
+  - [x] 22.2 Create checkout component
     - Display reservation summary (event, tickets, total)
     - Show countdown timer
     - Call POST /api/payments/create-preference
     - Redirect to Mercado Pago checkout URL
     - _Requirements: 4.8, 5.3, 5.4_
 
-  - [ ] 22.3 Create payment return handler
+  - [x] 22.3 Create payment return handler
     - Handle return from Mercado Pago (success/failure)
     - Display confirmation message or error
     - Show email delivery status

@@ -1010,3 +1010,61 @@ Strict TDD was NOT active for this frontend task. Tests were written alongside i
 ### Next Recommended Phase
 
 Task 22 — implement reservation and checkout flow.
+
+---
+
+## Task 22: Implement reservation and checkout flow
+
+### Completed Tasks
+
+- [x] 22.1 Create reservation component
+- [x] 22.2 Create checkout component
+- [x] 22.3 Create payment return handler
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/Checkout.jsx` | Modified | Replaced placeholder with full checkout flow: reads cart state from router location, redirects to `/events` when state is missing, collects purchaser data (name, email, DNI), creates one backend reservation per selected ticket type, displays reservation confirmation with MM:SS countdown timer, handles expiration with restart option, calls `/payments/create-preference`, and redirects to Mercado Pago `initPoint`. |
+| `frontend/src/pages/CheckoutReturn.jsx` | Modified | Replaced placeholder with payment-return handler: reads `status`, `payment_id`, and `external_reference` query params, displays success/pending/failure/unknown messages, shows email-delivery note, and links back to the event catalog. |
+
+### Test Summary
+
+- **Frontend tests passing**: 36/36 (no new tests in this batch — Task 22.4 deferred)
+- **Backend tests passing**: 333 (unchanged)
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task. Implementation followed standard development practices; tests will be added in Task 22.4.
+
+| Task | Layer | Tests | Status |
+|------|-------|-------|--------|
+| 22.1 | UI | N/A (deferred to 22.4) | Implemented |
+| 22.2 | UI | N/A (deferred to 22.4) | Implemented |
+| 22.3 | UI | N/A (deferred to 22.4) | Implemented |
+
+### Deviations from Design / Backend Contract
+
+1. **One reservation per ticket type**: The backend `POST /api/reservations` accepts a single `ticketTypeId`, while `EventDetail` can pass multiple selections. `Checkout` creates one reservation per selection. The payment button pays the first active reservation; when multiple selections exist a note explains that payments are processed one reservation at a time.
+2. **Purchaser name/email are not sent to the reservation endpoint**: The backend contract only requires `purchaserDNI` to create a reservation. The checkout form still collects name and email (pre-filled from the authenticated user) for UX consistency, but only `purchaserDNI` is transmitted.
+3. **Payment preference requires authentication**: The backend `[Authorize]` attribute on `POST /api/payments/create-preference` means the current `/checkout` route must remain behind `ProtectedRoute`. Guest checkout would require backend changes to allow anonymous preference creation.
+4. **No runtime email-delivery status endpoint**: The backend sends ticket emails via Resend during webhook processing but does not expose a status endpoint. The return page shows a static confirmation note that tickets were sent to the purchaser email.
+5. **Mercado Pago return URL is not configured in the preference**: `MercadoPagoClient` does not set `back_urls`, so the redirect behavior depends on account defaults or future backend configuration. The frontend handler reads standard Checkout Pro query params (`status`, `payment_id`, `external_reference`).
+
+### Issues Found
+
+- None that block the slice. `npm run lint`, `npm run build`, and `npm test` all pass.
+
+### Verification
+
+- `npm run lint`: passes with no errors.
+- `npm run build`: production build succeeds.
+- `npm test`: 36/36 frontend tests pass.
+
+### Commits
+
+- `feat(frontend): implementa reserva, checkout y payment return — Task 22.1-22.3`
+
+### Next Recommended Phase
+
+Task 22.4 — write unit tests for the checkout flow.
