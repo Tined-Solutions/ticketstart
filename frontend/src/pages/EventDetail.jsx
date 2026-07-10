@@ -24,14 +24,28 @@ function formatCurrency(amount) {
   })}`
 }
 
-function TicketTypeRow({ ticketType, quantity, onChange }) {
+function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange }) {
   const available = ticketType.available ?? ticketType.quantity ?? 0
   const isSoldOut = available <= 0
 
   return (
-    <div className="ticket-type-row">
+    <div className={`ticket-type-row ${isSelected ? 'ticket-type-row-selected' : ''}`}>
+      <div className="ticket-type-selector">
+        <input
+          type="radio"
+          name="ticket-type"
+          id={`ticket-type-${ticketType.id}`}
+          value={ticketType.id}
+          checked={isSelected}
+          onChange={() => onSelect(ticketType.id)}
+          disabled={isSoldOut}
+          aria-label={`Seleccionar ${ticketType.name}`}
+        />
+      </div>
       <div className="ticket-type-info">
-        <h3>{ticketType.name}</h3>
+        <label htmlFor={`ticket-type-${ticketType.id}`}>
+          <h3>{ticketType.name}</h3>
+        </label>
         <p className="ticket-type-price">{formatCurrency(ticketType.price)}</p>
         <p className="ticket-type-availability">
           {isSoldOut
@@ -39,25 +53,27 @@ function TicketTypeRow({ ticketType, quantity, onChange }) {
             : `${available} disponibles de ${ticketType.quantity}`}
         </p>
       </div>
-      <div className="ticket-type-selector">
-        <button
-          type="button"
-          aria-label={`Disminuir cantidad de ${ticketType.name}`}
-          onClick={() => onChange(Math.max(0, quantity - 1))}
-          disabled={isSoldOut || quantity <= 0}
-        >
-          -
-        </button>
-        <span aria-live="polite">{quantity}</span>
-        <button
-          type="button"
-          aria-label={`Aumentar cantidad de ${ticketType.name}`}
-          onClick={() => onChange(Math.min(available, quantity + 1))}
-          disabled={isSoldOut || quantity >= available}
-        >
-          +
-        </button>
-      </div>
+      {isSelected && (
+        <div className="ticket-type-quantity">
+          <button
+            type="button"
+            aria-label={`Disminuir cantidad de ${ticketType.name}`}
+            onClick={() => onChange(Math.max(1, quantity - 1))}
+            disabled={quantity <= 1}
+          >
+            -
+          </button>
+          <span aria-live="polite">{quantity}</span>
+          <button
+            type="button"
+            aria-label={`Aumentar cantidad de ${ticketType.name}`}
+            onClick={() => onChange(Math.min(available, quantity + 1))}
+            disabled={quantity >= available}
+          >
+            +
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -69,7 +85,8 @@ export default function EventDetail() {
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [quantities, setQuantities] = useState({})
+  const [selectedTicketTypeId, setSelectedTicketTypeId] = useState(null)
+  const [quantity, setQuantity] = useState(0)
 
   const loadEvent = useCallback(
     (controller) => {
@@ -79,11 +96,8 @@ export default function EventDetail() {
           if (controller.signal.aborted) return
           const eventData = response.data
           setEvent(eventData)
-          const initialQuantities = {}
-          eventData.ticketTypes?.forEach((ticketType) => {
-            initialQuantities[ticketType.id] = 0
-          })
-          setQuantities(initialQuantities)
+          setSelectedTicketTypeId(null)
+          setQuantity(0)
           setError('')
           setLoading(false)
         })
@@ -117,31 +131,26 @@ export default function EventDetail() {
     loadEvent(controller)
   }
 
-  const updateQuantity = (ticketTypeId) => (quantity) => {
-    setQuantities((prev) => ({ ...prev, [ticketTypeId]: quantity }))
+  const handleSelectTicketType = (ticketTypeId) => {
+    setSelectedTicketTypeId(ticketTypeId)
+    setQuantity((prev) => (prev > 0 ? prev : 1))
   }
 
-  const totalTickets = Object.values(quantities).reduce(
-    (sum, quantity) => sum + quantity,
-    0
+  const updateQuantity = (nextQuantity) => {
+    setQuantity(nextQuantity)
+  }
+
+  const selectedTicketType = event?.ticketTypes?.find(
+    (ticketType) => ticketType.id === selectedTicketTypeId
   )
 
-  const totalPrice = event?.ticketTypes?.reduce((sum, ticketType) => {
-    const quantity = quantities[ticketType.id] || 0
-    return sum + quantity * (ticketType.price || 0)
-  }, 0)
+  const totalTickets = selectedTicketTypeId ? quantity : 0
+  const totalPrice = selectedTicketType
+    ? quantity * (selectedTicketType.price || 0)
+    : 0
 
   const handleReserve = () => {
-    if (totalTickets === 0) return
-
-    const selections = event.ticketTypes
-      .filter((ticketType) => (quantities[ticketType.id] || 0) > 0)
-      .map((ticketType) => ({
-        ticketTypeId: ticketType.id,
-        name: ticketType.name,
-        price: ticketType.price,
-        quantity: quantities[ticketType.id],
-      }))
+    if (!selectedTicketType || quantity === 0) return
 
     navigate('/checkout', {
       state: {
@@ -150,7 +159,12 @@ export default function EventDetail() {
         eventDate: event.date,
         eventLocation: event.location,
         eventImageUrl: event.imageUrl,
-        selections,
+        selection: {
+          ticketTypeId: selectedTicketType.id,
+          name: selectedTicketType.name,
+          price: selectedTicketType.price,
+          quantity,
+        },
         totalTickets,
         totalPrice,
       },
@@ -228,14 +242,19 @@ export default function EventDetail() {
           <p>No hay entradas disponibles para este evento.</p>
         ) : (
           <>
-            {event.ticketTypes?.map((ticketType) => (
-              <TicketTypeRow
-                key={ticketType.id}
-                ticketType={ticketType}
-                quantity={quantities[ticketType.id] || 0}
-                onChange={updateQuantity(ticketType.id)}
-              />
-            ))}
+            <fieldset className="ticket-type-list">
+              <legend className="sr-only">Selecciona un tipo de entrada</legend>
+              {event.ticketTypes?.map((ticketType) => (
+                <TicketTypeRow
+                  key={ticketType.id}
+                  ticketType={ticketType}
+                  isSelected={selectedTicketTypeId === ticketType.id}
+                  quantity={quantity}
+                  onSelect={handleSelectTicketType}
+                  onChange={updateQuantity}
+                />
+              ))}
+            </fieldset>
             <div className="reservation-summary">
               <p>Entradas seleccionadas: {totalTickets}</p>
               <p>Total: {formatCurrency(totalPrice)}</p>
@@ -244,7 +263,7 @@ export default function EventDetail() {
               type="button"
               className="reserve-button"
               onClick={handleReserve}
-              disabled={totalTickets === 0}
+              disabled={!selectedTicketType || quantity === 0}
             >
               Reservar entradas
             </button>

@@ -25,14 +25,7 @@ function App() {
       <Route path="/events" element={<EventList />} />
       <Route path="/events/:id" element={<EventDetail />} />
 
-      <Route
-        path="/checkout"
-        element={
-          <ProtectedRoute>
-            <Checkout />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/checkout" element={<Checkout />} />
       <Route path="/checkout/return" element={<CheckoutReturn />} />
       <Route path="/tickets/lookup" element={<TicketLookup />} />
 

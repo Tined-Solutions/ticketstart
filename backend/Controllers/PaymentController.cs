@@ -28,11 +28,11 @@ public class PaymentController : TicketeraControllerBase
 
     /// <summary>
     /// Creates a Mercado Pago checkout preference for a reservation.
-    /// Requires authentication.
+    /// Public endpoint; buyers purchase as guests.
     /// Validates: Requirements 5.1, 16.2, 16.3
     /// </summary>
     [HttpPost("create-preference")]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<IActionResult> CreatePreference([FromBody] CreatePaymentPreferenceRequest request)
     {
         if (request == null || request.ReservationId == Guid.Empty)

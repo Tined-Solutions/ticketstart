@@ -61,12 +61,12 @@ describe('EventDetail', () => {
     render(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/platea/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
     })
 
     expect(screen.getByText(/\$\s*15\.000,00/)).toBeInTheDocument()
     expect(screen.getByText(/80 disponibles de 100/i)).toBeInTheDocument()
-    expect(screen.getByText(/campo/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /campo/i })).toBeInTheDocument()
     expect(screen.getByText(/\$\s*25\.000,00/)).toBeInTheDocument()
     expect(screen.getByText(/150 disponibles de 200/i)).toBeInTheDocument()
   })
@@ -108,29 +108,31 @@ describe('EventDetail', () => {
     })
   })
 
-  it('increments and decrements ticket quantity', async () => {
+  it('selects a ticket type and adjusts quantity', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
     render(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/platea/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
     })
 
-    const plateaSection = screen.getByText(/platea/i).closest('.ticket-type-row')
-    const [decreaseButton, increaseButton] = plateaSection.querySelectorAll('button')
-    const quantityDisplay = plateaSection.querySelector('span[aria-live="polite"]')
+    await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
 
-    expect(quantityDisplay).toHaveTextContent('0')
+    const selectedRow = screen.getByRole('radio', { name: /platea/i }).closest('.ticket-type-row')
+    const [decreaseButton, increaseButton] = selectedRow.querySelectorAll('button')
+    const quantityDisplay = selectedRow.querySelector('span[aria-live="polite"]')
 
-    await userEvent.click(increaseButton)
     expect(quantityDisplay).toHaveTextContent('1')
 
     await userEvent.click(increaseButton)
     expect(quantityDisplay).toHaveTextContent('2')
 
+    await userEvent.click(increaseButton)
+    expect(quantityDisplay).toHaveTextContent('3')
+
     await userEvent.click(decreaseButton)
-    expect(quantityDisplay).toHaveTextContent('1')
+    expect(quantityDisplay).toHaveTextContent('2')
   })
 
   it('disables increment when reaching available quantity', async () => {
@@ -144,11 +146,13 @@ describe('EventDetail', () => {
     render(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/vip/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /vip/i })).toBeInTheDocument()
     })
 
-    const vipSection = screen.getByText(/vip/i).closest('.ticket-type-row')
-    const [, increaseButton] = vipSection.querySelectorAll('button')
+    await userEvent.click(screen.getByRole('radio', { name: /vip/i }))
+
+    const selectedRow = screen.getByRole('radio', { name: /vip/i }).closest('.ticket-type-row')
+    const [, increaseButton] = selectedRow.querySelectorAll('button')
 
     await userEvent.click(increaseButton)
     await userEvent.click(increaseButton)
@@ -156,17 +160,19 @@ describe('EventDetail', () => {
     expect(increaseButton).toBeDisabled()
   })
 
-  it('navigates to checkout with selected quantities when clicking reserve', async () => {
+  it('navigates to checkout with a single selection when clicking reserve', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
     render(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/platea/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
     })
 
-    const plateaSection = screen.getByText(/platea/i).closest('.ticket-type-row')
-    const [, increaseButton] = plateaSection.querySelectorAll('button')
+    await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
+
+    const selectedRow = screen.getByRole('radio', { name: /platea/i }).closest('.ticket-type-row')
+    const [, increaseButton] = selectedRow.querySelectorAll('button')
     await userEvent.click(increaseButton)
     await userEvent.click(increaseButton)
 
@@ -181,28 +187,26 @@ describe('EventDetail', () => {
           eventDate: '2026-08-15T21:00:00Z',
           eventLocation: 'Estadio Luna Park, Buenos Aires',
           eventImageUrl: 'https://example.com/rock.jpg',
-          totalTickets: 2,
-          totalPrice: 30000,
-          selections: [
-            {
-              ticketTypeId: 'tt-1',
-              name: 'Platea',
-              price: 15000,
-              quantity: 2,
-            },
-          ],
+          totalTickets: 3,
+          totalPrice: 45000,
+          selection: {
+            ticketTypeId: 'tt-1',
+            name: 'Platea',
+            price: 15000,
+            quantity: 3,
+          },
         }),
       })
     })
   })
 
-  it('disables reserve button when no tickets are selected', async () => {
+  it('disables reserve button when no ticket type is selected', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
     render(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/platea/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
     })
 
     const reserveButton = screen.getByRole('button', { name: /reservar entradas/i })

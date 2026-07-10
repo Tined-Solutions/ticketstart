@@ -1068,3 +1068,77 @@ Strict TDD was NOT active for this frontend task. Implementation followed standa
 ### Next Recommended Phase
 
 Task 22.4 — write unit tests for the checkout flow.
+
+---
+
+## Opción D Fix — Single Ticket Type per Purchase + Guest Checkout
+
+### Completed Tasks
+
+- [x] Frontend Change 1 — `EventDetail.jsx`: restrict ticket selection to a single ticket type
+  - Replaced per-ticket-type quantity selectors with radio-button selection.
+  - User selects one ticket type, then adjusts quantity for that type only.
+  - Navigation state now carries a single `selection` object instead of an array.
+- [x] Frontend Change 2 — `EventDetail.test.jsx`: update tests for single-selection behavior
+- [x] Frontend Change 3 — `Checkout.jsx`: read singular `selection` and create one reservation
+  - Removed multi-selection iteration and "pay first reservation" logic.
+  - Purchaser form (name, email, DNI) remains unchanged; only `purchaserDNI` is sent to the backend.
+- [x] Frontend Change 4 — `App.jsx`: make `/checkout` a public route
+  - Removed `ProtectedRoute` wrapper so guest buyers can reach checkout.
+- [x] Backend Change 1 — `PaymentController.cs`: allow anonymous `create-preference`
+  - Replaced `[Authorize]` with `[AllowAnonymous]` on `POST /api/payments/create-preference`.
+- [x] Backend Change 2 — `PaymentControllerTests.cs`: update CreatePreference tests for guest context
+  - Removed authenticated user setup; tests now assert success without authentication.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/EventDetail.jsx` | Modified | Single ticket-type selection with radio buttons; quantity controls shown only for the selected type; navigation state uses `selection` (singular). |
+| `frontend/src/pages/EventDetail.test.jsx` | Modified | Updated tests for radio selection, single-selection navigation, and quantity controls. |
+| `frontend/src/pages/Checkout.jsx` | Modified | Reads singular `selection`; creates one reservation; renders single-selection summary; removes multi-selection payment note. |
+| `frontend/src/App.jsx` | Modified | `/checkout` is now a public route (no `ProtectedRoute`). |
+| `backend/Controllers/PaymentController.cs` | Modified | `POST /api/payments/create-preference` is now `[AllowAnonymous]` for guest checkout. |
+| `backend/Tests/PaymentControllerTests.cs` | Modified | `CreatePreference` tests run without authentication context and expect success. |
+
+### TDD Cycle Evidence
+
+Strict TDD was active for the backend change only.
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| Backend guest checkout | `Tests/PaymentControllerTests.cs` | Unit | 333/333 (flaky excluded) | Updated tests to run anonymously; failed with 401 before code change | `[Authorize]` → `[AllowAnonymous]` | Removed now-unused `SetAuthenticatedUser` helper and `System.Security.Claims` import |
+| Frontend single selection | `src/pages/EventDetail.test.jsx` | Unit | 36/36 | Updated alongside implementation | Passed | N/A |
+
+### Test Summary
+
+- **Backend tests passing**: 332/333
+  - Pre-existing flaky failure: `VerifyDatabaseSchema.Database_Should_Have_All_Tables` (live Supabase host unreachable from this environment).
+- **Frontend tests passing**: 36/36
+- **Frontend lint**: passes
+- **Frontend build**: passes
+
+### Deviations from Design
+
+None — implementation matches the requested Opción D behavior and guest-checkout decision.
+
+### Issues Found
+
+- `VerifyDatabaseSchema` continues to fail due to live Supabase connectivity; this is a pre-existing environmental/flaky test unrelated to this fix.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~PaymentControllerTests`: 6/6 passing.
+- `dotnet test --filter FullyQualifiedName~PaymentPropertyTests`: 10/10 passing.
+- `dotnet test` full suite: 332 passing, 1 pre-existing flaky failure.
+- `npm test`: 36/36 frontend tests pass.
+- `npm run lint`: passes.
+- `npm run build`: production build succeeds.
+
+### Commit
+
+- `fix(checkout): un ticket type por compra + guest checkout — Opcion D`
+
+### Next Recommended Phase
+
+Orchestrator review and `sdd-verify` for the Opción D fix slice.

@@ -62,7 +62,7 @@ export default function Checkout() {
   const cart = location.state
 
   useEffect(() => {
-    if (!cart?.selections || cart.selections.length === 0) {
+    if (!cart?.selection) {
       navigate('/events', { replace: true })
     }
   }, [cart, navigate])
@@ -70,7 +70,7 @@ export default function Checkout() {
   const [purchaserName, setPurchaserName] = useState(user?.name || '')
   const [purchaserEmail, setPurchaserEmail] = useState(user?.email || '')
   const [purchaserDNI, setPurchaserDNI] = useState('')
-  const [reservations, setReservations] = useState([])
+  const [reservation, setReservation] = useState(null)
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [error, setError] = useState('')
@@ -79,18 +79,18 @@ export default function Checkout() {
   const timerRef = useRef(null)
 
   useEffect(() => {
-    if (reservations.length === 0) return undefined
+    if (!reservation) return undefined
     timerRef.current = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timerRef.current)
-  }, [reservations.length])
+  }, [reservation])
 
   const remainingSeconds = useMemo(() => {
-    if (reservations.length === 0) return 0
-    const earliest = Math.min(...reservations.map((r) => new Date(r.expiresAt).getTime()))
-    return Math.max(0, Math.floor((earliest - now) / 1000))
-  }, [reservations, now])
+    if (!reservation) return 0
+    const expiresAt = new Date(reservation.expiresAt).getTime()
+    return Math.max(0, Math.floor((expiresAt - now) / 1000))
+  }, [reservation, now])
 
-  const isExpired = reservations.length > 0 && remainingSeconds <= 0
+  const isExpired = reservation && remainingSeconds <= 0
 
   useEffect(() => {
     if (isExpired && timerRef.current) {
@@ -99,11 +99,13 @@ export default function Checkout() {
     }
   }, [isExpired])
 
-  if (!cart?.selections || cart.selections.length === 0) {
+  if (!cart?.selection) {
     return null
   }
 
-  const handleCreateReservations = async (event) => {
+  const selection = cart.selection
+
+  const handleCreateReservation = async (event) => {
     event.preventDefault()
     setError('')
     setLoading(true)
@@ -116,19 +118,13 @@ export default function Checkout() {
         return
       }
 
-      const created = await Promise.all(
-        cart.selections.map((selection) =>
-          apiClient
-            .post('/reservations', {
-              eventId: cart.eventId,
-              ticketTypeId: selection.ticketTypeId,
-              quantity: selection.quantity,
-              purchaserDNI: dni,
-            })
-            .then((response) => response.data)
-        )
-      )
-      setReservations(created)
+      const response = await apiClient.post('/reservations', {
+        eventId: cart.eventId,
+        ticketTypeId: selection.ticketTypeId,
+        quantity: selection.quantity,
+        purchaserDNI: dni,
+      })
+      setReservation(response.data)
     } catch (error) {
       setError(getErrorMessage(error))
     } finally {
@@ -137,13 +133,13 @@ export default function Checkout() {
   }
 
   const handlePay = async () => {
-    if (reservations.length === 0 || isExpired) return
+    if (!reservation || isExpired) return
     setError('')
     setPayLoading(true)
 
     try {
       const response = await apiClient.post('/payments/create-preference', {
-        reservationId: reservations[0].id,
+        reservationId: reservation.id,
       })
       const { checkoutUrl } = response.data
       window.location.href = checkoutUrl
@@ -169,7 +165,7 @@ export default function Checkout() {
     )
   }
 
-  if (reservations.length === 0) {
+  if (!reservation) {
     return (
       <div className="checkout-page">
         <Link to="/events" className="back-link">
@@ -199,19 +195,17 @@ export default function Checkout() {
 
         <section className="checkout-selections">
           <h2>Entradas seleccionadas</h2>
-          {cart.selections.map((selection) => (
-            <div key={selection.ticketTypeId} className="checkout-selection-row">
-              <span>{selection.name}</span>
-              <span>x {selection.quantity}</span>
-              <span>{formatCurrency(selection.price * selection.quantity)}</span>
-            </div>
-          ))}
+          <div className="checkout-selection-row">
+            <span>{selection.name}</span>
+            <span>x {selection.quantity}</span>
+            <span>{formatCurrency(selection.price * selection.quantity)}</span>
+          </div>
           <div className="checkout-total">
             <strong>Total: {formatCurrency(cart.totalPrice)}</strong>
           </div>
         </section>
 
-        <form onSubmit={handleCreateReservations} className="checkout-form">
+        <form onSubmit={handleCreateReservation} className="checkout-form">
           <h2>Datos del comprador</h2>
 
           <div className="form-group">
@@ -278,28 +272,15 @@ export default function Checkout() {
 
       <section className="checkout-selections">
         <h2>Resumen</h2>
-        {reservations.map((reservation) => {
-          const selection = cart.selections.find(
-            (s) => s.ticketTypeId === reservation.ticketTypeId
-          )
-          return (
-            <div key={reservation.id} className="checkout-selection-row">
-              <span>{selection?.name || 'Entrada'}</span>
-              <span>x {reservation.quantity}</span>
-              <span>{formatCurrency((selection?.price || 0) * reservation.quantity)}</span>
-            </div>
-          )
-        })}
+        <div className="checkout-selection-row">
+          <span>{selection.name}</span>
+          <span>x {reservation.quantity}</span>
+          <span>{formatCurrency(selection.price * reservation.quantity)}</span>
+        </div>
         <div className="checkout-total">
           <strong>Total: {formatCurrency(cart.totalPrice)}</strong>
         </div>
       </section>
-
-      {reservations.length > 1 && (
-        <p className="checkout-note">
-          Nota: el pago se procesa de a una reserva a la vez.
-        </p>
-      )}
 
       {error && (
         <div className="error-container" role="alert">

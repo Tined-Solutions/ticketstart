@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Security.Claims;
 using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Services;
 using Xunit;
@@ -35,9 +34,8 @@ public class PaymentControllerTests
     }
 
     [Fact]
-    public async Task CreatePreference_AuthenticatedUser_ReturnsOkWithPreference()
+    public async Task CreatePreference_AnonymousUser_ReturnsOkWithPreference()
     {
-        var userId = Guid.NewGuid();
         var reservationId = Guid.NewGuid();
         var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId };
         var preference = new PaymentPreference
@@ -46,7 +44,6 @@ public class PaymentControllerTests
             PreferenceId = "pref-123"
         };
 
-        SetAuthenticatedUser(userId);
         _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId)).ReturnsAsync(preference);
 
         var result = await _controller.CreatePreference(request);
@@ -61,10 +58,8 @@ public class PaymentControllerTests
     [Fact]
     public async Task CreatePreference_ServiceThrowsKeyNotFound_ReturnsNotFound()
     {
-        var userId = Guid.NewGuid();
         var request = new CreatePaymentPreferenceRequest { ReservationId = Guid.NewGuid() };
 
-        SetAuthenticatedUser(userId);
         _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(It.IsAny<Guid>())).ThrowsAsync(new KeyNotFoundException("Reservation not found"));
 
         var result = await _controller.CreatePreference(request);
@@ -76,10 +71,8 @@ public class PaymentControllerTests
     [Fact]
     public async Task CreatePreference_ServiceThrowsInvalidOperation_ReturnsBadRequest()
     {
-        var userId = Guid.NewGuid();
         var request = new CreatePaymentPreferenceRequest { ReservationId = Guid.NewGuid() };
 
-        SetAuthenticatedUser(userId);
         _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(It.IsAny<Guid>())).ThrowsAsync(new InvalidOperationException("Reservation expired"));
 
         var result = await _controller.CreatePreference(request);
@@ -153,13 +146,4 @@ public class PaymentControllerTests
         Assert.Equal("PROCESSING_FAILED", value.error);
     }
 
-    private void SetAuthenticatedUser(Guid userId)
-    {
-        var claims = new List<Claim> { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) };
-        var identity = new ClaimsIdentity(claims, "TestAuth");
-        _controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
-        };
-    }
 }
