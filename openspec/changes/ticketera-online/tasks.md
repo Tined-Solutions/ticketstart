@@ -462,8 +462,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Configure redirect to login for unauthenticated access
     - _Requirements: 1.8_
 
-- [ ] 20. Implement authentication components
-  - [ ] 20.1 Create registration component
+- [x] 20. Implement authentication components
+  - [x] 20.1 Create registration component
     - Build registration form with email, password, role selection
     - Implement form validation
     - Call POST /api/auth/register endpoint
@@ -472,7 +472,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Display error messages
     - _Requirements: 1.2, 1.7_
 
-  - [ ] 20.2 Create login component
+  - [x] 20.2 Create login component
     - Build login form with email and password
     - Implement form validation
     - Call POST /api/auth/login endpoint
@@ -481,7 +481,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Display error messages
     - _Requirements: 1.3, 1.4, 1.7, 1.8_
 
-  - [ ]* 20.3 Write unit tests for authentication components
+  - [x]* 20.3 Write unit tests for authentication components
     - Test form validation
     - Test successful login/registration flows
     - Test error handling and display

@@ -879,3 +879,74 @@ Focused 4R re-review (R1 + R4 lenses minimum) on the new `HEAD` commit. If PASS,
 ### Next Recommended Phase
 
 Task 20 — implement authentication components (login and registration forms with validation and API calls).
+
+---
+
+## Task 20: Implement authentication components
+
+### Completed Tasks
+
+- [x] 20.1 Create registration component
+- [x] 20.2 Create login component
+- [x] 20.3 Write unit tests for authentication components
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/Register.jsx` | Modified | Replaced placeholder with full registration form: name, email, password, confirm password, role selection (Organizador / Staff). Includes client-side validation, loading state, API error display, and role-based redirect after successful registration. |
+| `frontend/src/pages/Login.jsx` | Modified | Replaced placeholder with full login form: email and password. Includes client-side validation, loading state, API error display, and role-based redirect after successful login. |
+| `frontend/package.json` | Modified | Added `test` script and dev dependencies: `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `jsdom`. |
+| `frontend/package-lock.json` | Modified | Lockfile updated with testing dependencies. |
+| `frontend/vite.config.js` | Modified | Added Vitest configuration with `globals: true`, `environment: 'jsdom'`, and `setupFiles: ['./src/test/setup.js']`. |
+| `frontend/src/test/setup.js` | Created | Imports `@testing-library/jest-dom` matchers. |
+| `frontend/src/pages/Register.test.jsx` | Created | Unit tests for registration form validation, successful registration flow for Organizador and Staff, API error handling, loading state, and navigation. |
+| `frontend/src/pages/Login.test.jsx` | Created | Unit tests for login form validation, successful login flow for Organizador, Staff, and Admin, API error handling (including 401 fallback), loading state, and navigation. |
+
+### Dependencies Installed
+
+- `vitest@^4.1.10`
+- `@testing-library/react@^16.3.0`
+- `@testing-library/jest-dom@^6.8.4`
+- `@testing-library/user-event@^14.6.1`
+- `jsdom@^26.1.0`
+
+### Test Summary
+
+- **Frontend test files**: 2
+- **Frontend tests passing**: 20/20
+- **Backend tests passing**: 333 (unchanged)
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task. Tests were written alongside implementation (standard development practices).
+
+| Task | Test File | Layer | Tests | Status |
+|------|-----------|-------|-------|--------|
+| 20.1 | `src/pages/Register.test.jsx` | Unit | 11/11 | Passed |
+| 20.2 | `src/pages/Login.test.jsx` | Unit | 9/9 | Passed |
+
+### Deviations from Design
+
+1. **Confirm password field added to registration form**: The task specification explicitly requires a confirm password field with matching validation, even though the design.md only mentions "email, password, role selection" for the registration form. This deviation is task-driven.
+2. **Admin role not self-selectable**: The role dropdown only offers "Organizador" and "Staff"; "Admin" is excluded as specified in the task because admin accounts are created by other admins.
+3. **Redirect fallback to `/`**: If a successful login/register returns an unexpected role, the fallback redirect is `/`. This is defensive and not explicitly required by the task.
+
+### Issues Found
+
+- None. `npm run lint`, `npm run build`, and `npm test` all pass.
+
+### Verification
+
+- `npm install --save-dev vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom`: completed successfully.
+- `npm run lint`: passes with no errors.
+- `npm run build`: production build succeeds.
+- `npm test`: 20/20 frontend tests pass.
+
+### Commits
+
+- `feat(frontend): implementa login, registro y tests de auth — Task 20`
+
+### Next Recommended Phase
+
+Task 21 — implement event catalog and browsing components.
