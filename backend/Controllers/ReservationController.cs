@@ -56,7 +56,8 @@ public class ReservationController : ControllerBase
                 TicketTypeId = reservation.TicketTypeId,
                 Quantity = reservation.Quantity,
                 ExpiresAt = reservation.ExpiresAt,
-                Status = reservation.Status.ToString()
+                Status = reservation.Status.ToString(),
+                Token = _reservationService.GenerateReservationToken(reservation.Id)
             };
 
             _logger.LogInformation("Reservation {ReservationId} created successfully for user {UserId}",

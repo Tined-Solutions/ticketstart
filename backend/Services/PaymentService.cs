@@ -1,9 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 
 namespace TicketeraOnline.Api.Services;
@@ -16,6 +15,7 @@ public class PaymentService : IPaymentService
     private readonly ApplicationDbContext _context;
     private readonly IMercadoPagoClient _mercadoPagoClient;
     private readonly MercadoPagoOptions _options;
+    private readonly ReservationTokenOptions _tokenOptions;
     private readonly ITicketService _ticketService;
     private readonly ILogger<PaymentService> _logger;
 
@@ -23,20 +23,39 @@ public class PaymentService : IPaymentService
         ApplicationDbContext context,
         IMercadoPagoClient mercadoPagoClient,
         IOptions<MercadoPagoOptions> options,
+        IOptions<ReservationTokenOptions> tokenOptions,
         ITicketService ticketService,
         ILogger<PaymentService> logger)
     {
         _context = context;
         _mercadoPagoClient = mercadoPagoClient;
         _options = options.Value;
+        _tokenOptions = tokenOptions.Value;
         _ticketService = ticketService;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async Task<PaymentPreference> CreatePaymentPreferenceAsync(Guid reservationId)
+    public async Task<PaymentPreference> CreatePaymentPreferenceAsync(Guid reservationId, string token)
     {
         _logger.LogInformation("Creating payment preference for reservation {ReservationId}", reservationId);
+
+        if (string.IsNullOrEmpty(_tokenOptions.TokenSecretKey))
+        {
+            throw new InvalidOperationException("Reservation:TokenSecretKey is not configured");
+        }
+
+        if (string.IsNullOrEmpty(token))
+        {
+            _logger.LogWarning("Missing reservation token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        if (!HmacHelper.ValidateHmacSha256(reservationId.ToString(), _tokenOptions.TokenSecretKey, token))
+        {
+            _logger.LogWarning("Invalid reservation token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
 
         var reservation = await _context.Reservations
             .Include(r => r.TicketType)
@@ -260,19 +279,6 @@ public class PaymentService : IPaymentService
     /// </summary>
     public static bool ValidateWebhookSignature(string payload, string signature, string secret)
     {
-        if (string.IsNullOrEmpty(payload) || string.IsNullOrEmpty(signature) || string.IsNullOrEmpty(secret))
-            return false;
-
-        var expected = ComputeHmacSha256(payload, secret);
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(expected),
-            Encoding.UTF8.GetBytes(signature));
-    }
-
-    private static string ComputeHmacSha256(string data, string key)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        return HmacHelper.ValidateHmacSha256(payload, secret, signature);
     }
 }

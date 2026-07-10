@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -26,6 +27,8 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole());
         
         var serviceProvider = services.BuildServiceProvider();
@@ -56,6 +59,8 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole());
         
         var serviceProvider = services.BuildServiceProvider();
@@ -87,6 +92,8 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -125,6 +132,8 @@ public class ReservationExpirationServiceTests
             options.UseInMemoryDatabase(dbName)
                 .ConfigureWarnings(x => x.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -259,6 +268,8 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -293,6 +304,8 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase(dbName));
         services.AddScoped<IReservationService, ReservationService>();
+        services.Configure<ReservationTokenOptions>(options =>
+            options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();

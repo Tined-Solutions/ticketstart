@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using QRCoder;
-using System.Security.Cryptography;
 using System.Text;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 
 namespace TicketeraOnline.Api.Services;
@@ -117,7 +117,7 @@ public class TicketService : ITicketService
         var dataToSign = $"{ticketId}:{timestamp}";
 
         // Generate HMAC-SHA256 signature
-        var signature = ComputeHmacSha256(dataToSign, _hmacSecretKey);
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, _hmacSecretKey);
 
         // Format: {ticketId}:{timestamp}:{signature}
         var qrCodeData = $"{dataToSign}:{signature}";
@@ -198,13 +198,8 @@ public class TicketService : ITicketService
             // Reconstruct data that was signed
             var dataToVerify = $"{ticketIdStr}:{timestampStr}";
 
-            // Compute expected signature
-            var expectedSignature = ComputeHmacSha256(dataToVerify, _hmacSecretKey);
-
             // Compare signatures (constant-time comparison to prevent timing attacks)
-            var isValid = CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(expectedSignature),
-                Encoding.UTF8.GetBytes(providedSignature));
+            var isValid = HmacHelper.ValidateHmacSha256(dataToVerify, _hmacSecretKey, providedSignature);
 
             if (!isValid)
             {
@@ -350,18 +345,4 @@ public class TicketService : ITicketService
         return tickets;
     }
 
-    /// <summary>
-    /// Computes HMAC-SHA256 signature for the given data.
-    /// </summary>
-    private string ComputeHmacSha256(string data, string key)
-    {
-        var keyBytes = Encoding.UTF8.GetBytes(key);
-        var dataBytes = Encoding.UTF8.GetBytes(data);
-
-        using var hmac = new HMACSHA256(keyBytes);
-        var hashBytes = hmac.ComputeHash(dataBytes);
-
-        // Convert to hexadecimal string
-        return BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
-    }
 }

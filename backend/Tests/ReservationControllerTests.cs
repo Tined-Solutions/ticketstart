@@ -25,12 +25,17 @@ public class ReservationControllerTests
         _mockReservationService = new Mock<IReservationService>();
         _mockLogger = new Mock<ILogger<ReservationController>>();
         _controller = new ReservationController(_mockReservationService.Object, _mockLogger.Object);
-        
+
         // Setup default HttpContext for unauthenticated requests
         _controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()
         };
+
+        // Setup default token generation for any reservation
+        _mockReservationService
+            .Setup(s => s.GenerateReservationToken(It.IsAny<Guid>()))
+            .Returns((Guid id) => $"test-token-{id}");
     }
 
     #region CreateReservation Tests
@@ -78,6 +83,48 @@ public class ReservationControllerTests
         Assert.Equal(reservation.Quantity, response.Quantity);
         Assert.Equal(reservation.ExpiresAt, response.ExpiresAt);
         Assert.Equal("Active", response.Status);
+    }
+
+    [Fact]
+    public async Task CreateReservation_ResponseIncludesReservationToken()
+    {
+        // Arrange
+        var request = new CreateReservationRequest
+        {
+            EventId = Guid.NewGuid(),
+            TicketTypeId = Guid.NewGuid(),
+            Quantity = 2,
+            PurchaserDNI = "12345678"
+        };
+
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = request.EventId,
+            TicketTypeId = request.TicketTypeId,
+            Quantity = request.Quantity,
+            PurchaserDNI = request.PurchaserDNI,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var expectedToken = "reservation-token-abc123";
+        _mockReservationService
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI))
+            .ReturnsAsync(reservation);
+        _mockReservationService
+            .Setup(s => s.GenerateReservationToken(reservation.Id))
+            .Returns(expectedToken);
+
+        // Act
+        var result = await _controller.CreateReservation(request);
+
+        // Assert
+        var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+        var response = Assert.IsType<ReservationResponse>(createdResult.Value);
+        Assert.Equal(expectedToken, response.Token);
+        _mockReservationService.Verify(s => s.GenerateReservationToken(reservation.Id), Times.Once);
     }
 
     [Fact]

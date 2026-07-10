@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -29,7 +30,11 @@ public class ReservationServiceTests : IDisposable
 
         _context = new ApplicationDbContext(options);
         _logger = new TestLogger<ReservationService>();
-        _reservationService = new ReservationService(_context, _logger);
+        var tokenOptions = Options.Create(new ReservationTokenOptions
+        {
+            TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
+        });
+        _reservationService = new ReservationService(_context, _logger, tokenOptions);
     }
 
     public void Dispose()
@@ -85,6 +90,37 @@ public class ReservationServiceTests : IDisposable
     #endregion
 
     #region CreateReservationAsync Tests
+
+    [Fact]
+    public void GenerateReservationToken_WithSameId_ReturnsConsistentToken()
+    {
+        // Arrange
+        var reservationId = Guid.NewGuid();
+
+        // Act
+        var token1 = _reservationService.GenerateReservationToken(reservationId);
+        var token2 = _reservationService.GenerateReservationToken(reservationId);
+
+        // Assert
+        Assert.NotNull(token1);
+        Assert.NotEmpty(token1);
+        Assert.Equal(token1, token2);
+    }
+
+    [Fact]
+    public void GenerateReservationToken_DifferentIds_ReturnsDifferentTokens()
+    {
+        // Arrange
+        var reservationId1 = Guid.NewGuid();
+        var reservationId2 = Guid.NewGuid();
+
+        // Act
+        var token1 = _reservationService.GenerateReservationToken(reservationId1);
+        var token2 = _reservationService.GenerateReservationToken(reservationId2);
+
+        // Assert
+        Assert.NotEqual(token1, token2);
+    }
 
     [Fact]
     public async Task CreateReservationAsync_WithValidData_CreatesReservationWith10MinuteExpiration()

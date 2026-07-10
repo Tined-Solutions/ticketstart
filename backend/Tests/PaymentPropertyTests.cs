@@ -23,6 +23,7 @@ public class PaymentPropertyTests : IDisposable
     private readonly PaymentService _paymentService;
     private readonly TicketService _ticketService;
     private readonly IOptions<MercadoPagoOptions> _options;
+    private readonly IOptions<ReservationTokenOptions> _tokenOptions;
 
     public PaymentPropertyTests()
     {
@@ -39,6 +40,10 @@ public class PaymentPropertyTests : IDisposable
             AccessToken = "test-access-token",
             WebhookSecret = "test-webhook-secret-min-32-characters-long"
         });
+        _tokenOptions = Options.Create(new ReservationTokenOptions
+        {
+            TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
+        });
 
         var ticketConfig = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["QRCode:HmacSecretKey"] = "test-hmac-secret-key-minimum-32-characters-long-for-security" })
@@ -51,6 +56,7 @@ public class PaymentPropertyTests : IDisposable
             _context,
             _mockMpClient.Object,
             _options,
+            _tokenOptions,
             _ticketService,
             _mockLogger.Object);
     }
@@ -138,7 +144,8 @@ public class PaymentPropertyTests : IDisposable
                 InitPoint = "https://mp.test/checkout/pref-123"
             });
 
-        var result = await _paymentService.CreatePaymentPreferenceAsync(reservation.Id);
+        var token = GenerateReservationToken(reservation.Id);
+        var result = await _paymentService.CreatePaymentPreferenceAsync(reservation.Id, token);
 
         Assert.NotNull(result);
         Assert.Equal("pref-123", result.PreferenceId);
@@ -157,10 +164,35 @@ public class PaymentPropertyTests : IDisposable
     {
         var (_, _, _, reservation) = await SetupReservationAsync(expired: true);
 
+        var token = GenerateReservationToken(reservation.Id);
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _paymentService.CreatePaymentPreferenceAsync(reservation.Id));
+            () => _paymentService.CreatePaymentPreferenceAsync(reservation.Id, token));
 
         Assert.Contains("active", exception.Message, StringComparison.OrdinalIgnoreCase);
+        _mockMpClient.Verify(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Property14_CreatePreference_WithInvalidToken_ReturnsUnauthorized()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync();
+
+        var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => _paymentService.CreatePaymentPreferenceAsync(reservation.Id, "invalid-token"));
+
+        Assert.Contains("Invalid reservation token", exception.Message, StringComparison.OrdinalIgnoreCase);
+        _mockMpClient.Verify(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Property14_CreatePreference_WithMissingToken_ReturnsUnauthorized()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync();
+
+        var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => _paymentService.CreatePaymentPreferenceAsync(reservation.Id, string.Empty));
+
+        Assert.Contains("Invalid reservation token", exception.Message, StringComparison.OrdinalIgnoreCase);
         _mockMpClient.Verify(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -181,7 +213,8 @@ public class PaymentPropertyTests : IDisposable
                 InitPoint = "https://mp.test/checkout/pref-123"
             });
 
-        var preference = await _paymentService.CreatePaymentPreferenceAsync(reservation.Id);
+        var token = GenerateReservationToken(reservation.Id);
+        var preference = await _paymentService.CreatePaymentPreferenceAsync(reservation.Id, token);
 
         var payload = new WebhookPayload
         {
@@ -405,5 +438,10 @@ public class PaymentPropertyTests : IDisposable
         using var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(key));
         var hash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(data));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private string GenerateReservationToken(Guid reservationId)
+    {
+        return ComputeHmacSha256(reservationId.ToString(), _tokenOptions.Value.TokenSecretKey);
     }
 }

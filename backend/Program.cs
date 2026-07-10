@@ -44,6 +44,9 @@ builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(Resen
 builder.Services.AddHttpClient<IResendClient, ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Configure reservation HMAC token for guest checkout IDOR protection
+builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));
+
 var resendSettings = builder.Configuration.GetSection("Resend");
 var resendApiKey = resendSettings["ApiKey"] ?? throw new InvalidOperationException("Resend ApiKey is not configured");
 if (string.IsNullOrWhiteSpace(resendApiKey))

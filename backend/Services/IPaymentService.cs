@@ -7,11 +7,14 @@ public interface IPaymentService
 {
     /// <summary>
     /// Creates a Mercado Pago payment preference for a reservation.
-    /// Validates: Requirements 5.1, 5.2, 5.3
+    /// Validates the HMAC-SHA256 reservation token before creating the preference.
+    /// Validates: Requirements 5.1, 5.2, 5.3, IDOR protection for guest checkout
     /// </summary>
     /// <param name="reservationId">Active reservation identifier</param>
+    /// <param name="token">HMAC-SHA256 reservation token</param>
     /// <returns>Checkout URL and preference identifier</returns>
-    Task<PaymentPreference> CreatePaymentPreferenceAsync(Guid reservationId);
+    /// <exception cref="UnauthorizedAccessException">Thrown when the reservation token is missing or invalid</exception>
+    Task<PaymentPreference> CreatePaymentPreferenceAsync(Guid reservationId, string token);
 
     /// <summary>
     /// Processes a Mercado Pago webhook notification.
@@ -92,4 +95,5 @@ public class RefundResult
 public class CreatePaymentPreferenceRequest
 {
     public Guid ReservationId { get; set; }
+    public string Token { get; set; } = string.Empty;
 }

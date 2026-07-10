@@ -65,6 +65,15 @@ public interface IReservationService
     /// <param name="reservationId">Reservation identifier</param>
     /// <returns>Reservation if found, null otherwise</returns>
     Task<Reservation?> GetReservationByIdAsync(Guid reservationId);
+
+    /// <summary>
+    /// Generates an HMAC-SHA256 token for a reservation.
+    /// The token proves the caller created the reservation without requiring authentication.
+    /// Validates: IDOR protection for guest checkout.
+    /// </summary>
+    /// <param name="reservationId">Reservation identifier</param>
+    /// <returns>HMAC-SHA256 token</returns>
+    string GenerateReservationToken(Guid reservationId);
 }
 
 /// <summary>
@@ -89,6 +98,7 @@ public class ReservationResponse
     public int Quantity { get; set; }
     public DateTime ExpiresAt { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string Token { get; set; } = string.Empty;
     public EventResponse? Event { get; set; }
     public TicketTypeResponse? TicketType { get; set; }
 }

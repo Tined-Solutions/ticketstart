@@ -140,6 +140,7 @@ export default function Checkout() {
     try {
       const response = await apiClient.post('/payments/create-preference', {
         reservationId: reservation.id,
+        token: reservation.token,
       })
       const { checkoutUrl } = response.data
       window.location.href = checkoutUrl

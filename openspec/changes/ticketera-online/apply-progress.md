@@ -1142,3 +1142,114 @@ None — implementation matches the requested Opción D behavior and guest-check
 ### Next Recommended Phase
 
 Orchestrator review and `sdd-verify` for the Opción D fix slice.
+
+---
+
+## IDOR Fix — HMAC Token
+
+### Summary
+
+Fixed the IDOR vulnerability in `POST /api/payments/create-preference` by requiring an HMAC-SHA256 reservation token alongside the reservation identifier. The token is generated when a reservation is created and validated before creating a Mercado Pago preference. Missing or invalid tokens now return `401 Unauthorized`.
+
+### Completed Tasks
+
+- [x] Backend: create shared `HmacHelper` for HMAC-SHA256 signing and constant-time validation.
+- [x] Backend: create `ReservationTokenOptions` and register it in `Program.cs`.
+- [x] Backend: add `Reservation:TokenSecretKey` to `appsettings.json`.
+- [x] Backend: add `Token` property to `ReservationResponse` DTO.
+- [x] Backend: add `GenerateReservationToken` to `IReservationService` and implement in `ReservationService`.
+- [x] Backend: return token in `POST /api/reservations` response from `ReservationController`.
+- [x] Backend: add `Token` property to `CreatePaymentPreferenceRequest` DTO.
+- [x] Backend: update `IPaymentService.CreatePaymentPreferenceAsync` signature to accept token.
+- [x] Backend: validate reservation token in `PaymentService.CreatePaymentPreferenceAsync` before loading reservation.
+- [x] Backend: enforce token presence and catch `UnauthorizedAccessException` in `PaymentController.CreatePreference`.
+- [x] Backend: refactor `PaymentService` and `TicketService` to use shared `HmacHelper`.
+- [x] Backend tests (TDD RED/GREEN):
+  - `PaymentControllerTests`: missing token returns 401, invalid token returns 401, valid token returns 200.
+  - `ReservationControllerTests`: reservation response includes token.
+  - `ReservationServiceTests`: token generation is deterministic and unique per reservation.
+  - `PaymentPropertyTests`: invalid/missing token throws `UnauthorizedAccessException`; valid token allows preference creation.
+- [x] Frontend: `Checkout.jsx` captures `response.token` and sends `{ reservationId, token }` to `create-preference`.
+- [x] OpenSpec: create `openspec/changes/ticketera-online/decisions/guest-checkout-architecture.md`.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Helpers/HmacHelper.cs` | Created | Shared HMAC-SHA256 signing and constant-time validation helper. |
+| `backend/Services/ReservationTokenOptions.cs` | Created | Typed configuration options for the reservation token secret. |
+| `backend/Services/IReservationService.cs` | Modified | Added `GenerateReservationToken`; added `Token` to `ReservationResponse`. |
+| `backend/Services/ReservationService.cs` | Modified | Injects `IOptions<ReservationTokenOptions>`; implements `GenerateReservationToken`. |
+| `backend/Services/IPaymentService.cs` | Modified | Added `Token` to `CreatePaymentPreferenceRequest`; updated `CreatePaymentPreferenceAsync` signature. |
+| `backend/Services/PaymentService.cs` | Modified | Validates reservation token; uses shared `HmacHelper`; refactored webhook signature validation. |
+| `backend/Services/TicketService.cs` | Modified | Uses shared `HmacHelper` for QR code signing and verification. |
+| `backend/Controllers/ReservationController.cs` | Modified | Sets `response.Token` from generated reservation token. |
+| `backend/Controllers/PaymentController.cs` | Modified | Enforces token presence; catches `UnauthorizedAccessException` and returns 401. |
+| `backend/Program.cs` | Modified | Registers `ReservationTokenOptions`. |
+| `backend/appsettings.json` | Modified | Added `Reservation:TokenSecretKey` placeholder. |
+| `backend/Tests/PaymentControllerTests.cs` | Modified | Added 401 tests; updated existing tests to include token. |
+| `backend/Tests/ReservationControllerTests.cs` | Modified | Added token presence test; configured default token mock. |
+| `backend/Tests/ReservationServiceTests.cs` | Modified | Added token generation tests; updated constructor for options. |
+| `backend/Tests/ReservationPropertyTests.cs` | Modified | Updated constructor for options. |
+| `backend/Tests/ReservationExpirationServiceTests.cs` | Modified | Registered `ReservationTokenOptions` in DI for all tests. |
+| `backend/Tests/PaymentPropertyTests.cs` | Modified | Added token options, helper, invalid/missing token tests; updated all preference calls. |
+| `frontend/src/pages/Checkout.jsx` | Modified | Sends `token` with `create-preference` request. |
+| `openspec/changes/ticketera-online/decisions/guest-checkout-architecture.md` | Created | Architecture decision record for guest checkout and HMAC token IDOR fix. |
+
+### TDD Cycle Evidence
+
+Strict TDD was active for the backend changes.
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| Token generation | `Tests/ReservationServiceTests.cs` | Unit | 339/339 (flaky excluded) | Wrote deterministic + unique token tests; failed due to missing options injection | Added options + `GenerateReservationToken` | Extracted `HmacHelper` |
+| Response token | `Tests/ReservationControllerTests.cs` | Unit | 339/339 (flaky excluded) | Wrote token presence test; failed due to missing `Token` property and service method | Added `Token` to DTO and `GenerateReservationToken` to interface/service | Clean |
+| Missing token 401 | `Tests/PaymentControllerTests.cs` | Unit | 339/339 (flaky excluded) | Wrote 401 test; failed because controller did not check token | Added token null/empty check | Clean |
+| Invalid token 401 | `Tests/PaymentControllerTests.cs` | Unit | 339/339 (flaky excluded) | Wrote 401 test; failed because service did not validate token | Added `UnauthorizedAccessException` path in service + controller catch | Clean |
+| Valid token flow | `Tests/PaymentControllerTests.cs`, `Tests/PaymentPropertyTests.cs` | Unit | 339/339 (flaky excluded) | Updated existing tests with token; failed due to signature mismatch | Updated service signature and token validation | Clean |
+| Service token validation | `Tests/PaymentPropertyTests.cs` | Unit | 339/339 (flaky excluded) | Wrote invalid/missing token tests; failed before service validation | Implemented token validation in `PaymentService` | Clean |
+
+### Test Summary
+
+- **Backend tests passing**: 339/340
+  - Pre-existing flaky failure: `VerifyDatabaseSchema.Database_Should_Have_All_Tables` (live Supabase host unreachable from this environment).
+- **Frontend tests passing**: 36/36
+- **Frontend lint**: passes
+- **Frontend build**: passes
+
+### Deviations from Design
+
+- Added a dedicated `Reservation:TokenSecretKey` configuration section instead of reusing `QRCode:HmacSecretKey`. This keeps the two HMAC use-cases cryptographically separated and is more appropriate for a security fix, at the cost of one additional configuration key.
+- Token signs only the reservation identifier (not `ExpiresAt`). This is sufficient because `create-preference` already validates that the reservation is active and not expired. Adding `ExpiresAt` to the signed payload would complicate token replay testing without improving security for this flow.
+
+### Issues Found
+
+- `VerifyDatabaseSchema` continues to fail due to live Supabase connectivity; this is a pre-existing environmental/flaky test unrelated to this fix.
+
+### Verification
+
+- `dotnet test --filter FullyQualifiedName~CreatePreference`: 9/9 passing.
+- `dotnet test --filter FullyQualifiedName~Token`: 6/6 passing.
+- `dotnet test --filter FullyQualifiedName~GenerateReservationToken`: 2/2 passing.
+- `dotnet test` full suite: 339 passing, 1 pre-existing flaky failure.
+- `npm test`: 36/36 frontend tests pass.
+- `npm run lint`: passes.
+- `npm run build`: production build succeeds.
+
+### Security Debt (post-presentation)
+
+Carried forward from the guest-checkout architecture decision and prior sessions:
+
+- Rate limiting on anonymous endpoints (`/api/reservations`, `/api/payments/create-preference`).
+- Audit attribution for guest actions (currently logs as `guest@ticketera.com`).
+- Purchaser email is collected in the frontend but not persisted in the reservation entity.
+- `back_urls` not configured in Mercado Pago preference.
+- Supabase credential leak in git history requires rotation + `git filter-repo`.
+
+### Commit
+
+- `fix(security): HMAC token en reservation + create-preference IDOR fix — guest checkout`
+
+### Next Recommended Phase
+
+Orchestrator review, then `sdd-verify` for this IDOR fix slice.

@@ -37,14 +37,14 @@ public class PaymentControllerTests
     public async Task CreatePreference_AnonymousUser_ReturnsOkWithPreference()
     {
         var reservationId = Guid.NewGuid();
-        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId };
+        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId, Token = "valid-token" };
         var preference = new PaymentPreference
         {
             CheckoutUrl = "https://mp.test/checkout/pref-123",
             PreferenceId = "pref-123"
         };
 
-        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId)).ReturnsAsync(preference);
+        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId, request.Token)).ReturnsAsync(preference);
 
         var result = await _controller.CreatePreference(request);
 
@@ -56,11 +56,38 @@ public class PaymentControllerTests
     }
 
     [Fact]
-    public async Task CreatePreference_ServiceThrowsKeyNotFound_ReturnsNotFound()
+    public async Task CreatePreference_WithoutToken_ReturnsUnauthorized()
     {
         var request = new CreatePaymentPreferenceRequest { ReservationId = Guid.NewGuid() };
 
-        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(It.IsAny<Guid>())).ThrowsAsync(new KeyNotFoundException("Reservation not found"));
+        var result = await _controller.CreatePreference(request);
+
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.Equal(401, unauthorizedResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreatePreference_WithInvalidToken_ReturnsUnauthorized()
+    {
+        var reservationId = Guid.NewGuid();
+        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId, Token = "invalid-token" };
+
+        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId, request.Token))
+            .ThrowsAsync(new UnauthorizedAccessException("Invalid reservation token"));
+
+        var result = await _controller.CreatePreference(request);
+
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.Equal(401, unauthorizedResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreatePreference_ServiceThrowsKeyNotFound_ReturnsNotFound()
+    {
+        var reservationId = Guid.NewGuid();
+        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId, Token = "valid-token" };
+
+        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId, request.Token)).ThrowsAsync(new KeyNotFoundException("Reservation not found"));
 
         var result = await _controller.CreatePreference(request);
 
@@ -71,9 +98,10 @@ public class PaymentControllerTests
     [Fact]
     public async Task CreatePreference_ServiceThrowsInvalidOperation_ReturnsBadRequest()
     {
-        var request = new CreatePaymentPreferenceRequest { ReservationId = Guid.NewGuid() };
+        var reservationId = Guid.NewGuid();
+        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId, Token = "valid-token" };
 
-        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(It.IsAny<Guid>())).ThrowsAsync(new InvalidOperationException("Reservation expired"));
+        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId, request.Token)).ThrowsAsync(new InvalidOperationException("Reservation expired"));
 
         var result = await _controller.CreatePreference(request);
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -31,7 +32,12 @@ public class ReservationPropertyTests : IDisposable
         var logger = LoggerFactory.Create(builder => builder.AddConsole())
             .CreateLogger<ReservationService>();
 
-        _reservationService = new ReservationService(_context, logger);
+        var tokenOptions = Options.Create(new ReservationTokenOptions
+        {
+            TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
+        });
+
+        _reservationService = new ReservationService(_context, logger, tokenOptions);
     }
 
     public void Dispose()

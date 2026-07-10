@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 
 namespace TicketeraOnline.Api.Services;
@@ -13,14 +15,19 @@ public class ReservationService : IReservationService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<ReservationService> _logger;
+    private readonly ReservationTokenOptions _tokenOptions;
 
     // Reservation expiration time: 10 minutes
     private const int ReservationExpirationMinutes = 10;
 
-    public ReservationService(ApplicationDbContext context, ILogger<ReservationService> logger)
+    public ReservationService(
+        ApplicationDbContext context,
+        ILogger<ReservationService> logger,
+        IOptions<ReservationTokenOptions> tokenOptions)
     {
         _context = context;
         _logger = logger;
+        _tokenOptions = tokenOptions.Value;
     }
 
     /// <summary>
@@ -328,5 +335,23 @@ public class ReservationService : IReservationService
         }
 
         return reservation;
+    }
+
+    /// <summary>
+    /// Generates an HMAC-SHA256 token for a reservation.
+    /// The token proves the caller created the reservation without requiring authentication.
+    /// </summary>
+    public string GenerateReservationToken(Guid reservationId)
+    {
+        if (string.IsNullOrEmpty(_tokenOptions.TokenSecretKey))
+        {
+            throw new InvalidOperationException("Reservation:TokenSecretKey is not configured");
+        }
+
+        var token = HmacHelper.ComputeHmacSha256(reservationId.ToString(), _tokenOptions.TokenSecretKey);
+
+        _logger.LogDebug("Generated reservation token for reservation {ReservationId}", reservationId);
+
+        return token;
     }
 }

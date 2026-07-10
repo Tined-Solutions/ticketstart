@@ -41,9 +41,15 @@ public class PaymentController : TicketeraControllerBase
             return BadRequest(new { error = "ReservationId is required" });
         }
 
+        if (string.IsNullOrEmpty(request.Token))
+        {
+            _logger.LogWarning("Missing reservation token for reservation {ReservationId}", request.ReservationId);
+            return Unauthorized(new { error = "Invalid reservation token" });
+        }
+
         try
         {
-            var preference = await _paymentService.CreatePaymentPreferenceAsync(request.ReservationId);
+            var preference = await _paymentService.CreatePaymentPreferenceAsync(request.ReservationId, request.Token);
 
             _logger.LogInformation(
                 "Created preference {PreferenceId} for reservation {ReservationId}",
@@ -54,6 +60,11 @@ public class PaymentController : TicketeraControllerBase
                 checkoutUrl = preference.CheckoutUrl,
                 preferenceId = preference.PreferenceId
             });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Invalid reservation token for reservation {ReservationId}", request.ReservationId);
+            return Unauthorized(new { error = "Invalid reservation token" });
         }
         catch (KeyNotFoundException ex)
         {
