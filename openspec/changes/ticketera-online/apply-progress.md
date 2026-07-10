@@ -789,3 +789,93 @@ Focused 4R re-review (R1 + R4 lenses minimum) on the new `HEAD` commit. If PASS,
 
 - **R3-NF-3**: `RedactLongSecretLikeStrings` over-redacts 33+ char base64 (QR data, blob IDs, encoded reservation blobs). Add a `LogRedactorTests` `[Theory]` with 40+ char legitimate base64 strings and refine the regex if it fails.
 - **R2 advisory debt** and **Supabase credential leak** remain tracked separately.
+
+---
+
+## Task 19: Set up frontend React application
+
+### Completed Tasks
+
+- [x] 19.1 Initialize React project and install dependencies
+- [x] 19.2 Configure API client and authentication
+- [x] 19.3 Create routing structure
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/package.json` | Modified | Added `axios`, `html5-qrcode`, `qrcode.react`, `react-router-dom` dependencies. |
+| `frontend/package-lock.json` | Modified | Lockfile updated with new dependencies. |
+| `frontend/vite.config.js` | Modified | Added Vite dev-server proxy for `/api/*` to `http://localhost:5029` (avoids CORS during local development). |
+| `frontend/src/api/client.js` | Created | Axios instance with `baseURL` from `VITE_API_BASE_URL`; request interceptor attaches `Authorization: Bearer {token}`; response interceptor handles 401 by clearing session and redirecting to `/login`. |
+| `frontend/src/context/auth.js` | Created | `AuthContext` and `useAuth` hook (shared non-component exports kept separate to satisfy `react-refresh/only-export-components`). |
+| `frontend/src/context/AuthProvider.jsx` | Created | `AuthProvider` component managing current user, JWT token, `login()`, `register()`, and `logout()`; stores token/user in `localStorage` and rehydrates on startup without triggering cascading renders. |
+| `frontend/src/components/ProtectedRoute.jsx` | Created | Redirects unauthenticated users to `/login` preserving the attempted location. |
+| `frontend/src/components/RoleGuard.jsx` | Created | Redirects unauthorized users to `/` (or configurable fallback) when role is not in `allowedRoles`. |
+| `frontend/src/App.jsx` | Modified | Replaced scaffolded demo app with React Router route tree covering all planned pages. |
+| `frontend/src/main.jsx` | Modified | Wrapped application in `BrowserRouter` and `AuthProvider`. |
+| `frontend/src/pages/Home.jsx` | Created | Placeholder for public home/event catalog. |
+| `frontend/src/pages/Login.jsx` | Created | Placeholder for login page. |
+| `frontend/src/pages/Register.jsx` | Created | Placeholder for registration page. |
+| `frontend/src/pages/EventList.jsx` | Created | Placeholder for public event listing. |
+| `frontend/src/pages/EventDetail.jsx` | Created | Placeholder for public event detail. |
+| `frontend/src/pages/Checkout.jsx` | Created | Placeholder for authenticated checkout/reservation flow. |
+| `frontend/src/pages/CheckoutReturn.jsx` | Created | Placeholder for Mercado Pago payment return handler. |
+| `frontend/src/pages/TicketLookup.jsx` | Created | Placeholder for public ticket lookup by DNI/code. |
+| `frontend/src/pages/StaffScan.jsx` | Created | Placeholder for Staff/Admin QR scanner page. |
+| `frontend/src/pages/OrganizerDashboard.jsx` | Created | Placeholder for Organizer/Admin dashboard. |
+| `frontend/src/pages/OrganizerEventNew.jsx` | Created | Placeholder for Organizer/Admin event creation form. |
+| `frontend/src/pages/OrganizerEventDetail.jsx` | Created | Placeholder for Organizer/Admin event management/metrics. |
+| `frontend/src/pages/AdminPanel.jsx` | Created | Placeholder for Admin-only panel. |
+| `frontend/src/pages/NotFound.jsx` | Created | Placeholder for 404 page. |
+
+### Dependencies Installed
+
+- `react-router-dom@^7.18.1`
+- `axios@^1.18.1`
+- `html5-qrcode@^2.3.8`
+- `qrcode.react@^4.2.0`
+
+### Routes Configured
+
+| Route | Access | Page |
+|-------|--------|------|
+| `/` | Public | Home / event catalog |
+| `/login` | Public | Login |
+| `/register` | Public | Register |
+| `/events` | Public | Event list |
+| `/events/:id` | Public | Event detail |
+| `/checkout` | Authenticated | Checkout |
+| `/checkout/return` | Public | Payment return |
+| `/tickets/lookup` | Public | Ticket lookup |
+| `/staff/scan` | Staff / Admin | QR scanner |
+| `/organizer/dashboard` | Organizador / Admin | Organizer dashboard |
+| `/organizer/events/new` | Organizador / Admin | Create event |
+| `/organizer/events/:id` | Organizador / Admin | Event management |
+| `/admin` | Admin only | Admin panel |
+| `*` | Public | 404 NotFound |
+
+### Deviations from Design / Task Spec
+
+1. **Base URL default**: The code defaults to `/api` in development when `VITE_API_BASE_URL` is not set, so the Vite proxy is actually used and CORS is avoided. `VITE_API_BASE_URL` can override this for staging/production or for direct backend access. This intentionally prioritizes the stated goal of avoiding CORS in dev over the literal "default `http://localhost:5029`" wording.
+2. **No token refresh logic**: Task 19.2 mentions "implement token refresh logic (if applicable)". The backend currently issues single JWTs without a refresh endpoint, so refresh is omitted and the 401 interceptor redirects to login.
+3. **Auth exports split**: `AuthContext` and `useAuth` live in `frontend/src/context/auth.js` while the provider component lives in `AuthProvider.jsx` to satisfy ESLint `react-refresh/only-export-components`.
+4. **Stored user rehydration**: Initial user state is read synchronously via `useState` initializer rather than in an effect, avoiding `react-hooks/set-state-in-effect` warnings and a flash of unauthenticated state.
+
+### Issues Found
+
+- None. `npm run lint` passes and `npm run build` completes successfully.
+
+### Verification
+
+- `npm install react-router-dom axios html5-qrcode qrcode.react` completed successfully.
+- `npm run lint`: passes with no errors.
+- `npm run build`: production build succeeds.
+
+### Commits
+
+- `feat(frontend): instala deps, configura API client, auth context y routing — Task 19`
+
+### Next Recommended Phase
+
+Task 20 — implement authentication components (login and registration forms with validation and API calls).
