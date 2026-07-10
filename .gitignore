@@ -13,5 +13,9 @@ frontend/build/
 .vscode/
 *.log
 
+# Environment-specific config (contains local secrets)
+**/appsettings.Development.json
+**/appsettings.*.local.json
+
 # SDD artifacts
 .atl/
