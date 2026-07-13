@@ -1501,3 +1501,191 @@ Recommended work-unit commits (per `work-unit-commits` skill):
 ### Next Recommended Phase
 
 `sdd-verify` for the Task 25 slice, then continue to Task 26 (organizer dashboard and event management).
+
+---
+
+## Task 26.1: Event creation/edit form component
+
+### Completed Tasks
+
+- [x] 26.1 Create event creation/edit form component
+  - Built shared `EventForm` component supporting create and edit modes
+  - Form fields: name, date (datetime-local), location, description, image upload with preview
+  - Ticket type management: add/remove rows with name, price, quantity
+  - Client-side validation for all required fields and ticket type constraints
+  - Calls `POST /api/events` to create event
+  - Calls `PUT /api/events/{id}` to update event
+  - Calls `POST /api/events/{id}/image` to upload image (non-blocking: warns on failure)
+  - Displays success/error feedback messages
+  - Requirements: 10.1, 10.2, 10.4, 10.5, 3.1
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/components/EventForm.jsx` | Created | Shared form component for create/edit event with ticket type management, image upload, and validation. |
+| `frontend/src/pages/OrganizerEventNew.jsx` | Modified | Replaced placeholder; uses EventForm in create mode, navigates to dashboard on success. |
+| `frontend/src/pages/OrganizerEventDetail.jsx` | Modified | Replaced placeholder; fetches event data via `GET /api/events/:id`, uses EventForm in edit mode with pre-filled data, navigates to dashboard on success. Includes loading and error states. |
+| `frontend/src/components/EventForm.test.jsx` | Created | 19 unit tests: create-mode rendering, ticket type CRUD, validation (required fields, price > 0, positive integer quantity), create API call + onSuccess callback, success/error feedback, image upload flow, image upload warning on failure, image type/size validation, loading/disabled state, edit-mode pre-fill, edit API call, edit success/error feedback. |
+| `frontend/src/index.css` | Modified | Added organizer event form styles: `.organizer-event-page`, `.event-form`, `.feedback-message`, `.ticket-types-section`, `.ticket-type-row`, `.ticket-type-fields`, `.ticket-type-remove`, `.ticket-type-add`, `.form-actions`. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Task 26.1 complete. |
+
+### Test Summary
+
+- **Frontend tests passing**: 110/110 (91 pre-existing + 19 new EventForm tests)
+- **Baseline passing (before Task 26.1)**: 91/91
+- **Net new passing**: +19
+- **Layers used**: Unit (Vitest + jsdom + Testing Library)
+- **Pool**: Default forks pool — all 110 tests pass without pool selection hacks.
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task (only backend is strict TDD). Tests were written alongside implementation matching existing project patterns.
+
+| Task | Test File | Layer | Tests | Status |
+|------|-----------|-------|-------|--------|
+| 26.1 | `src/components/EventForm.test.jsx` | Unit | 19/19 | Passed |
+
+### Component Architecture
+
+**EventForm** supports two modes:
+- **create mode**: Empty form → `POST /api/events` (with ticket types) → optional `POST /api/events/{id}/image` → `onSuccess(eventId)` callback
+- **edit mode**: Pre-filled from `initialData` prop → `PUT /api/events/{id}` (event fields only) → optional `POST /api/events/{id}/image` → `onSuccess(eventId)` callback
+
+**Validation rules:**
+- Name, date, location: required
+- Ticket types: at least one required; each must have name, price > 0, quantity = positive integer
+- Image: JPEG/PNG/WebP only, max 5 MB (validated client-side before submission)
+
+**API calls made by the component:**
+1. `POST /api/events` — creates event with `{ name, date, location, description, ticketTypes: [{ name, price, quantity }] }` (create mode only)
+2. `PUT /api/events/{id}` — updates event with `{ name, date, location, description }` (edit mode only)
+3. `POST /api/events/{id}/image` — uploads image as `multipart/form-data` (both modes, only if file selected; non-blocking)
+
+### Deviations from Design
+
+1. **Ticket types only created on initial POST**: The backend `PUT /api/events/{id}` only accepts event field updates, not ticket type modifications. The edit form preserves existing ticket types as read-only rows; new ticket type management in edit mode would require additional backend support.
+2. **Image upload is non-blocking**: If image upload fails after successful event creation/update, the form shows a warning but still calls `onSuccess`. This matches the task requirement for graceful degradation.
+3. **datetime-local input**: The date picker uses the native `datetime-local` HTML input. Timezone handling is inherent to this input type — values are serialized as ISO strings for the API call.
+4. **`event.target.value = ''` for file input**: Resetting the file input after an invalid file type/size selection preserves the current image preview (or clears it if no previous image existed).
+
+### Issues Found
+
+- None. All 110 frontend tests pass; `npm run lint` passes; `npm run build` succeeds.
+
+### Verification
+
+- `cd frontend && npx vitest run`: 110/110 tests passing across all test files (forks pool).
+- `cd frontend && npx vitest run src/components/EventForm.test.jsx`: 19/19 passing.
+- `npm run lint`: passes (no errors).
+- `npm run build`: production build succeeds.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `feat(frontend): agrega EventForm para crear/editar eventos con tipos de entrada — Task 26.1`
+   - `frontend/src/components/EventForm.jsx`, `frontend/src/pages/OrganizerEventNew.jsx`, `frontend/src/pages/OrganizerEventDetail.jsx`, `frontend/src/index.css`
+2. `test(frontend): agrega tests de EventForm — Task 26.1`
+   - `frontend/src/components/EventForm.test.jsx`
+
+### Next Recommended Phase
+
+Continue to Task 26.2 (organizer dashboard) and Task 26.3 (event detail metrics view).
+
+---
+
+## Task 26.2: Organizer dashboard component
+
+### Completed Tasks
+
+- [x] 26.2 Create organizer dashboard component
+  - Fetch organizer's events and metrics from `GET /api/metrics/organizer`
+  - Display list of events with metrics (tickets sold, revenue, inventory, scans)
+  - Create event button → navigates to `/organizer/events/new`
+  - Edit/delete buttons per event
+  - Delete confirmation dialog with cancel/confirm actions
+  - Calls `DELETE /api/events/{id}` to delete event
+  - Refreshes metrics on page load via `useEffect` + `AbortController`
+  - Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.9, 10.6
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/OrganizerDashboard.jsx` | Modified | Replaced placeholder with full dashboard: fetches `GET /api/metrics/organizer`, displays events in a table with metrics columns (event name, date, tickets sold, revenue, inventory, scanned), create/edit/delete actions, delete confirmation dialog, success/error feedback, loading/empty/error states. |
+| `frontend/src/pages/OrganizerDashboard.test.jsx` | Created | 13 unit tests: renders metrics from API, loading state, error state with retry, empty state with create button, create button navigation, edit button navigation, delete dialog opens, cancel closes dialog, confirm delete sends DELETE and removes row, delete error feedback, zero-value display, currency formatting, create button visible during loading. |
+| `frontend/src/index.css` | Modified | Added dashboard styles: `.organizer-dashboard-page`, `.dashboard-toolbar`, `.dashboard-loading`, `.dashboard-table-container`, `.dashboard-table`, `.dashboard-actions`, `.dashboard-action-btn`, `.button-danger`, `.delete-dialog-overlay`, `.delete-dialog`, `.delete-dialog-actions`. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Task 26.2 complete. |
+
+### Test Summary
+
+- **Frontend tests passing**: 123/123 (110 pre-existing + 13 new OrganizerDashboard tests)
+- **Baseline passing (before Task 26.2)**: 110/110
+- **Net new passing**: +13
+- **Layers used**: Unit (Vitest + jsdom + Testing Library)
+- **Pool**: Default forks pool — all 123 tests pass.
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task (only backend is strict TDD). Tests were written alongside implementation matching existing project patterns.
+
+| Task | Test File | Layer | Tests | Status |
+|------|-----------|-------|-------|--------|
+| 26.2 | `src/pages/OrganizerDashboard.test.jsx` | Unit | 13/13 | Passed |
+
+### Component Architecture
+
+**OrganizerDashboard** renders:
+- **Loading state**: "Cargando metricas..." with create button visible
+- **Error state**: Error message from API with "Reintentar" button
+- **Empty state**: "No tenes eventos creados todavia." with "Crear tu primer evento" button
+- **Data state**: Table with columns: Evento, Fecha, Entradas vendidas, Ingresos, Inventario, Escaneados, Acciones
+  - Each row has Editar (navigates to `/organizer/events/:eventId`) and Eliminar buttons
+  - Edit uses `eventId` from metrics response, not `id`
+
+**Delete flow:**
+1. Click "Eliminar" on a row → `DeleteConfirmationDialog` opens as modal overlay
+2. Confirm → `DELETE /api/events/{eventId}` → on success: row removed from local state, feedback shown
+3. On failure: error feedback shown, row stays, dialog closes
+
+**Currency formatting**: Uses `toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })` for revenue display.
+
+**Date formatting**: Uses `toLocaleDateString('es-AR', { ... })` for event date display.
+
+**API endpoint used**:
+- `GET /api/metrics/organizer` → `[ { id, eventId, eventName, eventDate, ticketsSold, totalRevenue, remainingInventory, ticketsScanned } ]`
+- `DELETE /api/events/{id}` → 204 No Content
+
+### Deviations from Design
+
+1. **Table layout instead of cards**: The dashboard uses an HTML table for the event/metrics list rather than card-based layout. This was chosen because metrics are inherently tabular data (7 columns × N rows) and the table preserves horizontal alignment, making scanning/comparing metrics across events easier than cards would.
+2. **Delete dialog as inline modal**: The confirmation dialog is rendered as a fixed overlay with `role="dialog"` and `aria-modal="true"` rather than using a third-party modal library. This matches the project's zero-extra-dependency approach.
+3. **Optimistic row removal**: On successful delete, the event row is removed from local state immediately rather than re-fetching the entire list. This provides instant feedback and avoids an extra network round-trip. The error path leaves the row in place and shows error feedback.
+4. **Metrics response uses `eventId` not `id` for routing**: The backend `EventMetrics` DTO has both `Id` (metrics record ID) and `EventId` (event identifier). The component correctly uses `eventId` for edit/delete operations.
+
+### Issues Found
+
+- None. All 123 frontend tests pass; `npm run lint` passes; `npm run build` succeeds.
+
+### Verification
+
+- `cd frontend && npm test`: 123/123 tests passing across all 10 test files (forks pool).
+- `cd frontend && npm test -- src/pages/OrganizerDashboard.test.jsx`: 13/13 passing.
+- `npm run lint`: passes (no errors).
+- `npm run build`: production build succeeds.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `feat(frontend): implementa dashboard de organizador con metricas y eliminacion de eventos — Task 26.2`
+   - `frontend/src/pages/OrganizerDashboard.jsx`, `frontend/src/index.css`
+2. `test(frontend): agrega tests del dashboard de organizador — Task 26.2`
+   - `frontend/src/pages/OrganizerDashboard.test.jsx`
+
+### Next Recommended Phase
+
+Continue to Task 26.3 (event detail metrics view) and Task 26.4 (unit tests for organizer dashboard).

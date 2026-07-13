@@ -1,0 +1,299 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import OrganizerDashboard from './OrganizerDashboard.jsx'
+
+const mockNavigate = vi.fn()
+const mockGet = vi.fn()
+const mockDelete = vi.fn()
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}))
+
+vi.mock('../api/client.js', () => ({
+  default: {
+    get: (...args) => mockGet(...args),
+    delete: (...args) => mockDelete(...args),
+  },
+}))
+
+const mockMetrics = [
+  {
+    id: 'metrics-1',
+    eventId: 'event-1',
+    eventName: 'Recital de Rock Nacional',
+    eventDate: '2026-08-15T21:00:00Z',
+    ticketsSold: 120,
+    totalRevenue: 1800000,
+    remainingInventory: 30,
+    ticketsScanned: 45,
+  },
+  {
+    id: 'metrics-2',
+    eventId: 'event-2',
+    eventName: 'Feria de Emprendedores',
+    eventDate: '2026-09-01T14:00:00Z',
+    ticketsSold: 300,
+    totalRevenue: 0,
+    remainingInventory: 200,
+    ticketsScanned: 0,
+  },
+  {
+    id: 'metrics-3',
+    eventId: 'event-3',
+    eventName: 'Workshop de Fotografia',
+    eventDate: '2026-10-10T10:00:00Z',
+    ticketsSold: 0,
+    totalRevenue: 0,
+    remainingInventory: 50,
+    ticketsScanned: 0,
+  },
+]
+
+describe('OrganizerDashboard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockDelete.mockReset()
+    mockNavigate.mockReset()
+  })
+
+  it('renders event metrics from API data', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
+
+    // Check metrics are displayed for first event
+    expect(screen.getByText('120')).toBeInTheDocument()
+    expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument()
+    expect(screen.getByText('30')).toBeInTheDocument()
+    expect(screen.getByText('45')).toBeInTheDocument()
+  })
+
+  it('shows loading state while fetching', () => {
+    mockGet.mockImplementation(() => new Promise(() => {}))
+
+    render(<OrganizerDashboard />)
+
+    expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
+    expect(screen.getByText(/cargando metricas/i)).toBeInTheDocument()
+  })
+
+  it('shows error state with retry button', async () => {
+    mockGet.mockRejectedValue({
+      response: { data: { error: { message: 'Error de conexion' } } },
+    })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/error de conexion/i)).toBeInTheDocument()
+    })
+
+    mockGet.mockResolvedValue({ data: mockMetrics })
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows empty state when no events exist', async () => {
+    mockGet.mockResolvedValue({ data: [] })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/no tenes eventos creados/i)).toBeInTheDocument()
+    })
+
+    const createBtn = screen.getByRole('button', { name: /crear tu primer evento/i })
+    expect(createBtn).toBeInTheDocument()
+    await userEvent.click(createBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/new')
+  })
+
+  it('"Crear evento" button navigates to new event page', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const createBtn = screen.getByRole('button', { name: /\+\s*crear evento/i })
+    await userEvent.click(createBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/new')
+  })
+
+  it('edit button navigates to event edit page', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const editBtn = screen.getByRole('button', { name: /editar recital de rock nacional/i })
+    await userEvent.click(editBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-1')
+  })
+
+  it('delete button opens confirmation dialog', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    const deleteBtn = screen.getByRole('button', { name: /eliminar feria de emprendedores/i })
+    await userEvent.click(deleteBtn)
+
+    // Confirmation dialog appears
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText(/confirmar eliminacion/i)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/feria de emprendedores/i)
+    ).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /cancelar/i })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /eliminar/i })).toBeInTheDocument()
+  })
+
+  it('cancel button closes confirmation dialog', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    const deleteBtn = screen.getByRole('button', { name: /eliminar feria de emprendedores/i })
+    await userEvent.click(deleteBtn)
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    const cancelBtn = screen.getByRole('button', { name: /cancelar/i })
+    await userEvent.click(cancelBtn)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('confirm delete sends DELETE and removes event from list', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+    mockDelete.mockResolvedValue({})
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
+    })
+
+    const deleteBtn = screen.getByRole('button', { name: /eliminar workshop de fotografia/i })
+    await userEvent.click(deleteBtn)
+
+    const dialog = screen.getByRole('dialog')
+    const confirmBtn = within(dialog).getByRole('button', { name: /^eliminar$/i })
+    await userEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(mockDelete).toHaveBeenCalledWith('/events/event-3')
+    })
+
+    // Success feedback
+    await waitFor(() => {
+      expect(
+        screen.getByText(/workshop de fotografia.*eliminado correctamente/i)
+      ).toBeInTheDocument()
+    })
+
+    // Event should be removed from the table (but still in feedback message)
+    const table = document.querySelector('.dashboard-table')
+    expect(within(table).queryByText(/workshop de fotografia/i)).not.toBeInTheDocument()
+  })
+
+  it('shows delete error feedback when API call fails', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+    mockDelete.mockRejectedValue({
+      response: { data: { error: { message: 'No autorizado' } } },
+    })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const deleteBtn = screen.getByRole('button', { name: /eliminar recital de rock nacional/i })
+    await userEvent.click(deleteBtn)
+
+    const dialog = screen.getByRole('dialog')
+    const confirmBtn = within(dialog).getByRole('button', { name: /^eliminar$/i })
+    await userEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText(/no autorizado/i)).toBeInTheDocument()
+    })
+
+    // Dialog should be closed even on error
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Event should still be in the list
+    expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+  })
+
+  it('displays zero values correctly', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
+    })
+
+    // Workshop has 0 tickets sold, 0 revenue, 0 scanned
+    // Find the row containing the workshop event
+    const rows = screen.getAllByRole('row')
+    const workshopRow = rows.find(
+      (r) => r.textContent.includes('Workshop de Fotografia')
+    )
+    expect(workshopRow).toBeTruthy()
+
+    const zeroCells = within(workshopRow).getAllByText('0')
+    expect(zeroCells.length).toBeGreaterThanOrEqual(2) // sold=0, scanned=0
+    expect(within(workshopRow).getByText('$ 0,00')).toBeInTheDocument() // revenue
+  })
+
+  it('formats currency correctly for revenue', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument()
+  })
+
+  it('renders create button even while loading', () => {
+    mockGet.mockImplementation(() => new Promise(() => {}))
+
+    render(<OrganizerDashboard />)
+
+    expect(screen.getByRole('button', { name: /\+\s*crear evento/i })).toBeInTheDocument()
+  })
+})

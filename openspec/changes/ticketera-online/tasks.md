@@ -578,7 +578,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test role-based access
 
 - [ ] 26. Implement organizer dashboard and event management
-  - [ ] 26.1 Create event creation/edit form component
+  - [x] 26.1 Create event creation/edit form component
     - Build form with fields: name, date, location, description, image upload
     - Add ticket type management (add/remove ticket types with name, price, quantity)
     - Implement form validation
@@ -588,7 +588,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Display success/error messages
     - _Requirements: 10.1, 10.2, 10.4, 10.5, 3.1_
 
-  - [ ] 26.2 Create organizer dashboard component
+  - [x] 26.2 Create organizer dashboard component
     - Fetch organizer's events and metrics from GET /api/metrics/organizer
     - Display list of events with metrics (tickets sold, revenue, inventory, scans)
     - Add create event button
