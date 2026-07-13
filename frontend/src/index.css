@@ -361,3 +361,176 @@ button {
   color: var(--text);
   font-style: italic;
 }
+
+/* ── Staff QR scanner ────────────────────────────────────────────────── */
+
+.staff-scan-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.scanner-controls {
+  margin-bottom: 24px;
+}
+
+.scanner-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.qr-reader-container {
+  width: 100%;
+  max-width: 400px;
+  min-height: 300px;
+  margin: 0 auto 24px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: none;
+
+  &.active {
+    display: block;
+  }
+}
+
+/* ── Scan result overlay ─────────────────────────────────────────────── */
+
+.scan-result {
+  text-align: center;
+  padding: 24px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+
+  &--success {
+    background: #16a34a12;
+    border: 2px solid #16a34a;
+  }
+
+  &--error {
+    background: #dc262612;
+    border: 2px solid #dc2626;
+  }
+}
+
+.scan-result__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+
+  .scan-result--success & {
+    background: #16a34a;
+    color: #fff;
+  }
+
+  .scan-result--error & {
+    background: #dc2626;
+    color: #fff;
+  }
+}
+
+.scan-result__message {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 16px;
+}
+
+.scan-result__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  text-align: left;
+  max-width: 360px;
+  margin: 0 auto;
+  padding: 12px;
+  background: var(--code-bg);
+  border-radius: 8px;
+
+  & dt {
+    font-weight: 500;
+    color: var(--text-h);
+  }
+
+  & dd {
+    margin: 0;
+    color: var(--text);
+  }
+}
+
+/* ── Scan history ─────────────────────────────────────────────────────── */
+
+.scan-history {
+  & h2 {
+    margin-bottom: 16px;
+  }
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+
+  &--valid {
+    border-left: 4px solid #16a34a;
+  }
+
+  &--invalid {
+    border-left: 4px solid #dc2626;
+  }
+}
+
+.history-item__time {
+  font-family: var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 70px;
+}
+
+.history-item__detail {
+  flex: 1;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Shared badge ─────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+
+  &--success {
+    background: #16a34a22;
+    color: #16a34a;
+  }
+
+  &--danger {
+    background: #dc262622;
+    color: #dc2626;
+  }
+}

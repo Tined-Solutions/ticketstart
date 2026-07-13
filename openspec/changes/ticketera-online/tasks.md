@@ -551,18 +551,18 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test no results handling
     - Test QR code display
 
-- [ ] 24. Checkpoint - Verify frontend guest features
+- [x] 24. Checkpoint - Verify frontend guest features
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 25. Implement QR scanner component for staff
-  - [ ] 25.1 Create QR scanner interface
+- [x] 25. Implement QR scanner component for staff
+  - [x] 25.1 Create QR scanner interface
     - Implement web-based QR scanner using html5-qrcode or react-qr-reader
     - Request camera permissions
     - Display camera feed
     - Implement QR code detection
     - _Requirements: 9.1_
 
-  - [ ] 25.2 Implement validation and feedback
+  - [x] 25.2 Implement validation and feedback
     - Call POST /api/tickets/validate with scanned QR code and event ID
     - Display validation results (success or error with reason)
     - Implement visual feedback (green for success, red for error)
@@ -571,7 +571,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Add role-based access control (Staff only)
     - _Requirements: 9.2, 9.7, 9.8, 9.9_
 
-  - [ ]* 25.3 Write unit tests for QR scanner
+  - [x]* 25.3 Write unit tests for QR scanner
     - Test camera initialization
     - Test validation result display
     - Test visual and audio feedback
