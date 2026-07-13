@@ -535,8 +535,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test payment redirect
     - Test return handling
 
-- [ ] 23. Implement ticket lookup component
-  - [ ] 23.1 Create ticket lookup form
+- [x] 23. Implement ticket lookup component
+  - [x] 23.1 Create ticket lookup form
     - Build form with email and DNI inputs
     - Implement form validation
     - Call GET /api/tickets/lookup with query parameters
@@ -545,7 +545,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Handle no results case with appropriate message
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-  - [ ]* 23.2 Write unit tests for ticket lookup
+  - [x]* 23.2 Write unit tests for ticket lookup
     - Test form validation
     - Test successful lookup display
     - Test no results handling
