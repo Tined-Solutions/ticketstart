@@ -530,7 +530,7 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Show email delivery status
     - _Requirements: 5.4, 7.7_
 
-  - [ ]* 22.4 Write unit tests for checkout flow
+  - [x]* 22.4 Write unit tests for checkout flow
     - Test reservation creation and timer
     - Test payment redirect
     - Test return handling

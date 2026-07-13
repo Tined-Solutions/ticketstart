@@ -1253,3 +1253,71 @@ Carried forward from the guest-checkout architecture decision and prior sessions
 ### Next Recommended Phase
 
 Orchestrator review, then `sdd-verify` for this IDOR fix slice.
+
+---
+
+## Task 22.4: Write unit tests for checkout flow
+
+### Completed Tasks
+
+- [x] 22.4 Write unit tests for checkout flow
+  - [x] Test reservation creation and timer (Checkout.jsx)
+  - [x] Test payment redirect (Checkout.jsx)
+  - [x] Test return handling (CheckoutReturn.jsx)
+
+### Notes on Component Mapping
+
+The repository does not have standalone `Reservation.jsx` or `PaymentReturn.jsx` files. The functionality described by Tasks 22.1–22.3 is implemented in:
+
+- `frontend/src/pages/Checkout.jsx` — reservation creation (POST `/api/reservations`), countdown timer, expiration handling, and payment preference redirect (POST `/api/payments/create-preference`).
+- `frontend/src/pages/CheckoutReturn.jsx` — Mercado Pago return handling for `success`/`pending`/`failure`/`unknown` statuses.
+
+Tests were written against those existing components without modifying production code.
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/Checkout.test.jsx` | Created | Unit tests for reservation creation, validation, countdown timer, expiration handling, and Mercado Pago redirect. |
+| `frontend/src/pages/CheckoutReturn.test.jsx` | Created | Unit tests for success/pending/failure/unknown payment return states and query-parameter rendering. |
+| `frontend/vite.config.js` | Modified | Added `test.maxWorkers: 2` to keep `npx vitest run` stable on resource-constrained environments (default worker pool was timing out before starting workers). |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Task 22.4 complete. |
+
+### Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npx vitest run src/pages/Checkout.test.jsx src/pages/CheckoutReturn.test.jsx` → 2 files passed, 20/20 tests passed |
+| Runtime harness command/scenario and exact result | `cd frontend && npx vitest run` (full suite) → 6 files passed, 56/56 tests passed |
+| Rollback boundary | Delete `frontend/src/pages/Checkout.test.jsx`, `frontend/src/pages/CheckoutReturn.test.jsx`, and revert the single `maxWorkers` line in `frontend/vite.config.js` |
+
+### Test Summary
+
+- **Frontend tests passing**: 56/56
+- **New tests added**: 20 (11 in `Checkout.test.jsx`, 9 in `CheckoutReturn.test.jsx`)
+- **Baseline passing (before Task 22.4)**: 36
+- **Net new passing**: +20
+- **Layers used**: Unit (Vitest + jsdom + Testing Library)
+
+### Deviations from Design
+
+- None. Tests verify the existing Checkout/CheckoutReturn behavior as implemented.
+
+### Issues Found
+
+1. jsdom does not implement navigation, so `window.location.href = checkoutUrl` in `Checkout.jsx` cannot be asserted by reading `window.location.href`. The redirect test captures the assignment by replacing `globalThis.window` with a `Proxy` that returns a mock `location` object. This only works in Vitest's `forks` pool (the project default); `vmThreads` rejects redefining `window`.
+2. The default `npx vitest run` worker pool timed out starting workers in this environment when running all six test files concurrently. Capping `maxWorkers` to `2` in `vite.config.js` eliminated the timeouts and is a minimal, transparent change.
+
+### Verification
+
+- `cd frontend && npx vitest run src/pages/Checkout.test.jsx src/pages/CheckoutReturn.test.jsx`: 20/20 passing.
+- `cd frontend && npx vitest run`: 56/56 passing (6 test files).
+- `cd frontend && npm run lint`: passes.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+### Next Recommended Phase
+
+`sdd-verify` for the Task 22 slice, then continue with Task 23 (ticket lookup) or the next pending frontend task.
