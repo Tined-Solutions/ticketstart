@@ -780,3 +780,181 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
   ]
 }
 ```
+
+---
+
+## ⚖️ Judgment Day Audit — Round 1 (2026-07-14)
+
+> Revisión adversarial ciega por dos jueces independientes. **No se aplicaron fixes.**
+> Veredicto: `JUDGMENT: ESCALATED ⚠️` — 8 CRITICALes confirmados.
+
+### 🔴 CRITICAL — Confirmados (ambos jueces)
+
+- [ ] **JD-C1 — Registro público indebido: NADIE se auto-registra**
+  - **Regla de negocio**: En el momento 0 solo existe 1 cuenta Admin (la del cliente). Es el Admin —y solo el Admin— quien crea, asigna roles y gestiona todos los demás usuarios. No existe el auto-registro ni la auto-asignación de roles. Sin embargo, `POST /auth/register` es un endpoint público sin `[Authorize]` que permite a cualquiera crear una cuenta con cualquier rol, incluido Admin. También expone `Staff` en el dropdown del frontend (`Register.jsx`).
+  - Archivos: `backend/Controllers/AuthController.cs:32-71`, `backend/Services/AuthService.cs:65-73`, `frontend/src/pages/Register.jsx:5-9,45-49`
+  - Fix: eliminar el endpoint público `POST /auth/register` (o protegerlo con `[Authorize(Policy = "RequireAdminRole")]`). Crear un endpoint admin `POST /api/admin/users` donde solo el Admin crea usuarios y asigna roles (`Organizador`, `Staff`, `Admin`). Eliminar la página/componente `Register.jsx` del frontend público; mover la creación de usuarios al `AdminPanel`.
+
+- [ ] **JD-C2 — Lookup de tickets expone QR codes sin protección**
+  - `GET /api/tickets/lookup` (sin auth) devuelve QR codes completos en base64. Con email+DNI cualquiera puede robar entradas ajenas.
+  - **Regla de negocio definida**: El lookup DEBE existir como red de seguridad sin fricción para el comprador (guest o registrado), pero solo debe devolver **información básica**: evento, fecha, ubicación, tipo de entrada, cantidad, estado ("Pagado"/"Usado"), e instrucciones de reenvío. El QR vive **exclusivamente en el email**.
+  - Además, se necesita un **endpoint de reenvío** `POST /api/tickets/resend` con: rate limit (máx 3 por hora por email), CAPTCHA (Turnstile), y respuesta genérica ("Si hay entradas asociadas, recibirás un email") para evitar enumeración.
+  - Archivos: `backend/Controllers/TicketController.cs:38-80`, `frontend/src/pages/TicketLookup.jsx:75-97`
+  - Fix: (1) Eliminar `qrCodeData` y `qrSrc` de la respuesta del lookup público. (2) Crear `POST /api/tickets/resend` con rate limit + CAPTCHA + respuesta genérica. (3) Actualizar UI del lookup para mostrar info básica + botón de reenvío.
+
+- [ ] **JD-C3 — Endpoint de detalle de reserva innecesario y peligroso**
+  - `GET /api/reservations/{id}` con `[AllowAnonymous]` expone datos de la reserva (evento, tipo de entrada, precio, estado) y el **token de reserva** —que es la llave para crear una preferencia de pago en Mercado Pago— a cualquiera que tenga el GUID.
+  - El endpoint no tiene caso de uso real: el `POST /api/reservations` ya devuelve toda la data necesaria en el body de la respuesta (línea 67). Si el comprador pierde el GUID, la reserva expiró en 10 minutos de todas formas. No hay flujo que justifique su existencia.
+  - Archivos: `backend/Controllers/ReservationController.cs:109-162`
+  - Fix: eliminar el endpoint `GetReservation`. Si en el futuro se necesita recuperar una reserva activa desde otro dispositivo, implementarlo con el token HMAC como parámetro de validación (`GET /api/reservations/{id}?token=xxx`).
+
+- [ ] **JD-C4 — Tickets con email falso + email nunca enviado**
+  - `PaymentService.ProcessApprovedPaymentAsync` (línea 171) crea tickets con `"guest@ticketera.com"` cuando `reservation.User` es null (guest checkout). `SendTicketEmailAsync` nunca se llama desde el flujo de pago. El DNI se recibe del frontend pero el email —que el formulario de checkout sí recolecta— **nunca se envía al backend** porque `CreateReservationRequest` no tiene campo `PurchaserEmail`. Irónicamente, el modelo `Ticket` ya tiene el campo `PurchaserEmail` y las migraciones lo crearon desde el día 1. `CheckoutReturn.jsx` muestra "Tus entradas fueron enviadas a tu email" mintiendo al comprador.
+  - **Regla de negocio definida**: (1) El comprador ingresa su email en el checkout. (2) El frontend lo manda al backend en la creación de la reserva. (3) El backend lo almacena y lo usa al crear los tickets. (4) `PaymentService.ProcessApprovedPaymentAsync` llama a `IEmailService.SendTicketEmailAsync` después de crear los tickets. (5) El email solo se envía tras confirmación de pago; si el envío falla, no debe revertir la confirmación (mejor intentar reenvío que perder la venta).
+  - **Validación anti-typo**: doble input de email en el frontend, donde el campo de confirmación tiene `onPaste` bloqueado (`e.preventDefault()`) para forzar escritura manual. Backend valida que ambos campos coincidan. Si no coinciden, `400 Bad Request` antes de crear la reserva.
+  - Archivos: `backend/Controllers/ReservationController.cs:30-101`, `backend/Services/IReservationService.cs:82-88` (CreateReservationRequest), `backend/Services/PaymentService.cs:164-217`, `backend/Services/EmailService.cs`, `backend/Services/TicketService.cs:40-83`, `frontend/src/pages/Checkout.jsx:70-71,121-126,209-244`, `frontend/src/pages/CheckoutReturn.jsx:9-12`
+  - Fix: (1) Agregar `PurchaserEmail` a `CreateReservationRequest`. (2) Enviarlo desde `Checkout.jsx` en el POST. (3) Almacenarlo en `Reservation` (o pasarlo al crear tickets). (4) Usarlo en `CreateTicketsAsync` en vez de `User?.Email ?? "guest@ticketera.com"`. (5) Llamar `_emailService.SendTicketEmailAsync` dentro de `ProcessApprovedPaymentAsync` tras crear tickets, con manejo de error que no revierta el pago. (6) Doble input de email en frontend con bloqueo de pegado en confirmación. (7) Validación server-side de coincidencia de emails.
+
+- [ ] **JD-C5 — Race condition en stock de reservas: sobreventa por concurrencia**
+  - El código actual calcula disponibilidad restando tickets vendidos + reservas activas del stock en memoria, sin bloqueo. Dos requests concurrentes leen "queda 1", ambas crean reserva → sobreventa. El `try-catch` de `DbUpdateConcurrencyException` con loop de reintento es **código muerto**: la creación de `Reservation` no modifica `TicketType.RowVersion`, así que nunca se dispara.
+  - **Approach definido**: reemplazar el cálculo en memoria por un UPDATE condicional atómico con `ExecuteUpdateAsync`. Se agrega un campo `CurrentlyReserved` a `TicketType`. Al reservar: `UPDATE TicketType SET CurrentlyReserved += quantity WHERE Id = @id AND (Quantity - CurrentlyReserved - SoldCount) >= quantity`. Si el UPDATE afecta 0 filas → sin stock. Al expirar reserva: `UPDATE TicketType SET CurrentlyReserved -= quantity`. PostgreSQL serializa los UPDATE sobre la misma fila automáticamente, eliminando la race condition sin raw SQL.
+  - **Escalabilidad**: este approach banca cientos de requests concurrentes por tipo de entrada. Si en el futuro se necesita Redis o colas para miles de concurrentes, la lógica de validación condicional se migra sin cambiar el diseño.
+  - Archivos: `backend/Services/ReservationService.cs:75-128`, `backend/Services/ReservationExpirationService.cs:51-78`, `backend/Models/TicketType.cs`, `backend/Data/ApplicationDbContext.cs`
+  - Fix: (1) Agregar columna `CurrentlyReserved` (int, default 0) a `TicketType` vía migración. (2) Reemplazar la lógica de disponibilidad en `CreateReservationAsync` por `ExecuteUpdateAsync` condicional. (3) Eliminar el loop de reintento con `RowVersion`. (4) Actualizar `ReleaseExpiredReservationsAsync` para decrementar `CurrentlyReserved` con `ExecuteUpdateAsync`. (5) Mantener `SoldCount` (se actualiza al crear tickets, no en reserva).
+
+- [ ] **JD-C6 — Funcionalidad de impresión y QR expuesta en lookup público**
+  - `TicketLookup.jsx` (`TicketCard.handlePrint`) inyecta datos del evento (controlados por el organizador) vía `document.write()` sin sanitizar → stored XSS. Además, `TicketCard` muestra el QR code en pantalla y permite descarga, exponiendo la entrada fuera del email.
+  - **Regla de negocio definida**: El QR vive **exclusivamente en el email de confirmación**. El lookup público solo muestra información básica (evento, fecha, tipo de entrada, estado). No hay QR, no hay botón de impresión, no hay botón de descarga. La versión imprimible con QR es parte del template del email, no del frontend público.
+  - Archivos: `frontend/src/pages/TicketLookup.jsx:64-162` (componente `TicketCard` completo)
+  - Fix: reemplazar `TicketCard` por una tarjeta simplificada que muestre solo: nombre del evento, fecha, ubicación, tipo de entrada, precio, estado ("Válida"/"Usada"), e instrucciones ("Revisá tu email para ver el QR"). Eliminar `handlePrint`, `handleDownload` y cualquier renderizado de QR. Si en el futuro se necesita impresión, se resuelve del lado del template de email (HTML a PDF inline).
+
+- [ ] **JD-C7 — Código scaffold en producción**
+  - `/weatherforecast` (endpoint + record `WeatherForecast`) es basura de template .NET. `TestAuthorizationController` expone endpoints de diagnóstico público en `/api/testauthorization/*`.
+  - **Decisión**: eliminar ambos sin reemplazo.
+  - Archivos: `backend/Program.cs:218-243` (endpoint + record), `backend/Controllers/TestAuthorizationController.cs` (archivo completo)
+  - Fix: eliminar el bloque `MapGet("/weatherforecast", ...)` y el record `WeatherForecast` de `Program.cs`. Eliminar `TestAuthorizationController.cs` completo.
+
+- [ ] **JD-C8 — Idempotencia en webhooks de Mercado Pago**
+  - Mercado Pago puede enviar el mismo webhook múltiples veces (documentado). El código actual procesa el duplicado como una anomalía: ve que la reserva ya no está `Active` → dispara `InitiateRefundAsync` → el cliente que pagó y recibió sus entradas recibe un refund automático.
+  - **Approach definido**: Unique constraint sobre `Transaction.MercadoPagoId`. Al recibir webhook: (1) validar firma, (2) buscar `Transaction` por `MercadoPagoId` → si existe → `200 OK` (ya procesado), (3) si no existe → insertar `Transaction` + confirmar reserva + crear tickets. Si falla el insert por unique constraint (webhook concurrente) → devolver `200 OK`. PostgreSQL garantiza atomicidad del constraint, sin lookup extra ni tabla nueva.
+  - Archivos: `backend/Services/PaymentService.cs:156-217`, `backend/Data/ApplicationDbContext.cs`, `backend/Models/Transaction.cs`
+  - Fix: (1) Agregar índice unique a `Transaction.MercadoPagoId` en `ApplicationDbContext.OnModelCreating` + migración. (2) Reordenar `ProcessApprovedPaymentAsync`: buscar transacción existente por `MercadoPagoId` antes de cualquier mutación. (3) Si ya existe, retornar sin modificar nada. (4) Envolver el insert en try-catch de `DbUpdateException` por unique constraint violation → retornar 200 OK.
+
+### 🟡 CRITICAL — Sospechosos (un solo juez)
+
+- [ ] **JD-S1 — JWT placeholder podría llegar a producción** (Juez A)
+  - `appsettings.json:14`: `Jwt:SecretKey` = `YOUR_JWT_SECRET_KEY_MINIMUM_32_CHARACTERS_LONG_FOR_SECURITY` pasa cualquier validación de largo (>32 chars) pero es un placeholder público. Si se deploya sin cambiar, cualquiera con acceso al repo forgea tokens.
+  - **Decisión**: en producción la key vendrá de variables de entorno. El placeholder debe eliminarse de `appsettings.json` y reemplazarse por validación de startup que rechace valores que empiecen con `YOUR_` o que no vengan de `ASPNETCORE_` / environment.
+  - Archivos: `backend/appsettings.json:14`, `backend/Program.cs:86-87`
+  - Fix: (1) Quitar `SecretKey` de `appsettings.json`. (2) En `Program.cs`, validar que la key no sea placeholder (`starts with YOUR_`) y que cumpla `Length >= 32`. (3) Documentar en `appsettings.json.template` que la key se inyecta por variable de entorno.
+
+- [ ] **JD-S2 — Sin rate limiting en creación anónima de reservas** (Juez A)
+  - `POST /api/reservations` con `[AllowAnonymous]` permite crear reservas sin límite. Atacante automatizado puede saturar el inventario cíclicamente (reservas de 10 min → expiran → nuevas reservas), bloqueando a compradores reales.
+  - **Decisión**: rate limiter nativo de ASP.NET Core. 5 reservas por minuto por IP. No requiere servicios externos, no agrega fricción al usuario real.
+  - Archivos: `backend/Program.cs`, `backend/Controllers/ReservationController.cs:28-30`
+  - Fix: (1) `builder.Services.AddRateLimiter` con `FixedWindowLimiter` (5 reservas/minuto/cliente) en `Program.cs`. (2) `[EnableRateLimiting("Reservations")]` en el endpoint. (3) `app.UseRateLimiter()` en el pipeline.
+
+- [ ] **JD-S3 — Firma de webhook de MP validada incorrectamente** (Juez A)
+  - `ValidateWebhookSignature` re-serializa el payload con `JsonSerializer.Serialize` en vez de usar los bytes crudos de `Request.Body`. La re-serialización produce output binario distinto al original → webhooks reales de MP fallarán verificación. Si un atacante descubre que la validación es frágil, puede forjar webhooks.
+  - **Decisión**: fix obligatorio. Leer `Request.Body` como bytes crudos y validar contra eso. Verificar además que el formato de firma coincida con la doc de MP (HMAC-SHA256 sobre `data.id` + `x-request-id` + `secret`).
+  - Archivos: `backend/Services/PaymentService.cs:280-283`, `backend/Controllers/PaymentController.cs:94-136`
+  - Fix: (1) En el controller, leer `Request.Body` como `byte[]` crudo ANTES de deserializar. (2) Pasar los bytes crudos a `ValidateWebhookSignature`. (3) Revisar el formato de firma contra documentación de MP y ajustar si es necesario. (4) Agregar startup validation de `WebhookSecret` no vacío/placeholder.
+
+- [ ] **JD-S4 — Confirmación de pago no atómica** (Juez A)
+  - `ProcessApprovedPaymentAsync` hace tres operaciones secuenciales sin transacción: (1) `SaveChangesAsync` confirma reserva, (2) `CreateTicketsAsync` crea tickets, (3) `SaveChangesAsync` guarda transacción. Si el paso 2 falla, la reserva queda confirmada sin tickets ni registro → plata cobrada, sin entregable.
+  - **Decisión**: envolver los tres pasos en una transacción de EF Core (`BeginTransactionAsync` / `CommitAsync` / `RollbackAsync`). Si algo falla, todo vuelve atrás y MP reenvía el webhook. El envío de email (`SendTicketEmailAsync`) se ejecuta **después del commit**, no dentro de la transacción.
+  - Archivos: `backend/Services/PaymentService.cs:166-184`
+  - Fix: (1) `using var transaction = await _context.Database.BeginTransactionAsync()`. (2) Mover confirmación, creación de tickets e insert de transacción dentro del bloque try. (3) `await transaction.CommitAsync()` al final. (4) `catch { await transaction.RollbackAsync(); throw; }`. (5) Llamar `SendTicketEmailAsync` después del commit (JD-C4).
+
+- [ ] **JD-S5 — Test asume registro público que ya no debe existir** (Juez A) ⚠️ **AFECTADO POR JD-C1**
+  - `AuthenticationPropertyTests.UserRegistration_CreatesValidAccount_WithProvidedData` prueba un endpoint público de registro que, según la regla de negocio corregida, no debe existir. Tras eliminar el registro público (JD-C1), estos tests deben migrarse a testear el nuevo endpoint admin `POST /api/admin/users`.
+  - Archivos: `backend/Tests/AuthenticationPropertyTests.cs:76-103`
+  - Fix: eliminar tests de registro público; crear tests para `POST /api/admin/users` verificando que solo Admin puede crear usuarios y asignar roles.
+
+- [ ] **JD-S6 — JWT key sin validación de longitud mínima** (Juez B) ⚠️ **CUBIERTO POR JD-S1**
+  - Validación de `secretKey.Length >= 32` y rechazo de placeholders ya incluidos en el fix de JD-S1.
+
+- [ ] **JD-S7 — `int.Parse` sin defensa en `ExpirationMinutes`** (Juez B)
+  - `int.Parse(jwtSettings["ExpirationMinutes"] ?? "1440")`: si el valor no es numérico → `FormatException` no manejada → crashea generación de tokens → 500.
+  - Archivos: `backend/Services/AuthService.cs:220`
+  - Fix: `int.TryParse` con fallback a 1440. Agregar validación al startup para valores no numéricos en config.
+
+- [ ] **JD-S8 — HttpClient.BaseAddress mutado en cliente compartido** (Juez B)
+  - `MercadoPagoClient` setea `_httpClient.BaseAddress` en el constructor sobre el `HttpClient` inyectado. No es thread-safe y afecta otros consumidores.
+  - Archivos: `backend/Services/MercadoPagoClient.cs:27`, `backend/Program.cs:40`
+  - Fix: mover `BaseAddress` al delegate de `AddHttpClient<T>` en `Program.cs` (`client.BaseAddress = new Uri(...)`). Eliminar la asignación del constructor.
+
+- [ ] **JD-S9 — `async void` puede crashear el proceso** (Juez B)
+  - `ReservationExpirationService.CheckExpiredReservations` es `async void`. Excepción no manejada → `SynchronizationContext` → crashea el runtime completo.
+  - Archivos: `backend/Services/ReservationExpirationService.cs:51`
+  - Fix: cambiar a `async Task`. Reemplazar `Timer` por `PeriodicTimer` para manejo correcto de cancelación vía `CancellationToken`.
+
+- [ ] **JD-S10 — `TicketTypeId` FK no asignado al crear tickets** (Juez B)
+  - `TicketService.CreateTicketsAsync` crea `Ticket` pero nunca setea `TicketTypeId`. La navegación `TicketType` queda huérfana (FK = 0). Cualquier `.Include(t => t.TicketType)` sobre tickets devuelve null.
+  - Archivos: `backend/Services/TicketService.cs:80-84`, `backend/Models/Ticket.cs:7`
+  - Fix: setear `TicketTypeId = reservation.TicketTypeId` al instanciar `Ticket`.
+
+### 🟠 WARNING (real) — Confirmados (prioridad alta/media)
+
+- [ ] **JD-W1 — `purchaserEmail` nunca se envía al backend** | `frontend/src/pages/Checkout.jsx:121-127`, `backend/Controllers/ReservationController.cs:30-101`
+- [ ] **JD-W2 — `Include(e => e.Tickets)` carga todos los tickets en memoria** (OOM en eventos populares) | `backend/Services/EventService.cs:119-146, 425-456`
+- [ ] **JD-W3 — JWT en `localStorage` → vulnerable a XSS** | `frontend/src/api/client.js:14-32`, `frontend/src/context/AuthProvider.jsx:34,50-51`
+- [ ] **JD-W4 — N×5 queries en `MetricsService`** (para N eventos, 5N round-trips) | `backend/Services/MetricsService.cs:62-64, 75-114`
+- [ ] **JD-W5 — `GetAllLogsAsync` sin paginación** → timeout con el tiempo | `backend/Services/AdminService.cs:33-46`, `backend/Controllers/AdminController.cs:96-98`
+- [ ] **JD-W6 — `formatEventDate`, `formatCurrency`, `getErrorMessage` duplicados en 7+ archivos frontend** | `frontend/src/pages/EventList.jsx`, `EventDetail.jsx`, y otros
+- [ ] **JD-W7 — `RoleGuard` redirige sin feedback** (usuario no sabe por qué no puede acceder) | `frontend/src/components/RoleGuard.jsx`
+- [ ] **JD-W8 — `EventOwnershipHandler` solo lee `id` de ruta** (frágil si otra ruta usa `eventId`) | `backend/Authorization/EventOwnershipHandler.cs:57`
+- [ ] **JD-W9 — Doble scan de QR sin `ConcurrencyToken`** → dos staff validan mismo ticket | `backend/Services/TicketService.cs:161-216`, `backend/Models/Ticket.cs:5-13`
+- [ ] **JD-W10 — `GenerateQRCodeImage` síncrono bloquea request thread** | `backend/Services/TicketService.cs:132-160`
+- [ ] **JD-W11 — `PUT /events/undefined` si `initialData?.id` no existe** | `frontend/src/components/EventForm.jsx:145-171`
+- [ ] **JD-W12 — Catch block pone `feedback.type = 'success'` al fallar upload** | `frontend/src/components/EventForm.jsx:81, 99-115`
+- [ ] **JD-W13 — Focus trap de Modal no actualiza nodos focusables** | `frontend/src/components/Modal.jsx:46-82`
+- [ ] **JD-W14 — `nextId` a nivel módulo persiste entre HMR** | `frontend/src/context/ToastProvider.jsx:48`
+- [ ] **JD-W15 — StaffScan sin validación GUID ni guarda de ciclo de vida** | `frontend/src/pages/StaffScan.jsx:156-186`
+- [ ] **JD-W16 — `exception.StackTrace` logueado (puede contener paths y datos sensibles)** | `backend/Middleware/GlobalExceptionHandler.cs:54`
+- [ ] **JD-W17 — Fallos de auditoría silenciosos** (nadie se entera si la tabla falla) | `backend/Services/AuditLogService.cs:46-49`
+- [ ] **JD-W18 — Password ≥6 back vs ≥8 front** (servidor debe ser autoridad y coincidir) | `backend/Services/AuthService.cs:42-49`, `frontend/src/pages/Register.jsx:59`
+- [ ] **JD-W19 — `AuditLog.UserId` sin FK a Users** | `backend/Data/ApplicationDbContext.cs:149-165`, `backend/Migrations/AddAuditLog.cs:14-29`
+- [ ] **JD-W20 — `TryGetUserRole` retorna `true` aunque `Enum.TryParse` falle** | `backend/Controllers/EventController.cs:233-238`
+- [ ] **JD-W21 — `CheckoutReturn` miente: "enviadas a tu email" sin envío real** | `frontend/src/pages/CheckoutReturn.jsx:9-12`
+- [ ] **JD-W22 — `api/client.js` cae a `http://localhost:5193` en producción** | `frontend/src/api/client.js:4-6`
+- [ ] **JD-W23 — Tests con EF Core InMemory no prueban constraints, FK, RowVersion ni transacciones reales** | `backend/Tests/` (suite)
+- [ ] **JD-W24 — `Webhook` audit log usa `UserId: Guid.Empty`** (sin trazabilidad de origen) | `backend/Controllers/PaymentController.cs:94-136`
+- [ ] **JD-W25 — No rate limiting ni lockout en `POST /auth/login`** → brute-force posible | `backend/Services/AuthService.cs:104-167`, `backend/Controllers/AuthController.cs:79-114`
+- [ ] **JD-W26 — Reservation token sin nonce/expiry → replayable por 10 min** | `backend/Services/ReservationService.cs:344-356`
+- [ ] **JD-W27 — QR timestamp nunca validado para expiry** → QR robado válido indefinidamente | `backend/Services/TicketService.cs:111-217`, `backend/Helpers/HmacHelper.cs`
+- [ ] **JD-W28 — `PaymentService` muta `reservation.Status` directo sin pasar por `IReservationService.ConfirmReservationAsync`** → DRY, bypass validation | `backend/Services/PaymentService.cs:26-58`
+- [ ] **JD-W29 — PII (email, DNI) logueado sin redactar en `LookupTicketsAsync`** | `backend/Services/TicketService.cs:330-339`
+- [ ] **JD-W30 — `OrganizerEventDetail` carga datos de cualquier evento con endpoint anónimo** | `frontend/src/pages/OrganizerEventDetail.jsx:37-62`
+- [ ] **JD-W31 — `EventForm` subida de imagen con `Content-Type` explícito rompe boundary multipart** | `frontend/src/components/EventForm.jsx:174-189`
+- [ ] **JD-W32 — `ReservationService` reintento de concurrencia no re-lee `TicketType`** → loop infinito | `backend/Services/ReservationService.cs:163-167`
+- [ ] **JD-W33 — `CreateReservationAsync` sin trazabilidad de IP/user-agent para guests** | `backend/Models/Reservation.cs`, `backend/Controllers/ReservationController.cs:38-184`
+
+### 🔵 SUGGESTION — Mejoras
+
+- [ ] **JD-SG1 — Agregar `Name` al modelo `User`** o quitar campo del frontend | `backend/Models/User.cs`, `frontend/src/pages/Register.jsx:45-49`
+- [ ] **JD-SG2 — `DeleteEventAsync`: si falla el delete de imagen en R2, queda huérfana** | `backend/Services/EventService.cs:207-228`
+- [ ] **JD-SG3 — Sin `<ErrorBoundary>` en rutas React** → crash de un componente tumba toda la app | `frontend/src/App.jsx:21-98`
+- [ ] **JD-SG4 — Sin key rotation strategy para JWT** | `backend/Program.cs:47-49`
+- [ ] **JD-SG5 — `OrganizerId` expuesto a clientes anónimos en `GET /events`** | `backend/Services/EventService.cs`
+- [ ] **JD-SG6 — AuditLog sin IP/User-Agent del request** | `backend/Controllers/MetricsController.cs`, `backend/Models/AuditLog.cs`
+- [ ] **JD-SG7 — Historial de scans de Staff solo en estado local (se pierde al refrescar)** | `frontend/src/pages/StaffScan.jsx:280-305`
+- [ ] **JD-SG8 — `<Card {...rest}>` propaga props arbitrarios al DOM** | `frontend/src/components/Card.jsx:16-19`
+- [ ] **JD-SG9 — `vi` referenciado sin import explícito (depende de `globals: true`)** | `frontend/src/components/__tests__/accessibility.test.jsx:2-9`
+- [ ] **JD-SG10 — Validación de email duplicada en `Login.jsx` y `Register.jsx`** | `frontend/src/pages/Login.jsx:13`, `frontend/src/pages/Register.jsx:18`
+- [ ] **JD-SG11 — `div` con `role="button"` + keyboard manual → usar `<button>` nativo** | `frontend/src/pages/EventList.jsx:26,29`
+- [ ] **JD-SG12 — 404 sin link de navegación (usuario queda varado)** | `frontend/src/pages/NotFound.jsx:1-7`
+- [ ] **JD-SG13 — `String.ToLower()` en LINQ puede impedir uso de índice** | `backend/Services/AuthService.cs:52-53`
+- [ ] **JD-SG14 — Índice unique en `QRCodeData` (incluye timestamp → siempre único, overhead innecesario)** | `backend/Data/ApplicationDbContext.cs:112`
+- [ ] **JD-SG15 — Validación de config duplicada en `Program.cs`** (extraer helper `GetRequiredValue`) | `backend/Program.cs:50-56, 86-87, 137-139`
+- [ ] **JD-SG16 — `TryGetUserId` duplicado entre base controller y `ReservationController`** | `backend/Controllers/TicketeraControllerBase.cs:16-21`
+- [ ] **JD-SG17 — Complejidad O(N×M) en `MapToEventWithAvailability`** | `backend/Services/EventService.cs:425-456`
+- [ ] **JD-SG18 — `EventForm` upload de imagen de evento pasado falla por validación de Date** | `backend/Controllers/EventController.cs:161-217`
+- [ ] **JD-SG19 — `Register.jsx` completo debe eliminarse o migrarse a `AdminPanel`** ⚠️ **CUBIERTO POR JD-C1** — `Staff` en dropdown público y toda la página de registro público desaparecen con la corrección de JD-C1. La UI de creación de usuarios se mueve al panel de Admin. | `frontend/src/pages/Register.jsx`
+- [ ] **JD-SG20 — Emails con QR inline en base64 → spam filters + límites de tamaño Resend** | `backend/Services/EmailService.cs:43-45`
+- [ ] **JD-SG21 — `auth.js` no valida token en mount** → UI muestra "autenticado" con token expirado | `frontend/src/context/AuthProvider.jsx:22-26`
+- [ ] **JD-SG22 — `ReservationExpirationService` con `Timer` en vez de `PeriodicTimer`** | `backend/Services/ReservationExpirationService.cs:51-78`
+- [ ] **JD-SG23 — `structured logging` con regex en vez de campos explícitos para redaction** | `backend/Helpers/LogRedactor.cs:15-54, 137-141`
+- [ ] **JD-SG24 — Config de `HttpClient` estática para MP/Resend (no refresca con `IOptionsMonitor`)** | `backend/Services/MercadoPagoClient.cs:16-29`, `backend/Services/ResendClient.cs:16-23`
+
+> **Totales: 8 CRITICAL confirmados + 10 sospechosos + 33 WARNING reales + 24 SUGGESTION = 75 hallazgos**
