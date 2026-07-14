@@ -896,39 +896,67 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
 
 ### 🟠 WARNING (real) — Confirmados (prioridad alta/media)
 
-- [ ] **JD-W1 — `purchaserEmail` nunca se envía al backend** | `frontend/src/pages/Checkout.jsx:121-127`, `backend/Controllers/ReservationController.cs:30-101`
-- [ ] **JD-W2 — `Include(e => e.Tickets)` carga todos los tickets en memoria** (OOM en eventos populares) | `backend/Services/EventService.cs:119-146, 425-456`
-- [ ] **JD-W3 — JWT en `localStorage` → vulnerable a XSS** | `frontend/src/api/client.js:14-32`, `frontend/src/context/AuthProvider.jsx:34,50-51`
-- [ ] **JD-W4 — N×5 queries en `MetricsService`** (para N eventos, 5N round-trips) | `backend/Services/MetricsService.cs:62-64, 75-114`
-- [ ] **JD-W5 — `GetAllLogsAsync` sin paginación** → timeout con el tiempo | `backend/Services/AdminService.cs:33-46`, `backend/Controllers/AdminController.cs:96-98`
-- [ ] **JD-W6 — `formatEventDate`, `formatCurrency`, `getErrorMessage` duplicados en 7+ archivos frontend** | `frontend/src/pages/EventList.jsx`, `EventDetail.jsx`, y otros
-- [ ] **JD-W7 — `RoleGuard` redirige sin feedback** (usuario no sabe por qué no puede acceder) | `frontend/src/components/RoleGuard.jsx`
-- [ ] **JD-W8 — `EventOwnershipHandler` solo lee `id` de ruta** (frágil si otra ruta usa `eventId`) | `backend/Authorization/EventOwnershipHandler.cs:57`
-- [ ] **JD-W9 — Doble scan de QR sin `ConcurrencyToken`** → dos staff validan mismo ticket | `backend/Services/TicketService.cs:161-216`, `backend/Models/Ticket.cs:5-13`
-- [ ] **JD-W10 — `GenerateQRCodeImage` síncrono bloquea request thread** | `backend/Services/TicketService.cs:132-160`
-- [ ] **JD-W11 — `PUT /events/undefined` si `initialData?.id` no existe** | `frontend/src/components/EventForm.jsx:145-171`
-- [ ] **JD-W12 — Catch block pone `feedback.type = 'success'` al fallar upload** | `frontend/src/components/EventForm.jsx:81, 99-115`
-- [ ] **JD-W13 — Focus trap de Modal no actualiza nodos focusables** | `frontend/src/components/Modal.jsx:46-82`
-- [ ] **JD-W14 — `nextId` a nivel módulo persiste entre HMR** | `frontend/src/context/ToastProvider.jsx:48`
-- [ ] **JD-W15 — StaffScan sin validación GUID ni guarda de ciclo de vida** | `frontend/src/pages/StaffScan.jsx:156-186`
-- [ ] **JD-W16 — `exception.StackTrace` logueado (puede contener paths y datos sensibles)** | `backend/Middleware/GlobalExceptionHandler.cs:54`
-- [ ] **JD-W17 — Fallos de auditoría silenciosos** (nadie se entera si la tabla falla) | `backend/Services/AuditLogService.cs:46-49`
-- [ ] **JD-W18 — Password ≥6 back vs ≥8 front** (servidor debe ser autoridad y coincidir) | `backend/Services/AuthService.cs:42-49`, `frontend/src/pages/Register.jsx:59`
-- [ ] **JD-W19 — `AuditLog.UserId` sin FK a Users** | `backend/Data/ApplicationDbContext.cs:149-165`, `backend/Migrations/AddAuditLog.cs:14-29`
-- [ ] **JD-W20 — `TryGetUserRole` retorna `true` aunque `Enum.TryParse` falle** | `backend/Controllers/EventController.cs:233-238`
-- [ ] **JD-W21 — `CheckoutReturn` miente: "enviadas a tu email" sin envío real** | `frontend/src/pages/CheckoutReturn.jsx:9-12`
-- [ ] **JD-W22 — `api/client.js` cae a `http://localhost:5193` en producción** | `frontend/src/api/client.js:4-6`
-- [ ] **JD-W23 — Tests con EF Core InMemory no prueban constraints, FK, RowVersion ni transacciones reales** | `backend/Tests/` (suite)
-- [ ] **JD-W24 — `Webhook` audit log usa `UserId: Guid.Empty`** (sin trazabilidad de origen) | `backend/Controllers/PaymentController.cs:94-136`
-- [ ] **JD-W25 — No rate limiting ni lockout en `POST /auth/login`** → brute-force posible | `backend/Services/AuthService.cs:104-167`, `backend/Controllers/AuthController.cs:79-114`
-- [ ] **JD-W26 — Reservation token sin nonce/expiry → replayable por 10 min** | `backend/Services/ReservationService.cs:344-356`
-- [ ] **JD-W27 — QR timestamp nunca validado para expiry** → QR robado válido indefinidamente | `backend/Services/TicketService.cs:111-217`, `backend/Helpers/HmacHelper.cs`
-- [ ] **JD-W28 — `PaymentService` muta `reservation.Status` directo sin pasar por `IReservationService.ConfirmReservationAsync`** → DRY, bypass validation | `backend/Services/PaymentService.cs:26-58`
-- [ ] **JD-W29 — PII (email, DNI) logueado sin redactar en `LookupTicketsAsync`** | `backend/Services/TicketService.cs:330-339`
-- [ ] **JD-W30 — `OrganizerEventDetail` carga datos de cualquier evento con endpoint anónimo** | `frontend/src/pages/OrganizerEventDetail.jsx:37-62`
-- [ ] **JD-W31 — `EventForm` subida de imagen con `Content-Type` explícito rompe boundary multipart** | `frontend/src/components/EventForm.jsx:174-189`
-- [ ] **JD-W32 — `ReservationService` reintento de concurrencia no re-lee `TicketType`** → loop infinito | `backend/Services/ReservationService.cs:163-167`
-- [ ] **JD-W33 — `CreateReservationAsync` sin trazabilidad de IP/user-agent para guests** | `backend/Models/Reservation.cs`, `backend/Controllers/ReservationController.cs:38-184`
+- [ ] **JD-W1 — `purchaserEmail` nunca se envía al backend** ⚠️ **CUBIERTO POR JD-C4**
+- [ ] **JD-W2 — `Include(e => e.Tickets)` carga todos los tickets en memoria (OOM)**
+  - `GetEventByIdAsync` y `GetAllPublishedEventsAsync` hacen `.Include(e => e.Tickets)` para contar disponibilidad. Evento popular con 50k tickets → OOM. Con JD-C5 (`CurrentlyReserved` + `SoldCount` en `TicketType`), la disponibilidad ya está precalculada en la entidad y no necesita conteo en absoluto.
+  - Archivos: `backend/Services/EventService.cs:119-146, 425-456`
+  - Fix: (1) Eliminar `.Include(e => e.Tickets)` de los queries. (2) Calcular disponibilidad desde `TicketType.Quantity - CurrentlyReserved - SoldCount` directamente. (3) `MapToEventWithAvailability` pasa a ser O(1) por ticket type en vez de O(N) por ticket.
+- [ ] **JD-W3 — JWT en `localStorage` → migrar a httpOnly cookie**
+  - El token JWT se almacena en `localStorage`, accesible desde cualquier script en la página. Un XSS roba el token y el atacante obtiene acceso total con los permisos de la víctima.
+  - **Decisión**: migrar a cookie `httpOnly; Secure; SameSite=Lax`. La cookie no es accesible desde JavaScript y viaja automáticamente en cada request. `SameSite=Lax` protege contra CSRF en requests POST/PUT/DELETE cross-site.
+  - Archivos: `backend/Controllers/AuthController.cs` (login/logout), `backend/Program.cs:88-106` (JWT config), `frontend/src/api/client.js:14-32` (interceptor), `frontend/src/context/AuthProvider.jsx:22-26` (persistencia), `frontend/src/context/auth.js`
+  - Fix: (1) `AuthController.Login`: setear cookie httpOnly en respuesta (`Response.Cookies.Append("token", token, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, Expires = ... })`). (2) `AuthController.Logout`: endpoint que borra la cookie (`MaxAge = 0`). (3) `Program.cs`: configurar `AddJwtBearer` para leer token de cookie (`options.Events.OnMessageReceived = ctx => { ctx.Token = ctx.Request.Cookies["token"]; return Task.CompletedTask; }`). (4) Frontend `client.js`: eliminar lógica de lectura/escritura de token en `localStorage`. (5) Agregar `GET /auth/me` para que el frontend sepa quién está autenticado sin leer la cookie. (6) `AuthProvider`: reemplazar `localStorage` por llamada a `/auth/me` en mount y después de login.
+- [ ] **JD-W4 — N×5 queries en `MetricsService`**
+  - `GetOrganizerMetricsAsync` itera sobre cada evento y llama `CalculateMetricsAsync`, que hace 5 queries separadas. Para 50 eventos = 250 round-trips.
+  - Archivos: `backend/Services/MetricsService.cs:62-64, 75-114`
+  - Fix: consolidar en una sola consulta con `GroupBy(eventId)` para obtener todas las métricas en un round-trip.
+- [ ] **JD-W5 — `GetAllLogsAsync` sin paginación** → timeout futuro | `backend/Services/AdminService.cs:33-46` — Fix: agregar `page`/`pageSize`.
+- [ ] **JD-W6 — `formatEventDate`, `formatCurrency`, `getErrorMessage` duplicados en 7+ archivos** | `frontend/src/pages/` — Fix: extraer a `src/lib/format.js` y `src/lib/apiError.js`.
+- [ ] **JD-W7 — `RoleGuard` redirige sin feedback al usuario**
+  - Si un usuario sin permisos accede a una ruta protegida, es redirigido a `/` sin toast ni explicación. No sabe qué pasó.
+  - Archivos: `frontend/src/components/RoleGuard.jsx`
+  - Fix: mostrar página 403 "No autorizado" o toast de error + redirect. No redirigir en silencio.
+- [ ] **JD-W8 — `EventOwnershipHandler` solo lee `id` de ruta** → frágil si otra ruta usa `eventId` | `backend/Authorization/EventOwnershipHandler.cs:57` — Fix: pasar nombre de parámetro desde el requirement.
+- [ ] **JD-W9 — Doble scan de QR sin `ConcurrencyToken`** ❌ **RECHAZADO** — El riesgo de que dos staff escaneen exactamente el mismo QR en el mismo milisegundo es insignificante para la escala del negocio. No se justifica la complejidad adicional.
+- [ ] **JD-W10 — `GenerateQRCodeImage` síncrono bloquea request thread** | `backend/Services/TicketService.cs:132-160` — Fix: cachear PNG renderizado.
+- [ ] **JD-W11 — `PUT /events/undefined` si `initialData?.id` no existe** | `frontend/src/components/EventForm.jsx:145-171` — Fix: validar `eventId` antes de submit.
+- [ ] **JD-W12 — Catch block pone `feedback.type = 'success'` al fallar upload** | `frontend/src/components/EventForm.jsx:81,99-115` — Fix: usar `warning` o `error`.
+- [ ] **JD-W13 — Focus trap de Modal no actualiza nodos focusables** | `frontend/src/components/Modal.jsx:46-82` — Fix: re-evaluar en cada Tab.
+- [ ] **JD-W14 — `nextId` a nivel módulo persiste entre HMR** | `frontend/src/context/ToastProvider.jsx:48` — Fix: `useRef`.
+- [ ] **JD-W15 — StaffScan: sin validación GUID ni guarda de scanner** | `frontend/src/pages/StaffScan.jsx:156-186` — Fix: validar GUID; `useRef` + cleanup.
+- [ ] **JD-W16 — `exception.StackTrace` logueado (paths y datos sensibles)**
+  - `GlobalExceptionHandler` loguea `exception.StackTrace` completo. Puede exponer paths del servidor y datos internos en logs.
+  - Archivos: `backend/Middleware/GlobalExceptionHandler.cs:54`
+  - Fix: loguear solo `exception.Message`. Emitir `StackTrace` como propiedad estructurada separada que pueda filtrarse en producción.
+- [ ] **JD-W17 — Fallos de auditoría silenciosos** | `backend/Services/AuditLogService.cs:46-49` — Fix: cola out-of-band + métrica.
+- [ ] **JD-W18 — Password ≥6 back vs ≥8 front** | `backend/Services/AuthService.cs:42-49` — Fix: unificar ≥8 en servidor.
+- [ ] **JD-W19 — `AuditLog.UserId` sin FK a Users** | `backend/Data/ApplicationDbContext.cs:149-165` — Fix: FK con `OnDelete(Restrict)`.
+- [ ] **JD-W20 — `TryGetUserRole` retorna `true` aunque `Enum.TryParse` falle**
+  - Si el claim de rol no existe o tiene un valor inválido, `Enum.TryParse` retorna `false` pero el método lo ignora y retorna `true` con `Organizador` como fallback. Un usuario sin rol se autentica como Organizador.
+  - Archivos: `backend/Controllers/EventController.cs:233-238`
+  - Fix: retornar `false` si `Enum.TryParse` falla. El caller debe manejar el caso de usuario sin rol (403 Forbidden).
+- [ ] **JD-W21 — `CheckoutReturn` miente: "enviadas a tu email"** ⚠️ **CUBIERTO POR JD-C4**
+- [ ] **JD-W22 — `api/client.js` cae a `http://localhost:5193` en producción**
+  - Lógica invertida: en dev usa `VITE_API_BASE_URL`, en prod hace fallback a localhost.
+  - Archivos: `frontend/src/api/client.js:4-6`
+  - Fix: invertir. En prod usar `VITE_API_BASE_URL` (obligatorio), en dev fallback a `http://localhost:5193`.
+- [ ] **JD-W23 — Tests con EF Core InMemory no prueban constraints reales** | `backend/Tests/` — Fix: integration tests con PostgreSQL (Testcontainers).
+- [ ] **JD-W24 — Webhook audit log usa `UserId: Guid.Empty`** | `backend/Controllers/PaymentController.cs:94-136` — Fix: `System` user o `MercadoPagoId`.
+- [ ] **JD-W25 — Sin rate limiting en `POST /auth/login`**
+  - Sin límite de intentos → brute-force factible contra contraseñas débiles.
+  - Archivos: `backend/Services/AuthService.cs:104-167`, `backend/Controllers/AuthController.cs:79-114`
+  - Fix: rate limiter tipo `SlidingWindowLimiter` (ej. 10 intentos por minuto por IP) en el endpoint. Alternativa futura: exponential lockout por email tras N fallos.
+- [ ] **JD-W26 — Reservation token sin nonce/expiry → replayable** | `backend/Services/ReservationService.cs:344-356` — Fix: incluir timestamp; validar no expirado.
+- [ ] **JD-W27 — QR timestamp no validado al escanear**
+  - El QR contiene `ticketId:timestamp:signature`, pero `VerifyQRCodeSignature` solo valida la firma HMAC, no el timestamp. Un QR robado es válido indefinidamente.
+  - Archivos: `backend/Services/TicketService.cs:111-217`, `backend/Helpers/HmacHelper.cs`
+  - Fix: al validar, verificar que el timestamp del QR esté dentro de una ventana razonable (ej. desde la fecha de compra hasta 24h post-evento). Si el evento ya pasó, el QR se rechaza.
+- [ ] **JD-W28 — `PaymentService` muta `reservation.Status` directo** ⚠️ **CUBIERTO POR JD-S4**
+- [ ] **JD-W29 — PII (email, DNI) logueado sin redactar** | `backend/Services/TicketService.cs:330-339` — Fix: `LogRedactor.HashIdentifier`.
+- [ ] **JD-W30 — `OrganizerEventDetail` carga datos con endpoint anónimo** | `frontend/src/pages/OrganizerEventDetail.jsx:37-62` — Fix: `GET /events/{id}/manage` con `EventOwnership`.
+- [ ] **JD-W31 — `EventForm` `Content-Type` explícito rompe boundary** | `frontend/src/components/EventForm.jsx:174-189` — Fix: dejar axios auto-detectar.
+- [ ] **JD-W32 — `ReservationService` reintento no re-lee `TicketType`** ⚠️ **CUBIERTO POR JD-C5**
+- [ ] **JD-W33 — Sin trazabilidad IP/user-agent en reservas guest** | `backend/Controllers/ReservationController.cs:38-184` — Fix: persistir IP + User-Agent.
 
 ### 🔵 SUGGESTION — Mejoras
 
