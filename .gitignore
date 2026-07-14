@@ -19,3 +19,4 @@ frontend/build/
 
 # SDD artifacts
 .atl/
+.codegraph/
