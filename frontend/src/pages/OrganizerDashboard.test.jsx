@@ -255,7 +255,21 @@ describe('OrganizerDashboard', () => {
     expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
   })
 
-  it('displays zero values correctly', async () => {
+  it('"Ver metricas" button navigates to event metrics page', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const metricsBtn = screen.getByRole('button', { name: /ver metricas de recital de rock nacional/i })
+    await userEvent.click(metricsBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-1/metrics')
+  })
+
+  it('display zero values correctly', async () => {
     mockGet.mockResolvedValue({ data: mockMetrics })
 
     render(<OrganizerDashboard />)

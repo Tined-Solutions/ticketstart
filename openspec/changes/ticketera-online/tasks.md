@@ -598,13 +598,13 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Refresh metrics on page load
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.9, 10.6_
 
-  - [ ] 26.3 Create event detail metrics view
+  - [x] 26.3 Create event detail metrics view
     - Fetch single event metrics from GET /api/metrics/events/{id}
     - Display detailed metrics for the event
     - Show charts or visualizations (optional enhancement)
     - _Requirements: 11.7_
 
-  - [ ]* 26.4 Write unit tests for organizer dashboard
+  - [x]* 26.4 Write unit tests for organizer dashboard
     - Test event list display
     - Test metrics display
     - Test event creation form

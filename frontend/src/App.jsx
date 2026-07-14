@@ -13,6 +13,7 @@ import StaffScan from './pages/StaffScan.jsx'
 import OrganizerDashboard from './pages/OrganizerDashboard.jsx'
 import OrganizerEventNew from './pages/OrganizerEventNew.jsx'
 import OrganizerEventDetail from './pages/OrganizerEventDetail.jsx'
+import OrganizerEventMetrics from './pages/OrganizerEventMetrics.jsx'
 import AdminPanel from './pages/AdminPanel.jsx'
 import NotFound from './pages/NotFound.jsx'
 
@@ -56,6 +57,16 @@ function App() {
           <ProtectedRoute>
             <RoleGuard allowedRoles={['Organizador', 'Admin']}>
               <OrganizerEventNew />
+            </RoleGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organizer/events/:id/metrics"
+        element={
+          <ProtectedRoute>
+            <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+              <OrganizerEventMetrics />
             </RoleGuard>
           </ProtectedRoute>
         }

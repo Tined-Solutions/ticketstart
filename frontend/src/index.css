@@ -763,3 +763,61 @@ button {
   gap: 12px;
   justify-content: flex-end;
 }
+
+/* ── Event metrics ───────────────────────────────────────────────────── */
+
+.metrics-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.metrics-loading {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text);
+}
+
+.metrics-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin-bottom: 24px;
+  background: var(--bg);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+  margin: 0;
+}
+
+.metrics-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metrics-item dt {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.metrics-item dd {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.metrics-value {
+  font-family: var(--mono);
+}
+
+.metrics-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}

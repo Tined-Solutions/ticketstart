@@ -233,6 +233,14 @@ export default function OrganizerDashboard() {
                       </button>
                       <button
                         type="button"
+                        className="button-secondary dashboard-action-btn"
+                        onClick={() => navigate(`/organizer/events/${m.eventId}/metrics`)}
+                        aria-label={`Ver metricas de ${m.eventName}`}
+                      >
+                        Metricas
+                      </button>
+                      <button
+                        type="button"
                         className="button-danger dashboard-action-btn"
                         onClick={() => handleDeleteClick(m)}
                         aria-label={`Eliminar ${m.eventName}`}

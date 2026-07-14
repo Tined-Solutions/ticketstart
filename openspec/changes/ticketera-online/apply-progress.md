@@ -1689,3 +1689,119 @@ Recommended work-unit commits (per `work-unit-commits` skill):
 ### Next Recommended Phase
 
 Continue to Task 26.3 (event detail metrics view) and Task 26.4 (unit tests for organizer dashboard).
+
+---
+
+## Task 26.3: Event detail metrics view + Task 26.4: Unit tests
+
+### Completed Tasks
+
+- [x] 26.3 Create event detail metrics view
+  - Created `OrganizerEventMetrics.jsx` component with loading/error/404/success states
+  - Fetches single event metrics from `GET /api/metrics/events/{id}` with AbortController cleanup
+  - Displays all EventMetrics fields: eventName, eventDate, ticketsSold, totalRevenue, remainingInventory, ticketsScanned
+  - Currency formatted as Argentine pesos, date formatted with `toLocaleDateString('es-AR')`
+  - "Volver al dashboard" button in all states
+  - Added route `/organizer/events/:id/metrics` in App.jsx (protected by Organizador/Admin RoleGuard)
+  - Added "Metricas" button to OrganizerDashboard actions column
+  - Added CSS styles for metrics page (`.metrics-page`, `.metrics-card`, `.metrics-grid`, etc.)
+  - _Requirements: 11.7_
+
+- [x] 26.4 Write unit tests for organizer dashboard
+  - `OrganizerDashboard.test.jsx`: Added test for "Ver metricas" button navigation → 14 tests total (+1 new)
+  - `OrganizerEventMetrics.test.jsx`: Created with 10 tests covering:
+    - Loading state
+    - Metrics data display (all fields: eventName, eventDate, ticketsSold, totalRevenue, remainingInventory, ticketsScanned)
+    - Error state on API failure
+    - "Evento no encontrado" on 404
+    - "Volver al dashboard" navigation
+    - AbortController cleanup on unmount
+    - Currency formatting
+    - Date formatting
+    - Zero values display
+    - Fallback error message
+
+### Files Changed
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/OrganizerEventMetrics.jsx` | Created | Event detail metrics view with loading, error, 404, and success states. Fetches `GET /api/metrics/events/{id}` with AbortController, displays all EventMetrics fields with Argentine peso formatting and Spanish date formatting. |
+| `frontend/src/pages/OrganizerEventMetrics.test.jsx` | Created | 10 unit tests: loading, success display, error state, 404 handling, back navigation, AbortController cleanup, currency/date formatting, zero values, and fallback errors. |
+| `frontend/src/pages/OrganizerDashboard.jsx` | Modified | Added "Metricas" button in actions column next to "Editar" and "Eliminar", navigating to `/organizer/events/{eventId}/metrics`. |
+| `frontend/src/pages/OrganizerDashboard.test.jsx` | Modified | Added test for "Ver metricas" button navigation. 14 tests total (13 existing + 1 new). |
+| `frontend/src/App.jsx` | Modified | Added `OrganizerEventMetrics` import and route `/organizer/events/:id/metrics` with ProtectedRoute + RoleGuard (Organizador, Admin), placed before `/organizer/events/:id` for correct route matching. |
+| `frontend/src/index.css` | Modified | Added metrics page styles: `.metrics-page`, `.metrics-loading`, `.metrics-card`, `.metrics-grid`, `.metrics-item`, `.metrics-value`, `.metrics-actions`. |
+| `openspec/changes/ticketera-online/tasks.md` | Modified | Marked Tasks 26.3 and 26.4 complete. |
+
+### Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `cd frontend && npx vitest run src/pages/OrganizerEventMetrics.test.jsx src/pages/OrganizerDashboard.test.jsx --pool=vmThreads` → 2 files passed, 24/24 tests passed |
+| Runtime harness command/scenario and exact result | `npm run build` → production build succeeds |
+| Rollback boundary | Delete `frontend/src/pages/OrganizerEventMetrics.jsx` and `OrganizerEventMetrics.test.jsx`, revert the OrganizerDashboard actions column (remove "Metricas" button), revert App.jsx route addition and import, revert `index.css` additions (lines from `/* ── Event metrics` to `justify-content: center; gap: 12px; }`), revert `tasks.md` checkboxes |
+
+### Test Summary
+
+- **Frontend tests passing**: 24/24 (14 OrganizerDashboard + 10 OrganizerEventMetrics)
+- **New tests added**: 11 (1 in `OrganizerDashboard.test.jsx` + 10 in `OrganizerEventMetrics.test.jsx`)
+- **Layers used**: Unit (Vitest + jsdom + Testing Library)
+- **Pool used**: `vmThreads` (forks/threads pools timeout in this environment)
+
+### TDD Cycle Evidence
+
+Strict TDD was NOT active for this frontend task (only backend is strict TDD). Tests were written alongside implementation matching existing project patterns.
+
+| Task | Test File | Layer | Tests | Status |
+|------|-----------|-------|-------|--------|
+| 26.3 | `src/pages/OrganizerEventMetrics.test.jsx` | Unit | 10/10 | Passed |
+| 26.4 | `src/pages/OrganizerDashboard.test.jsx` | Unit | 14/14 (+1 new) | Passed |
+
+### Component Architecture
+
+**OrganizerEventMetrics** renders:
+- **Loading state**: "Cargando metricas..." centered text
+- **Error state (non-404)**: Error message from API with "Volver al dashboard" button
+- **404 state**: "Evento no encontrado" with "Volver al dashboard" button
+- **Success state**: Page header with event name + "Metricas del evento" subtitle, metrics card with definition list grid showing all EventMetrics fields, and "Volver al dashboard" button
+
+**Metrics grid layout**: Uses CSS Grid with `auto-fit` columns (minimum 240px), displaying 5 metric items:
+1. Fecha del evento (formatted date)
+2. Entradas vendidas (numeric)
+3. Ingresos totales (currency)
+4. Inventario restante (numeric)
+5. Tickets escaneados (numeric)
+
+**API endpoint used**:
+- `GET /api/metrics/events/{id}` → `{ id, eventId, eventName, eventDate, ticketsSold, totalRevenue, remainingInventory, ticketsScanned }`
+
+### Deviations from Design
+
+1. **No charts or visualizations**: The task spec lists "Show charts or visualizations (optional enhancement)" as part of 26.3. Charts were omitted as they are explicitly marked optional and would require additional dependencies (e.g., recharts). The metrics are displayed in a clean definition-list grid with large numeric values.
+2. **404 detection uses status code check**: The backend `GET /api/metrics/events/{id}` returns a 404 with ProblemDetails JSON. The component checks `error.response?.status === 404` to show the "Evento no encontrado" state, while all other HTTP errors show the generic error message. This is more precise than parsing the error body for 404 semantics.
+
+### Issues Found
+
+1. **Vitest worker pool timeouts**: The `forks` and `threads` pools both time out starting workers in this WSL-mounted filesystem environment. The `vmThreads` pool works correctly but has a slow cold-start (~60-120s for jsdom environment), consistent with prior apply-progress entries for Tasks 22, 25, 26.1, 26.2. After the first file warms up the pool, subsequent files in the same run are fast.
+2. **Pre-existing lint error**: `StaffScan.test.jsx:41:59` has an unused `_errorCallback` variable. This is unrelated to Task 26 changes.
+3. **`npm run test -- --run` (the orchestrator's command) triggers the `test` script in package.json which calls `vitest run` without pool flag. This times out in the current environment. The working command is `npx vitest run --pool=vmThreads`.
+
+### Verification
+
+- `cd frontend && npx vitest run src/pages/OrganizerEventMetrics.test.jsx src/pages/OrganizerDashboard.test.jsx --pool=vmThreads`: 24/24 passing.
+- `npm run lint`: 1 pre-existing error (StaffScan.test.jsx) — no new lint violations.
+- `npm run build`: production build succeeds.
+
+### Commits
+
+No commits made in this batch. The orchestrator owns commit and PR after re-verification.
+
+Recommended work-unit commits (per `work-unit-commits` skill):
+1. `feat(frontend): agrega vista de metricas de evento y boton Metricas en dashboard — Task 26.3`
+   - `frontend/src/pages/OrganizerEventMetrics.jsx`, `frontend/src/pages/OrganizerDashboard.jsx`, `frontend/src/App.jsx`, `frontend/src/index.css`
+2. `test(frontend): agrega tests de metricas de evento y dashboard — Tasks 26.3-26.4`
+   - `frontend/src/pages/OrganizerEventMetrics.test.jsx`, `frontend/src/pages/OrganizerDashboard.test.jsx`
+
+### Next Recommended Phase
+
+Continue to Task 27 (admin panel) or `sdd-verify` for the Task 26 slice.
