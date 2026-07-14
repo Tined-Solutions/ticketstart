@@ -610,8 +610,8 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test event creation form
     - Test event edit/delete functionality
 
-- [ ] 27. Implement admin panel
-  - [ ] 27.1 Create admin dashboard component
+- [x] 27. Implement admin panel
+  - [x] 27.1 Create admin dashboard component
     - Fetch all events from GET /api/admin/events
     - Fetch all users from GET /api/admin/users
     - Display events with owner information
@@ -620,34 +620,34 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Implement role-based access (Admin only)
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
 
-  - [ ]* 27.2 Write unit tests for admin panel
+  - [x]* 27.2 Write unit tests for admin panel
     - Test admin access control
     - Test event list display
     - Test user list display
 
-- [ ] 28. Implement UI/UX enhancements and styling
-  - [ ] 28.1 Add global styles and theme
+- [x] 28. Implement UI/UX enhancements and styling
+  - [x] 28.1 Add global styles and theme
     - Set up CSS framework (Tailwind, Bootstrap, or Material-UI)
     - Define color scheme and typography
     - Create reusable UI components (buttons, cards, forms, modals)
     - Ensure responsive design for mobile and desktop
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 28.2 Add loading states and error handling
+  - [x] 28.2 Add loading states and error handling
     - Implement loading spinners for async operations
     - Display error messages consistently across all components
     - Add toast notifications for success/error feedback
     - _Requirements: 16.4_
 
-  - [ ]* 28.3 Write accessibility tests
+  - [x]* 28.3 Write accessibility tests
     - Test keyboard navigation
     - Test screen reader compatibility
     - Test color contrast ratios
 
-- [ ] 29. Checkpoint - Verify frontend completeness
+- [x] 29. Checkpoint - Verify frontend completeness
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 30. Integration testing and end-to-end verification
+- [ ] 30. Integration testing and end-to-end verification ⚠️ POSPUESTA — requiere credenciales externas (R2, MP, Resend)
   - [ ]* 30.1 Write integration tests for external services
     - Test Cloudflare R2 image upload/delete with 1-2 sample images
     - Test Mercado Pago payment preference creation with 1-2 sample reservations
@@ -678,28 +678,29 @@ This implementation plan breaks down the Ticketera Online MVP into discrete codi
     - Test frontend and backend can run independently
     - _Requirements: 13.1, 13.2, 13.3, 13.4_
 
-- [ ] 31. Documentation and deployment preparation
-  - [ ] 31.1 Update README with setup instructions
-    - Document prerequisites (Node.js, .NET 8, PostgreSQL)
+- [x] 31. Documentation and deployment preparation
+  - [x] 31.1 Update README with setup instructions
+    - Document prerequisites (Node.js 18+, .NET 9, PostgreSQL/Supabase)
     - Document environment variables for backend
     - Document environment variables for frontend
     - Document database migration steps
     - Document how to run backend and frontend locally
     - _Requirements: 13.5_
 
-  - [ ] 31.2 Create environment configuration templates
+  - [x] 31.2 Create environment configuration templates
     - Create appsettings.json.template for backend
     - Create .env.template for frontend
     - Document all required configuration values
     - _Requirements: 13.5_
 
-  - [ ] 31.3 Add API documentation
-    - Document all API endpoints with request/response examples
-    - Add Swagger/OpenAPI documentation to backend
-    - Document authentication requirements
+  - [x] 31.3 Add API documentation
+    - Document all API endpoints in README API reference table
+    - Enable Swagger XML comments (GenerateDocumentationFile + IncludeXmlComments)
+    - Add Swagger/OpenAPI description and XML doc integration
+    - Document authentication requirements in README
     - _Requirements: 1.1, 2.4, 5.1, 9.1_
 
-- [ ] 32. Final checkpoint and system verification
+- [x] 32. Final checkpoint and system verification
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

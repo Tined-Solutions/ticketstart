@@ -1,382 +1,258 @@
-# Ticketera Online MVP
+# Ticketera Online
 
-A full-stack online ticketing platform built with React and ASP.NET Core. This system enables event organizers to create and manage events, sell tickets through Mercado Pago integration, and validate attendees via QR code scanning.
+Full-stack online ticketing platform — event creation, Mercado Pago payments, QR-code ticket validation, and organizer/admin dashboards.
 
-## Project Structure
+**Stack**: React 19 + ASP.NET Core 9.0 + PostgreSQL (Supabase)
 
-This is a monorepo containing both frontend and backend applications:
+## Quick Start
 
+```bash
+# Backend
+cd backend
+cp appsettings.json.template appsettings.json   # then fill in your keys
+dotnet ef database update
+dotnet run
+
+# Frontend (separate terminal)
+cd frontend
+cp .env.template .env
+npm install
+npm run dev
 ```
-ticketera-online/
-├── backend/              # ASP.NET Core 8.0 Web API
-│   └── TicketeraOnline.Api/
-├── frontend/             # React 18+ SPA (Vite)
-├── TicketeraOnline.sln   # .NET Solution file
-└── README.md             # This file
-```
 
-## Technology Stack
-
-### Backend
-- **Framework**: ASP.NET Core 8.0 Web API
-- **ORM**: Entity Framework Core 8.0
-- **Database**: PostgreSQL (Supabase)
-- **Authentication**: JWT (JSON Web Tokens)
-- **Image Storage**: Cloudflare R2 (S3-compatible)
-- **Payment Gateway**: Mercado Pago Checkout Pro
-- **Email Service**: Resend
-- **QR Code Generation**: QRCoder
-- **Password Hashing**: BCrypt.Net
-
-### Frontend
-- **Framework**: React 18+
-- **Build Tool**: Vite
-- **Routing**: React Router
-- **HTTP Client**: Axios
-- **QR Scanner**: html5-qrcode or react-qr-reader
-- **QR Display**: qrcode.react
+Backend API: `http://localhost:5193` · Swagger: `http://localhost:5193/swagger`
+Frontend: `http://localhost:5173`
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+| Tool | Version | Check |
+|------|---------|-------|
+| .NET SDK | 9.0+ | `dotnet --version` |
+| Node.js | 18+ | `node --version` |
+| PostgreSQL | 15+ | local install or [Supabase](https://supabase.com) |
+| EF Core CLI | (auto-installed) | `dotnet tool install --global dotnet-ef` |
 
-- **.NET SDK 8.0 or higher**: [Download here](https://dotnet.microsoft.com/download)
-- **Node.js 18+ and npm**: [Download here](https://nodejs.org/)
-- **PostgreSQL** (or Supabase account): [Supabase](https://supabase.com/)
-- **Git**: [Download here](https://git-scm.com/)
+### External services (free-tier dev accounts work)
 
-### External Service Accounts
+| Service | Purpose | Config section in `appsettings.json` |
+|---------|---------|--------------------------------------|
+| [Supabase](https://supabase.com) | PostgreSQL database | `ConnectionStrings` |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Event image storage | `CloudflareR2` |
+| [Mercado Pago](https://www.mercadopago.com.ar/developers) | Payment processing | `MercadoPago` |
+| [Resend](https://resend.com) | Email delivery | `Resend` |
 
-You'll need accounts and API keys for:
+## Environment Variables
 
-1. **Supabase** (PostgreSQL database)
-   - Create a project at [supabase.com](https://supabase.com/)
-   - Note your connection string (both direct and pooled)
+### Backend (`backend/appsettings.json`)
 
-2. **Cloudflare R2** (Image storage)
-   - Create an R2 bucket at [cloudflare.com](https://www.cloudflare.com/products/r2/)
-   - Generate access key and secret key
+Copy `appsettings.json.template` → `appsettings.json` and fill in your values. Never commit `appsettings.json` or `appsettings.Development.json`.
 
-3. **Mercado Pago** (Payment processing)
-   - Create a developer account at [mercadopago.com](https://www.mercadopago.com.ar/developers)
-   - Get your access token and webhook secret
+Key configuration sections:
 
-4. **Resend** (Email delivery)
-   - Sign up at [resend.com](https://resend.com/)
-   - Generate an API key
-
-## Local Development Setup
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd ticketera-online
+```
+ConnectionStrings:DefaultConnection   — Supabase pooler (port 6543, runtime)
+ConnectionStrings:MigrationConnection — Supabase direct  (port 5432, migrations only)
+Jwt:SecretKey                         — 32+ character random string
+CloudflareR2:*                        — R2 bucket access + secret keys
+MercadoPago:AccessToken               — MP access token
+MercadoPago:WebhookSecret             — MP webhook signing secret
+Resend:ApiKey                         — Resend API key
+Resend:FromEmail                      — Verified sender email
+QRCode:HmacSecretKey                  — 32+ char HMAC key for QR signing
+Reservation:TokenSecretKey            — 32+ char HMAC key for reservation token
 ```
 
-### 2. Backend Setup
+### Frontend (`frontend/.env`)
 
-#### 2.1 Navigate to Backend Directory
+Copy `.env.template` → `.env`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_BASE_URL` | `/api` | Backend API URL. `/api` uses the Vite dev proxy; set to a full URL for production. |
+
+The Vite dev server proxies `/api/*` → `http://localhost:5029`. Adjust `vite.config.js` if your backend port differs.
+
+## Database Migrations
 
 ```bash
 cd backend
-```
 
-#### 2.2 Configure Application Settings
+# Create a new migration (only if you change models)
+dotnet ef migrations add YourMigrationName
 
-Create an `appsettings.Development.json` file in the `backend` directory:
-
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=<your-supabase-host>;Port=6543;Database=postgres;Username=<username>;Password=<password>;Pooling=true;",
-    "MigrationConnection": "Host=<your-supabase-host>;Port=5432;Database=postgres;Username=<username>;Password=<password>;"
-  },
-  "Jwt": {
-    "SecretKey": "<generate-a-secure-random-key>",
-    "Issuer": "TicketeraOnline",
-    "Audience": "TicketeraOnlineUsers",
-    "ExpirationMinutes": 1440
-  },
-  "CloudflareR2": {
-    "AccessKey": "<your-r2-access-key>",
-    "SecretKey": "<your-r2-secret-key>",
-    "BucketName": "<your-bucket-name>",
-    "Endpoint": "https://<account-id>.r2.cloudflarestorage.com",
-    "PublicUrl": "https://<your-custom-domain-or-r2-dev-url>"
-  },
-  "MercadoPago": {
-    "AccessToken": "<your-mercadopago-access-token>",
-    "WebhookSecret": "<your-webhook-secret>"
-  },
-  "Resend": {
-    "ApiKey": "<your-resend-api-key>",
-    "FromEmail": "noreply@yourdomain.com"
-  },
-  "QRCode": {
-    "SecretKey": "<generate-a-secure-random-key-for-hmac>"
-  }
-}
-```
-
-**Important Notes:**
-- Use **port 6543** (transaction mode pooler) for the runtime connection string
-- Use **port 5432** (direct connection) for migrations
-- Generate secure random keys for JWT and QR code signing (at least 32 characters)
-- Never commit `appsettings.Development.json` to version control
-
-#### 2.3 Restore Dependencies
-
-```bash
-dotnet restore
-```
-
-#### 2.4 Run Database Migrations
-
-Once Entity Framework Core is configured (in later tasks):
-
-```bash
-# Create migration
-dotnet ef migrations add InitialCreate
-
-# Apply migration to database
+# Apply all pending migrations
 dotnet ef database update
+
+# Use the migration connection string for migrations (port 5432)
+dotnet ef database update --connection "Host=...;Port=5432;..."
 ```
 
-#### 2.5 Run the Backend
+The `MigrationConnection` in `appsettings.json` targets Supabase port 5432 (direct, no pooler). The `DefaultConnection` targets port 6543 (pooler) and is used at runtime.
 
-```bash
-dotnet run
-```
+## Running Locally
 
-The API will be available at `https://localhost:7000` (or the port specified in `launchSettings.json`).
+Two terminals:
 
-### 3. Frontend Setup
-
-#### 3.1 Navigate to Frontend Directory
-
-```bash
-cd ../frontend
-```
-
-#### 3.2 Install Dependencies
-
-Dependencies should already be installed, but if needed:
-
-```bash
-npm install
-```
-
-#### 3.3 Configure Environment Variables
-
-Create a `.env` file in the `frontend` directory:
-
-```env
-VITE_API_BASE_URL=https://localhost:7000/api
-```
-
-Adjust the port if your backend runs on a different port.
-
-#### 3.4 Run the Frontend
-
-```bash
-npm run dev
-```
-
-The React app will be available at `http://localhost:5173`.
-
-### 4. Running Both Applications
-
-For development, you'll need two terminal windows:
-
-**Terminal 1 (Backend):**
+**Terminal 1 — Backend**
 ```bash
 cd backend
 dotnet run
 ```
 
-**Terminal 2 (Frontend):**
+**Terminal 2 — Frontend**
 ```bash
 cd frontend
 npm run dev
 ```
-
-## Project Features
-
-### User Roles
-
-- **Guest**: Browse events and purchase tickets
-- **Organizador**: Create and manage events, view dashboard metrics
-- **Staff**: Scan and validate tickets at event entrances
-- **Admin**: Full system access, manage all events and users
-
-### Core Functionality
-
-1. **Authentication & Authorization**
-   - JWT-based authentication
-   - Role-based access control
-   - Secure password hashing with BCrypt
-
-2. **Event Management**
-   - Create, edit, and delete events
-   - Upload event images to Cloudflare R2
-   - Define multiple ticket types per event
-   - Real-time ticket availability tracking
-
-3. **Ticket Reservation System**
-   - 10-minute temporary reservations
-   - Automatic inventory management
-   - Background service for expired reservation cleanup
-   - Concurrency control to prevent overselling
-
-4. **Payment Processing**
-   - Mercado Pago Checkout Pro integration
-   - Webhook handling for payment notifications
-   - Automatic refunds on stock failures
-   - Transaction logging and audit trail
-
-5. **QR Code Tickets**
-   - HMAC-SHA256 signed QR codes
-   - Unique ticket identifiers
-   - Double-scan prevention
-   - Event-specific validation
-
-6. **Email Delivery**
-   - Ticket confirmation emails with QR codes
-   - Event details and purchase information
-   - Refund notifications
-   - Retry logic for failed deliveries
-
-7. **Ticket Lookup**
-   - Retrieve tickets by email and DNI
-   - Download/print QR codes
-
-8. **QR Scanner (Staff)**
-   - Web-based camera scanner
-   - Real-time validation
-   - Visual and audio feedback
-   - Scan history logging
-
-9. **Organizer Dashboard**
-   - Event metrics (sales, revenue, inventory, scans)
-   - Event management interface
-   - Real-time data updates
-
-10. **Admin Panel**
-    - System-wide event management
-    - User account management
-    - Audit logging for admin actions
 
 ## Testing
 
-### Backend Tests
-
 ```bash
-cd backend
-dotnet test
+# Backend (333+ unit + property tests)
+cd backend && dotnet test
+
+# Frontend (208+ unit tests)
+cd frontend && npm test
 ```
 
-The project includes:
-- Unit tests for services and controllers
-- Property-based tests for correctness properties
-- Integration tests for external services
+## API Reference
 
-### Frontend Tests
+All endpoints are prefixed with `/api`. Authenticated endpoints require `Authorization: Bearer <jwt>`.
 
-```bash
-cd frontend
-npm test
+### Auth
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/auth/register` | — | Register a new user |
+| `POST` | `/api/auth/login` | — | Login, returns JWT |
+
+### Events
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/events` | — | List published events |
+| `GET` | `/api/events/{id}` | — | Event detail with ticket types |
+| `POST` | `/api/events` | Organizador / Admin | Create event |
+| `PUT` | `/api/events/{id}` | Event owner / Admin | Update event |
+| `DELETE` | `/api/events/{id}` | Event owner / Admin | Delete event |
+| `POST` | `/api/events/{id}/image` | Event owner / Admin | Upload event image |
+
+### Reservations
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/reservations` | — | Create 10-min reservation (requires `purchaserDNI`, returns token) |
+| `GET` | `/api/reservations/{id}` | — | Get reservation status |
+
+### Payments
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/payments/create-preference` | — | Create Mercado Pago checkout preference (requires reservation token) |
+| `POST` | `/api/payments/webhook` | — | Mercado Pago webhook receiver (validates `x-signature`) |
+
+### Tickets
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/tickets/lookup?email=&dni=` | — | Lookup tickets by email + DNI (returns QR images) |
+| `POST` | `/api/tickets/validate` | Staff / Admin | Validate QR code at event entrance |
+
+### Metrics
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/metrics/events/{id}` | Event owner / Admin | Single-event metrics |
+| `GET` | `/api/metrics/organizer` | Organizador / Admin | All events metrics for organizer |
+
+### Admin
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/admin/users?page=&pageSize=` | Admin | List all users (paginated, max 200) |
+| `GET` | `/api/admin/events?page=&pageSize=` | Admin | List all events (paginated, max 200) |
+| `GET` | `/api/admin/audit-logs?userId=` | Admin | View audit log (optional user filter) |
+
+### Authentication
+
+All protected endpoints use JWT Bearer tokens. Register or login to obtain a token, then include it in requests:
+
 ```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+Roles: `Organizador`, `Staff`, `Admin`. Role claims are embedded in the JWT and enforced via ASP.NET Core authorization policies.
+
+Interactive API docs (Swagger UI) are available at `/swagger` when running in Development mode.
+
+## Project Structure
+
+```
+ticketera-online/
+├── backend/                    # ASP.NET Core 9.0 Web API
+│   ├── Controllers/            # API endpoints
+│   ├── Services/               # Business logic
+│   ├── Models/                 # Domain entities + DTOs
+│   ├── Data/                   # EF Core DbContext
+│   ├── Middleware/              # Global exception handler
+│   ├── Helpers/                # Log redactor, HMAC helper
+│   ├── Authorization/          # Custom policies + handlers
+│   ├── Migrations/             # EF Core migrations
+│   └── Tests/                  # xUnit + FsCheck property tests
+├── frontend/                   # React 19 + Vite SPA
+│   └── src/
+│       ├── pages/              # Route-level components
+│       ├── components/         # Reusable UI (Button, Modal, FormField, etc.)
+│       ├── context/            # Auth + Toast providers
+│       └── api/                # Axios client
+└── openspec/                   # SDD artifacts (proposal, specs, design, tasks)
+```
+
+## Features
+
+- **JWT authentication** with role-based access (Guest / Organizador / Staff / Admin)
+- **Event CRUD** with image upload to Cloudflare R2
+- **10-minute ticket reservations** with automatic expiration and concurrency control
+- **Mercado Pago Checkout Pro** integration with webhook processing
+- **HMAC-signed QR codes** for ticket validation with double-scan prevention
+- **Ticket lookup** by email + DNI with downloadable QR images
+- **QR scanner** (Staff) with camera integration, visual + audio feedback, and scan history
+- **Organizer dashboard** with real-time metrics (sales, revenue, inventory, scans)
+- **Admin panel** with system-wide event/user management and audit logging
+- **Email delivery** via Resend (confirmation + refund notifications)
+- **Structured logging** with sensitive-data redaction
+- **Global exception handling** with ProblemDetails (RFC 7807)
 
 ## Building for Production
 
-### Backend
-
 ```bash
-cd backend
-dotnet publish -c Release -o ./publish
+# Backend
+cd backend && dotnet publish -c Release -o ./publish
+
+# Frontend
+cd frontend && npm run build   # output in dist/
 ```
 
-### Frontend
+## Security
 
-```bash
-cd frontend
-npm run build
-```
-
-The production build will be in the `frontend/dist` directory.
-
-## Database Schema
-
-The system uses the following main entities:
-
-- **User**: User accounts with roles
-- **Event**: Event information and details
-- **TicketType**: Ticket categories with pricing and inventory
-- **Reservation**: Temporary ticket holds with expiration
-- **Ticket**: Confirmed tickets with QR codes
-- **Transaction**: Payment transaction records
-
-See the design document for detailed entity relationships and properties.
-
-## API Documentation
-
-Once the backend is running, API documentation is available at:
-
-- Swagger UI: `https://localhost:7000/swagger`
-
-## Security Considerations
-
-- All passwords are hashed using BCrypt
-- JWT tokens for authentication
-- HMAC-SHA256 signatures for QR codes
-- Webhook signature validation for payment notifications
+- Passwords hashed with BCrypt
+- JWT with configurable expiration
+- HMAC-SHA256 signatures for QR codes and reservation tokens
+- Webhook signature validation for Mercado Pago
 - Role-based authorization on all protected endpoints
-- Sensitive data excluded from logs and error messages
+- PII (email, DNI) hashed in logs; query-string redaction
+- Global `IExceptionHandler` with self-protection
 
 ## Troubleshooting
 
-### Backend Issues
+**Database connection fails**: Verify Supabase credentials, use port 6543 for runtime / 5432 for migrations, and whitelist your IP in Supabase settings.
 
-**Database Connection Errors:**
-- Verify Supabase connection string is correct
-- Ensure you're using port 6543 for runtime, 5432 for migrations
-- Check that your IP is allowed in Supabase settings
+**Migrations fail**: Ensure `dotnet-ef` is installed (`dotnet tool install --global dotnet-ef`). Use the `MigrationConnection` string (port 5432).
 
-**Migration Errors:**
-- Ensure you're using the MigrationConnection string (port 5432)
-- Verify Entity Framework Core tools are installed: `dotnet tool install --global dotnet-ef`
+**Frontend can't reach API**: Check `VITE_API_BASE_URL` in `.env`. With the dev proxy (`/api`), the backend must be running. For direct access, set the full URL (`http://localhost:5193/api`).
 
-### Frontend Issues
-
-**API Connection Errors:**
-- Verify `VITE_API_BASE_URL` in `.env` matches your backend URL
-- Check CORS configuration in backend
-- Ensure backend is running
-
-**Build Errors:**
-- Clear node_modules and reinstall: `rm -rf node_modules && npm install`
-- Clear Vite cache: `rm -rf node_modules/.vite`
-
-## Contributing
-
-1. Create a feature branch from `main`
-2. Make your changes
-3. Write tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+**Build errors**: Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`. Clear Vite cache: `rm -rf node_modules/.vite`.
 
 ## License
 
-[Specify your license here]
-
-## Support
-
-For issues and questions, please open an issue in the repository.
-# ticketstart
+MIT

@@ -38,7 +38,7 @@ vi.mock('html5-qrcode', () => ({
   Html5Qrcode: vi.fn().mockImplementation(function (elementId) {
     this._elementId = elementId
     this.start = vi.fn().mockImplementation(
-      async (_cameraConfig, _scanConfig, successCallback, _errorCallback) => {
+      async (_cameraConfig, _scanConfig, successCallback) => {
         if (shouldFailCamera) {
           throw new Error('Permission denied')
         }
