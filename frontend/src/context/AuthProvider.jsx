@@ -27,7 +27,7 @@ export default function AuthProvider({ children }) {
 
   const login = useCallback(
     async (email, password) => {
-      const response = await apiClient.post('/api/Auth/login', {
+      const response = await apiClient.post('/auth/login', {
         email,
         password,
       })
@@ -41,7 +41,7 @@ export default function AuthProvider({ children }) {
 
   const register = useCallback(
     async (name, email, password, role) => {
-      const response = await apiClient.post('/api/Auth/register', {
+      const response = await apiClient.post('/auth/register', {
         name,
         email,
         password,
