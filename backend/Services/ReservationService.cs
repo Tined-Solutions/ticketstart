@@ -36,7 +36,7 @@ public class ReservationService : IReservationService
     /// and falls back to explicit transactions for InMemory provider.
     /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6, Batch 3 REQ-7, REQ-8.
     /// </summary>
-    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
+    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null)
     {
         _logger.LogInformation("Creating reservation for user {UserId}, event {EventId}, ticketType {TicketTypeId}, quantity {Quantity}",
             userId, eventId, ticketTypeId, quantity);
@@ -75,10 +75,10 @@ public class ReservationService : IReservationService
         // InMemory does not support ExecuteUpdateAsync.
         if (_context.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory")
         {
-            return await CreateReservationAtomicAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI);
+            return await CreateReservationAtomicAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI, purchaserEmail);
         }
 
-        return await CreateReservationTransactionalAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI);
+        return await CreateReservationTransactionalAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI, purchaserEmail);
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public class ReservationService : IReservationService
     /// the SET clause atomically increments CurrentlyReserved.
     /// Used by PostgreSQL, SQLite, and other relational providers.
     /// </summary>
-    private async Task<Reservation> CreateReservationAtomicAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
+    private async Task<Reservation> CreateReservationAtomicAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail)
     {
         // Single atomic round-trip: check stock AND reserve in one SQL statement
         var rowsAffected = await _context.TicketTypes
@@ -173,7 +173,7 @@ public class ReservationService : IReservationService
     /// <summary>
     /// Transaction-based reservation for InMemory provider (does not support ExecuteUpdateAsync).
     /// </summary>
-    private async Task<Reservation> CreateReservationTransactionalAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
+    private async Task<Reservation> CreateReservationTransactionalAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail)
     {
         const int maxRetries = 3;
         int retryCount = 0;

@@ -282,7 +282,7 @@ public class ErrorHandlingPropertyTests
                 var audit = new FakeAuditLogService();
                 var paymentService = new Mock<IPaymentService>();
                 paymentService
-                    .Setup(s => s.ProcessWebhookAsync(scenario.Payload, scenario.Signature))
+                    .Setup(s => s.ProcessWebhookAsync(scenario.Payload, scenario.Signature, null))
                     .ReturnsAsync(scenario.Result);
 
                 var controller = new PaymentController(
@@ -318,7 +318,7 @@ public class ErrorHandlingPropertyTests
         var paymentService = new Mock<IPaymentService>();
         var payload = new WebhookPayload { PaymentId = "pay-123", ExternalReference = Guid.NewGuid().ToString(), Status = "approved" };
         var signature = "valid-signature";
-        paymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+        paymentService.Setup(s => s.ProcessWebhookAsync(payload, signature, null))
             .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
 
         var controller = new PaymentController(paymentService.Object, logger, audit)

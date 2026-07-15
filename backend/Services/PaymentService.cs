@@ -102,7 +102,7 @@ public class PaymentService : IPaymentService
     }
 
     /// <inheritdoc />
-    public async Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature)
+    public async Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature, byte[]? rawBody = null)
     {
         _logger.LogInformation(
             "Processing webhook for payment {PaymentId} with status {Status}",
@@ -110,7 +110,17 @@ public class PaymentService : IPaymentService
 
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        if (!ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret))
+        bool signatureValid;
+        if (rawBody != null)
+        {
+            signatureValid = ValidateWebhookSignature(rawBody, signature, _options.WebhookSecret);
+        }
+        else
+        {
+            signatureValid = ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret);
+        }
+
+        if (!signatureValid)
         {
             _logger.LogWarning("Invalid webhook signature for payment {PaymentId}", payload.PaymentId);
             return new WebhookResult
@@ -275,10 +285,20 @@ public class PaymentService : IPaymentService
     }
 
     /// <summary>
-    /// Validates a webhook HMAC-SHA256 signature.
+    /// Validates a webhook HMAC-SHA256 signature from a string payload.
     /// </summary>
     public static bool ValidateWebhookSignature(string payload, string signature, string secret)
     {
         return HmacHelper.ValidateHmacSha256(payload, secret, signature);
+    }
+
+    /// <summary>
+    /// Validates a webhook HMAC-SHA256 signature from raw bytes.
+    /// Use this overload when the webhook body was received as raw bytes to avoid
+    /// encoding mismatches between the sender and receiver.
+    /// </summary>
+    public static bool ValidateWebhookSignature(byte[] rawBody, string signature, string secret)
+    {
+        return HmacHelper.ValidateHmacSha256(rawBody, secret, signature);
     }
 }

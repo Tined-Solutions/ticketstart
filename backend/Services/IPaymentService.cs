@@ -24,8 +24,9 @@ public interface IPaymentService
     /// </summary>
     /// <param name="payload">Webhook payload</param>
     /// <param name="signature">HMAC-SHA256 signature header</param>
+    /// <param name="rawBody">Raw request body bytes for signature validation. When null, falls back to string-based validation.</param>
     /// <returns>Webhook processing result</returns>
-    Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature);
+    Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature, byte[]? rawBody = null);
 
     /// <summary>
     /// Initiates a refund for a payment when stock cannot be fulfilled.

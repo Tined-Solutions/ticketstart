@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -120,7 +121,7 @@ public class PaymentControllerTests
         };
         var signature = "valid-signature";
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature, null))
             .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
 
         var result = await _controller.Webhook(payload, signature);
@@ -140,7 +141,7 @@ public class PaymentControllerTests
         };
         var signature = "invalid-signature";
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature, null))
             .ReturnsAsync(new WebhookResult { Success = false, Error = "Invalid webhook signature", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Authentication });
 
         var result = await _controller.Webhook(payload, signature);
@@ -160,7 +161,7 @@ public class PaymentControllerTests
         };
         var signature = "valid-signature";
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(payload, signature, null))
             .ReturnsAsync(new WebhookResult { Success = false, Error = "Internal processing error", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Processing });
 
         var result = await _controller.Webhook(payload, signature);
@@ -174,4 +175,63 @@ public class PaymentControllerTests
         Assert.Equal("PROCESSING_FAILED", value.error);
     }
 
+    #region Batch 4: Payment Pipeline Tests
+
+    [Fact]
+    public async Task Batch4_Webhook_DuplicateMercadoPagoId_Returns200()
+    {
+        // RED: idempotency not implemented — duplicate payment ID would cause 500
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-dup",
+            ExternalReference = Guid.NewGuid().ToString(),
+            Status = "approved"
+        };
+        var signature = "valid-signature";
+
+        _mockPaymentService
+            .Setup(s => s.ProcessWebhookAsync(payload, signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+
+        // Simulate raw body
+        var rawBody = Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(payload));
+        _controller.ControllerContext.HttpContext!.Request.Body = new System.IO.MemoryStream(rawBody);
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        var result = await _controller.Webhook(payload, signature);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Batch4_Webhook_RawBytesPassedToService()
+    {
+        // RED: controller does not read raw bytes from body and pass to ProcessWebhookAsync
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-raw",
+            ExternalReference = Guid.NewGuid().ToString(),
+            Status = "approved"
+        };
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload);
+        var rawBody = Encoding.UTF8.GetBytes(payloadJson);
+        var signature = "valid-signature";
+
+        _controller.ControllerContext.HttpContext!.Request.Body = new System.IO.MemoryStream(rawBody);
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        _mockPaymentService
+            .Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+
+        var result = await _controller.Webhook(payload, signature);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        _mockPaymentService.Verify(
+            s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.Is<byte[]>(b => b.SequenceEqual(rawBody))),
+            Times.Once);
+    }
+
+    #endregion
 }

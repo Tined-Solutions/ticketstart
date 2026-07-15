@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
@@ -423,6 +426,153 @@ public class PaymentPropertyTests : IDisposable
         Assert.NotNull(transaction);
         Assert.Equal(reservation.Id, transaction.ReservationId);
         Assert.Equal(amount, transaction.Amount);
+    }
+
+    #endregion
+
+    #region Batch 4: Payment Pipeline Tests
+
+    [Fact]
+    public async Task Batch4_Idempotency_DuplicatePaymentId_Returns200()
+    {
+        // RED: idempotency not implemented — duplicate payment ID will cause
+        // DbUpdateException (unique constraint violation) → 500, not 200
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-idempotent",
+            ExternalReference = reservation.Id.ToString(),
+            Status = "approved"
+        };
+        var signature = ComputeSignature(payload, _options.Value.WebhookSecret);
+
+        // First payment — should succeed
+        var result1 = await _paymentService.ProcessWebhookAsync(payload, signature);
+        Assert.True(result1.Success);
+
+        // Second payment with SAME MercadoPagoId — should return 200 (idempotent)
+        // RED: currently will throw DbUpdateException or create duplicate transaction
+        var result2 = await _paymentService.ProcessWebhookAsync(payload, signature);
+        Assert.True(result2.Success);
+        Assert.Equal("pay-idempotent", result2.PaymentId);
+
+        // Verify only ONE transaction was created
+        var transactions = await _context.Transactions
+            .Where(t => t.MercadoPagoId == "pay-idempotent" && t.Status == TransactionStatus.Approved)
+            .ToListAsync();
+        Assert.Single(transactions);
+    }
+
+    [Fact]
+    public async Task Batch4_AtomicRollback_TicketCreationFailure_RollsBackTransaction()
+    {
+        // RED: ProcessApprovedPaymentAsync does not wrap in transaction;
+        // if ticket creation fails after confirming reservation, the reservation
+        // stays Confirmed (should be rolled back to Active)
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        // Corrupt the reservation's TicketTypeId so ticket creation fails
+        // (TicketService loads the TicketType and won't find it)
+        reservation.TicketTypeId = Guid.NewGuid(); // nonexistent TicketTypeId
+        await _context.SaveChangesAsync();
+
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-rollback",
+            ExternalReference = reservation.Id.ToString(),
+            Status = "approved"
+        };
+        var signature = ComputeSignature(payload, _options.Value.WebhookSecret);
+
+        // This should throw/fail because ticket creation can't find the TicketType
+        // RED: currently reservation status changes to Confirmed BEFORE ticket creation,
+        // and the exception leaves it in Confirmed state (no rollback)
+        WebhookResult result;
+        try
+        {
+            result = await _paymentService.ProcessWebhookAsync(payload, signature);
+        }
+        catch
+        {
+            // Expected in RED phase — may throw before we add transaction wrapping
+        }
+
+        // After GREEN: reservation should still be Active (rolled back)
+        var reloaded = await _context.Reservations.AsNoTracking().FirstAsync(r => r.Id == reservation.Id);
+        Assert.Equal(ReservationStatus.Active, reloaded.Status);
+    }
+
+    [Fact]
+    public void Batch4_ValidateWebhookSignature_ByteArray_ValidatesCorrectly()
+    {
+        // RED: ValidateWebhookSignature currently only accepts string;
+        // after GREEN it should accept byte[] rawBody
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-bytes",
+            ExternalReference = Guid.NewGuid().ToString(),
+            Status = "approved"
+        };
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload);
+        var rawBody = Encoding.UTF8.GetBytes(payloadJson);
+        var secret = "test-webhook-secret-min-32-characters-long";
+
+        // Compute HMAC over the raw bytes (what Mercado Pago actually sends)
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var hash = hmac.ComputeHash(rawBody);
+        var signature = Convert.ToHexString(hash).ToLowerInvariant();
+
+        // RED: this call site expects string, not byte[] — will fail to compile
+        // After GREEN: ValidateWebhookSignature should accept byte[] rawBody
+        var isValid = PaymentService.ValidateWebhookSignature(rawBody, signature, secret);
+        Assert.True(isValid);
+    }
+
+    [Fact]
+    public void Batch4_ValidateWebhookSignature_ByteArray_IncorrectSignature_ReturnsFalse()
+    {
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(new WebhookPayload
+        {
+            PaymentId = "pay-bad",
+            ExternalReference = Guid.NewGuid().ToString(),
+            Status = "approved"
+        });
+        var rawBody = Encoding.UTF8.GetBytes(payloadJson);
+        var secret = "test-webhook-secret-min-32-characters-long";
+
+        var isValid = PaymentService.ValidateWebhookSignature(rawBody, "bad-signature", secret);
+        Assert.False(isValid);
+    }
+
+    #endregion
+
+    #region Batch 4: Ticket PurchaserEmail from Reservation
+
+    [Fact]
+    public async Task Batch4_ApprovedWebhook_UsesReservationPurchaserEmail()
+    {
+        // RED: currently uses reservation.User.Email (or "guest@ticketera.com");
+        // after GREEN should use reservation.PurchaserEmail for ticket creation
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+        reservation.PurchaserEmail = "purchaser@test.com";
+        await _context.SaveChangesAsync();
+
+        var payload = new WebhookPayload
+        {
+            PaymentId = "pay-email",
+            ExternalReference = reservation.Id.ToString(),
+            Status = "approved"
+        };
+        var signature = ComputeSignature(payload, _options.Value.WebhookSecret);
+
+        var result = await _paymentService.ProcessWebhookAsync(payload, signature);
+        Assert.True(result.Success);
+
+        var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
+        Assert.Equal(reservation.Quantity, tickets.Count);
+        // RED: tickets will have user.Email ("buyer@test.com") not reservation.PurchaserEmail ("purchaser@test.com")
+        Assert.All(tickets, t => Assert.Equal("purchaser@test.com", t.PurchaserEmail));
     }
 
     #endregion
