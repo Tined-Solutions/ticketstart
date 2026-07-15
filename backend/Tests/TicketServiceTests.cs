@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
@@ -673,4 +674,311 @@ public class TicketServiceTests : IDisposable
         Assert.Single(tickets); // Only ticket3 should be returned
         Assert.Equal(ticket3.Id, tickets.First().Id);
     }
+
+    #region QR Timestamp Window Validation (B5.4)
+
+    [Fact]
+    public async Task ValidateQRCodeAsync_TimestampBeforePurchaseDate_ReturnsError()
+    {
+        // Arrange
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var purchaseDate = DateTime.UtcNow.AddDays(-10); // ticket purchased 10 days ago
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(10),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = purchaseDate,
+            UpdatedAt = purchaseDate
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = purchaseDate
+        };
+
+        var ticketId = Guid.NewGuid();
+        // Create QR code with timestamp BEFORE purchase date
+        var badTimestamp = new DateTimeOffset(purchaseDate.AddDays(-5)).ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{badTimestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        var ticket = new Ticket
+        {
+            Id = ticketId,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = qrCodeData,
+            IsUsed = false,
+            CreatedAt = purchaseDate
+        };
+
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _ticketService.ValidateQRCodeAsync(qrCodeData, eventEntity.Id);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains("timestamp", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidateQRCodeAsync_TimestampAfterEventEndPlus24h_ReturnsError()
+    {
+        // Arrange
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var purchaseDate = DateTime.UtcNow.AddDays(-5);
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(-3), // Event ended 3 days ago
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = purchaseDate,
+            UpdatedAt = purchaseDate
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = purchaseDate
+        };
+
+        var ticketId = Guid.NewGuid();
+        // Create QR code with timestamp AFTER event end + 24h
+        var badTimestamp = new DateTimeOffset(eventEntity.Date.AddHours(48)).ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{badTimestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        var ticket = new Ticket
+        {
+            Id = ticketId,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = qrCodeData,
+            IsUsed = false,
+            CreatedAt = purchaseDate
+        };
+
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _ticketService.ValidateQRCodeAsync(qrCodeData, eventEntity.Id);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains("timestamp", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidateQRCodeAsync_TimestampInFuture_ReturnsError()
+    {
+        // Arrange
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var purchaseDate = DateTime.UtcNow.AddDays(-1);
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = purchaseDate,
+            UpdatedAt = purchaseDate
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = purchaseDate
+        };
+
+        var ticketId = Guid.NewGuid();
+        // Create QR code with timestamp IN THE FUTURE (5 days from now)
+        var futureTimestamp = new DateTimeOffset(DateTime.UtcNow.AddDays(5)).ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{futureTimestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        var ticket = new Ticket
+        {
+            Id = ticketId,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = qrCodeData,
+            IsUsed = false,
+            CreatedAt = purchaseDate
+        };
+
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _ticketService.ValidateQRCodeAsync(qrCodeData, eventEntity.Id);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Contains("timestamp", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidateQRCodeAsync_TimestampWithinWindow_ReturnsValid()
+    {
+        // Arrange — timestamp within purchase-to-eventEnd+24h window should be valid
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var purchaseDate = DateTime.UtcNow.AddDays(-1);
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(7),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = purchaseDate,
+            UpdatedAt = purchaseDate
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = purchaseDate
+        };
+
+        var ticketId = Guid.NewGuid();
+        // Use a valid timestamp within window (now)
+        var validTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{validTimestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        var ticket = new Ticket
+        {
+            Id = ticketId,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = qrCodeData,
+            IsUsed = false,
+            CreatedAt = purchaseDate
+        };
+
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _ticketService.ValidateQRCodeAsync(qrCodeData, eventEntity.Id);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public void HmacHelper_ExtractTimestamp_ReturnsCorrectUnixTimestamp()
+    {
+        // Arrange
+        var ticketId = Guid.NewGuid();
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{timestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        // Act
+        var extracted = HmacHelper.ExtractTimestamp(qrCodeData);
+
+        // Assert
+        Assert.Equal(timestamp, extracted);
+    }
+
+    [Fact]
+    public void HmacHelper_ExtractTimestamp_InvalidFormat_ThrowsFormatException()
+    {
+        // Arrange
+        var invalidQrData = "not-a-valid-qr-format";
+
+        // Act & Assert
+        Assert.Throws<FormatException>(() => HmacHelper.ExtractTimestamp(invalidQrData));
+    }
+
+    #endregion
 }
