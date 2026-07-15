@@ -183,19 +183,27 @@ public class ConfigValidationTests : IDisposable
         var authService = new AuthService(context, configuration, logger);
 
         // Act
-        var result = await authService.RegisterAsync(new RegisterRequest
+        var createResult = await authService.CreateUserAsync(
+            "Expiration Test",
+            "expiration@example.com",
+            "password123",
+            UserRole.Organizador);
+
+        // Assert - user creation succeeds
+        Assert.True(createResult.Success, $"User creation should succeed. Error: {createResult.Error}");
+        Assert.NotEqual(Guid.Empty, createResult.UserId);
+
+        // Login to obtain the JWT generated with the fallback expiration
+        var loginResult = await authService.LoginAsync(new LoginRequest
         {
             Email = "expiration@example.com",
-            Password = "password123",
-            Role = UserRole.Organizador
+            Password = "password123"
         });
-
-        // Assert
-        Assert.True(result.Success, $"Registration should succeed. Error: {result.Error}");
-        Assert.NotEmpty(result.Token);
+        Assert.True(loginResult.Success, $"Login should succeed. Error: {loginResult.Error}");
+        Assert.NotEmpty(loginResult.Token);
 
         var tokenHandler = new JwtSecurityTokenHandler();
-        var token = tokenHandler.ReadJwtToken(result.Token);
+        var token = tokenHandler.ReadJwtToken(loginResult.Token);
         var expectedExpiration = DateTime.UtcNow.AddMinutes(1440);
         Assert.True(
             Math.Abs((token.ValidTo - expectedExpiration).TotalMinutes) < 5,
@@ -229,12 +237,11 @@ public class ConfigValidationTests : IDisposable
         var authService = new AuthService(context, configuration, logger);
 
         // Act
-        var result = await authService.RegisterAsync(new RegisterRequest
-        {
-            Email = "shortpass@example.com",
-            Password = "1234567",
-            Role = UserRole.Organizador
-        });
+        var result = await authService.CreateUserAsync(
+            "Short Password",
+            "shortpass@example.com",
+            "1234567",
+            UserRole.Organizador);
 
         // Assert
         Assert.False(result.Success);
@@ -242,7 +249,7 @@ public class ConfigValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task AuthService_Register_WithEightCharacterPassword_IsAccepted()
+    public async Task AuthService_CreateUser_WithEightCharacterPassword_IsAccepted()
     {
         // Arrange
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -264,16 +271,15 @@ public class ConfigValidationTests : IDisposable
         var authService = new AuthService(context, configuration, logger);
 
         // Act
-        var result = await authService.RegisterAsync(new RegisterRequest
-        {
-            Email = "eightpass@example.com",
-            Password = "12345678",
-            Role = UserRole.Organizador
-        });
+        var result = await authService.CreateUserAsync(
+            "Eight Password",
+            "eightpass@example.com",
+            "12345678",
+            UserRole.Organizador);
 
         // Assert
-        Assert.True(result.Success, $"Registration should succeed. Error: {result.Error}");
-        Assert.NotEmpty(result.Token);
+        Assert.True(result.Success, $"User creation should succeed. Error: {result.Error}");
+        Assert.NotEqual(Guid.Empty, result.UserId);
     }
 
     #endregion

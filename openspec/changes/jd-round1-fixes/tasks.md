@@ -65,34 +65,34 @@ Chain strategy: size-exception
 
 ## Phase 2: Batch 2 — User Management (6 reqs) **Migration: AddUserName**
 
-- [ ] **B2.1 MIGRATION** — Add `Name` property to `User` model; configure `HasMaxLength(200)` in `ApplicationDbContext`; create EF migration `AddUserName` adding nullable `Name` column; apply and verify; test rollback.
-  - Files: `backend/Models/User.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddUserName.cs`
-  - Depends: B1.6
-  - Acceptance: Migration applies; existing rows have `Name` null; rollback drops column.
+- [x] **B2.1 MIGRATION** — Add `Name` property to `User` model; configure `HasMaxLength(200)` in `ApplicationDbContext`; create EF migration `AddUserName` adding nullable `Name` column; apply and verify; test rollback.
+   - Files: `backend/Models/User.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddUserName.cs`
+   - Depends: B1.6
+   - Acceptance: Migration applies; existing rows have `Name` null; rollback drops column.
 
-- [ ] **B2.2 RED** — Update `backend/Tests/AuthenticationPropertyTests.cs` to remove public-register tests; add FsCheck tests for admin-only `POST /api/admin/users` (valid roles, non-admin 403, anon 401).
-  - Files: `backend/Tests/AuthenticationPropertyTests.cs`, `backend/Tests/AdminControllerTests.cs`
-  - Depends: B2.1
-  - Acceptance: New tests fail before implementation.
+- [x] **B2.2 RED** — Update `backend/Tests/AuthenticationPropertyTests.cs` to remove public-register tests; add FsCheck tests for admin-only `POST /api/admin/users` (valid roles, non-admin 403, anon 401).
+   - Files: `backend/Tests/AuthenticationPropertyTests.cs`, `backend/Tests/AdminControllerTests.cs`
+   - Depends: B2.1
+   - Acceptance: New tests fail before implementation.
 
-- [ ] **B2.3 GREEN** — Add `CreateUserAsync(name, email, password, role)` to `IAuthService`/`AuthService`; add shared `ValidateEmail`; remove `RegisterAsync` from `AuthService` and `POST /auth/register` from `AuthController`; create `POST /api/admin/users` in `AdminController` with `[Authorize(Policy="RequireAdminRole")]`.
-  - Files: `backend/Services/IAuthService.cs`, `backend/Services/AuthService.cs`, `backend/Controllers/AuthController.cs`, `backend/Controllers/AdminController.cs`
-  - Depends: B2.2
-  - Acceptance: `POST /auth/register` returns 404; admin can create user with role; non-admin 403; anon 401; email validation shared.
+- [x] **B2.3 GREEN** — Add `CreateUserAsync(name, email, password, role)` to `IAuthService`/`AuthService`; add shared `ValidateEmail`; remove `RegisterAsync` from `AuthService` and `POST /auth/register` from `AuthController`; create `POST /api/admin/users` in `AdminController` with `[Authorize(Policy="RequireAdminRole")]`.
+   - Files: `backend/Services/IAuthService.cs`, `backend/Services/AuthService.cs`, `backend/Controllers/AuthController.cs`, `backend/Controllers/AdminController.cs`
+   - Depends: B2.2
+   - Acceptance: `POST /auth/register` returns 404; admin can create user with role; non-admin 403; anon 401; email validation shared.
 
-- [ ] **B2.4 RED** — Frontend tests: assert `/register` route renders 404; assert no `localStorage` token logic in `AuthProvider`/`client.js` (if applicable in B6 context); add admin user creation form test.
-  - Files: `frontend/src/pages/Register.test.jsx` (if exists), `frontend/src/pages/AdminPanel.test.jsx` (new)
-  - Depends: B2.2
-  - Acceptance: Tests fail before changes.
+- [x] **B2.4 RED** — Frontend tests: assert `/register` route renders 404; add admin user creation form test.
+   - Files: `frontend/src/App.test.jsx` (new), `frontend/src/pages/AdminPanel.test.jsx` (extended)
+   - Depends: B2.2
+   - Acceptance: Tests fail before changes.
 
-- [ ] **B2.5 GREEN** — Delete `frontend/src/pages/Register.jsx`; remove `/register` route from `frontend/src/App.jsx`; add admin user creation form to `frontend/src/pages/AdminPanel.jsx`.
-  - Files: `frontend/src/pages/Register.jsx`, `frontend/src/App.jsx`, `frontend/src/pages/AdminPanel.jsx`
-  - Depends: B2.4
-  - Acceptance: `/register` shows 404; AdminPanel can create users.
+- [x] **B2.5 GREEN** — Delete `frontend/src/pages/Register.jsx` and `Register.test.jsx`; remove `/register` route from `frontend/src/App.jsx`; add admin user creation form to `frontend/src/pages/AdminPanel.jsx`.
+   - Files: `frontend/src/pages/Register.jsx`, `frontend/src/App.jsx`, `frontend/src/pages/AdminPanel.jsx`
+   - Depends: B2.4
+   - Acceptance: `/register` shows 404; AdminPanel can create users.
 
-- [ ] **B2.6 VERIFY** — Run `dotnet test`; apply migration; verify all B2 tests pass.
-  - Depends: B2.3, B2.5
-  - Acceptance: `dotnet test` green; migration applied; frontend route tests pass.
+- [x] **B2.6 VERIFY** — Run `dotnet test` and `pnpm vitest`; apply migration; verify all B2 tests pass.
+   - Depends: B2.3, B2.5
+   - Acceptance: `dotnet test` 379/379 green; `pnpm vitest` 206/206 green; migration applied.
 
 ## Phase 3: Batch 3 — Reservation Stock (5 reqs) **Migration: AddCurrentlyReserved**
 

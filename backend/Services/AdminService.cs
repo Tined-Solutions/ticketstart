@@ -39,6 +39,7 @@ public class AdminService : IAdminService
             .Select(u => new UserSummary
             {
                 Id = u.Id,
+                Name = u.Name,
                 Email = u.Email,
                 Role = u.Role,
                 CreatedAt = u.CreatedAt

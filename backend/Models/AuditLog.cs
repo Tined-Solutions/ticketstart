@@ -52,6 +52,7 @@ public enum AuditActionType
     ViewEvents,
     UpdateEvent,
     DeleteEvent,
+    CreateUser,
     ProcessWebhook,
     ValidateQr
 }

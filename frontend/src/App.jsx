@@ -3,7 +3,6 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
-import Register from './pages/Register.jsx'
 import EventList from './pages/EventList.jsx'
 import EventDetail from './pages/EventDetail.jsx'
 import Checkout from './pages/Checkout.jsx'
@@ -22,7 +21,6 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
       <Route path="/events" element={<EventList />} />
       <Route path="/events/:id" element={<EventDetail />} />
 

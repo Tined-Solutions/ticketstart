@@ -18,6 +18,7 @@ namespace TicketeraOnline.Api.Tests;
 public class AdminControllerTests
 {
     private readonly Mock<IAdminService> _mockAdminService;
+    private readonly Mock<IAuthService> _mockAuthService;
     private readonly Mock<IAuditLogService> _mockAuditLogService;
     private readonly Mock<ILogger<AdminController>> _mockLogger;
     private readonly AdminController _controller;
@@ -25,9 +26,14 @@ public class AdminControllerTests
     public AdminControllerTests()
     {
         _mockAdminService = new Mock<IAdminService>();
+        _mockAuthService = new Mock<IAuthService>();
         _mockAuditLogService = new Mock<IAuditLogService>();
         _mockLogger = new Mock<ILogger<AdminController>>();
-        _controller = new AdminController(_mockAdminService.Object, _mockAuditLogService.Object, _mockLogger.Object)
+        _controller = new AdminController(
+            _mockAdminService.Object,
+            _mockAuthService.Object,
+            _mockAuditLogService.Object,
+            _mockLogger.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -206,6 +212,215 @@ public class AdminControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result);
         var json = JsonSerializer.Serialize(okResult.Value);
         Assert.DoesNotContain("passwordHash", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
+
+    #region POST /api/admin/users
+
+    [Fact]
+    public async Task CreateUser_AdminRole_ReturnsCreatedWithUserData()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var createdUserId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                "Juan Perez",
+                "juan@example.com",
+                "password123",
+                UserRole.Organizador))
+            .ReturnsAsync(new CreateUserResult
+            {
+                Success = true,
+                UserId = createdUserId,
+                Name = "Juan Perez",
+                Email = "juan@example.com",
+                Role = UserRole.Organizador
+            });
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "Juan Perez",
+            "juan@example.com",
+            "password123",
+            UserRole.Organizador));
+
+        // Assert
+        var createdResult = Assert.IsType<CreatedResult>(result);
+        Assert.Equal(201, createdResult.StatusCode);
+        var value = Assert.IsType<TicketeraOnline.Api.Controllers.AdminUserResponse>(createdResult.Value);
+        Assert.Equal(createdUserId, value.Id);
+        Assert.Equal("Juan Perez", value.Name);
+        Assert.Equal("juan@example.com", value.Email);
+        Assert.Equal(UserRole.Organizador, value.Role);
+
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.UserId == adminId &&
+            c.Action == AuditActionType.CreateUser &&
+            c.Resource == AuditResourceType.User &&
+            c.ResourceId == createdUserId &&
+            c.Details == "Admin created user juan@example.com with role Organizador")), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateUser_InvalidEmail_ReturnsBadRequest()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                "Invalid Email",
+                "not-an-email",
+                "password123",
+                UserRole.Organizador))
+            .ReturnsAsync(new CreateUserResult
+            {
+                Success = false,
+                Error = "Invalid email format"
+            });
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "Invalid Email",
+            "not-an-email",
+            "password123",
+            UserRole.Organizador));
+
+        // Assert
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequest.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUser_ShortPassword_ReturnsBadRequest()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                "Short Password",
+                "short@example.com",
+                "1234567",
+                UserRole.Organizador))
+            .ReturnsAsync(new CreateUserResult
+            {
+                Success = false,
+                Error = "Password must be at least 8 characters long"
+            });
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "Short Password",
+            "short@example.com",
+            "1234567",
+            UserRole.Organizador));
+
+        // Assert
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequest.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUser_DuplicateEmail_ReturnsConflict()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                "Duplicate User",
+                "duplicate@example.com",
+                "password123",
+                UserRole.Organizador))
+            .ReturnsAsync(new CreateUserResult
+            {
+                Success = false,
+                Error = "User with this email already exists"
+            });
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "Duplicate User",
+            "duplicate@example.com",
+            "password123",
+            UserRole.Organizador));
+
+        // Assert
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(409, conflict.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUser_ServiceThrowsException_ReturnsInternalServerError()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<UserRole>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "User",
+            "user@example.com",
+            "password123",
+            UserRole.Organizador));
+
+        // Assert
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, statusCodeResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUser_AuditLogFails_StillReturnsCreated()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var createdUserId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+
+        _mockAuthService.Setup(s => s.CreateUserAsync(
+                "Juan Perez",
+                "juan@example.com",
+                "password123",
+                UserRole.Organizador))
+            .ReturnsAsync(new CreateUserResult
+            {
+                Success = true,
+                UserId = createdUserId,
+                Name = "Juan Perez",
+                Email = "juan@example.com",
+                Role = UserRole.Organizador
+            });
+
+        _mockAuditLogService.Setup(s => s.LogActionAsync(It.IsAny<AuditLogContext>())).ThrowsAsync(new InvalidOperationException("Audit failure"));
+
+        // Act
+        var result = await _controller.CreateUser(new AdminCreateUserRequest(
+            "Juan Perez",
+            "juan@example.com",
+            "password123",
+            UserRole.Organizador));
+
+        // Assert
+        Assert.IsType<CreatedResult>(result);
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Audit logging failed")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     #endregion
