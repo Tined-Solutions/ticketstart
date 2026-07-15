@@ -72,8 +72,8 @@ public class ReservationController : ControllerBase
             _logger.LogInformation("Reservation {ReservationId} created successfully for user {UserId}",
                 reservation.Id, userId);
 
-            // Return 201 Created with location header
-            return CreatedAtAction(nameof(GetReservation), new { id = reservation.Id }, response);
+            // Return 201 Created
+            return Created($"/api/reservations/{reservation.Id}", response);
         }
         catch (ArgumentException ex)
         {
@@ -106,68 +106,6 @@ public class ReservationController : ControllerBase
             _logger.LogError(ex, "Unexpected error creating reservation for user {UserId}", userId);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { error = "An unexpected error occurred while creating the reservation" });
-        }
-    }
-
-    /// <summary>
-    /// Retrieves reservation details by identifier.
-    /// Validates: Requirements 4.3, 16.2, 16.3
-    /// </summary>
-    /// <param name="id">Reservation identifier</param>
-    /// <returns>Reservation details</returns>
-    [HttpGet("{id:guid}")]
-    [AllowAnonymous]
-    public async Task<IActionResult> GetReservation(Guid id)
-    {
-        try
-        {
-            // Retrieve reservation with related entities
-            var reservation = await _reservationService.GetReservationByIdAsync(id);
-
-            if (reservation == null)
-            {
-                _logger.LogWarning("Reservation {ReservationId} not found", id);
-                return NotFound(new { error = "Reservation not found" });
-            }
-
-            // Map to response DTO with related entities
-            var response = new ReservationResponse
-            {
-                Id = reservation.Id,
-                EventId = reservation.EventId,
-                TicketTypeId = reservation.TicketTypeId,
-                Quantity = reservation.Quantity,
-                PurchaserEmail = reservation.PurchaserEmail,
-                ExpiresAt = reservation.ExpiresAt,
-                Status = reservation.Status.ToString(),
-                Event = reservation.Event != null ? new EventResponse
-                {
-                    Id = reservation.Event.Id,
-                    Name = reservation.Event.Name,
-                    Description = reservation.Event.Description,
-                    Date = reservation.Event.Date,
-                    Location = reservation.Event.Location,
-                    ImageUrl = reservation.Event.ImageUrl
-                } : null,
-                TicketType = reservation.TicketType != null ? new TicketTypeResponse
-                {
-                    Id = reservation.TicketType.Id,
-                    Name = reservation.TicketType.Name,
-                    Price = reservation.TicketType.Price,
-                    Quantity = reservation.TicketType.Quantity
-                } : null
-            };
-
-            _logger.LogInformation("Reservation {ReservationId} retrieved successfully", id);
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            // Unexpected errors
-            _logger.LogError(ex, "Unexpected error retrieving reservation {ReservationId}", id);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { error = "An unexpected error occurred while retrieving the reservation" });
         }
     }
 

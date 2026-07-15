@@ -59,11 +59,11 @@ public class TicketControllerTests
             .Setup(s => s.LookupTicketsByEmailAsync(email))
             .ReturnsAsync(mockResponse);
 
-        // Act
-        var result = await _controller.LookupTicketsByEmail(email);
+        // Act — lookup with email only (no DNI)
+        var result = await _controller.LookupTickets(email);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
         var responseList = Assert.IsAssignableFrom<IEnumerable<TicketLookupInfoResponse>>(okResult.Value);
 
         var response = responseList.First();
@@ -91,11 +91,11 @@ public class TicketControllerTests
             .Setup(s => s.LookupTicketsByEmailAsync(email))
             .ReturnsAsync(emptyResponse);
 
-        // Act
-        var result = await _controller.LookupTicketsByEmail(email);
+        // Act — lookup with email only (no DNI)
+        var result = await _controller.LookupTickets(email);
 
         // Assert — should return 200 OK, not 404
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
 
         var responseList = Assert.IsAssignableFrom<IEnumerable<TicketLookupInfoResponse>>(okResult.Value);
@@ -108,11 +108,11 @@ public class TicketControllerTests
         // Arrange
         string email = "";
 
-        // Act
-        var result = await _controller.LookupTicketsByEmail(email);
+        // Act — lookup with empty email
+        var result = await _controller.LookupTickets(email);
 
         // Assert
-        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result.Result);
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequestResult.StatusCode);
     }
 

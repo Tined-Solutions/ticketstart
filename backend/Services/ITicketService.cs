@@ -67,6 +67,25 @@ public interface ITicketService
     /// <param name="dni">Purchaser DNI</param>
     /// <returns>List of matching tickets</returns>
     Task<IEnumerable<Ticket>> LookupTicketsAsync(string email, string dni);
+
+    /// <summary>
+    /// Looks up tickets by email only and returns info-only response (no QR fields).
+    /// Used for public ticket lookup without authentication.
+    /// Validates: Batch 5 — B5.1
+    /// </summary>
+    /// <param name="email">Purchaser email</param>
+    /// <returns>List of ticket info responses without QR data</returns>
+    Task<IEnumerable<TicketLookupInfoResponse>> LookupTicketsByEmailAsync(string email);
+
+    /// <summary>
+    /// Resends tickets by email. Returns generic success regardless of whether
+    /// tickets exist for the given email (no info leak).
+    /// Validates: Batch 5 — B5.2
+    /// </summary>
+    /// <param name="email">Purchaser email</param>
+    /// <param name="captchaToken">Captcha verification token</param>
+    /// <returns>True (always returns success to prevent info leak)</returns>
+    Task<bool> ResendTicketsByEmailAsync(string email, string captchaToken);
 }
 
 /// <summary>
@@ -96,6 +115,28 @@ public class TicketLookupResponse
     public bool IsUsed { get; set; }
     public DateTime? UsedAt { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Response model for email-only ticket lookup (no QR fields — info only).
+/// Used by the public ticket lookup endpoint (B5.1).
+/// </summary>
+public class TicketLookupInfoResponse
+{
+    public string EventName { get; set; } = string.Empty;
+    public DateTime EventDate { get; set; }
+    public string TicketType { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public string PurchaserEmail { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request model for ticket resend endpoint.
+/// </summary>
+public class ResendTicketsRequest
+{
+    public string Email { get; set; } = string.Empty;
+    public string CaptchaToken { get; set; } = string.Empty;
 }
 
 /// <summary>

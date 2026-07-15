@@ -10,8 +10,10 @@ using Microsoft.Extensions.Logging.Console;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.RateLimiting;
 using Amazon.S3;
 using Amazon.Runtime;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -153,6 +155,18 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 // Add controllers
 builder.Services.AddControllers();
 
+// Configure rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("Resend", config =>
+    {
+        config.PermitLimit = 3;
+        config.Window = TimeSpan.FromHours(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+});
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -207,6 +221,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Rate limiter must be after CORS/HTTPS but before auth/endpoints
+app.UseRateLimiter();
 
 // Global exception handler must be early in the pipeline to catch errors from auth and endpoints.
 app.UseExceptionHandler();

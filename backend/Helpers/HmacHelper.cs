@@ -71,4 +71,32 @@ public static class HmacHelper
             Encoding.UTF8.GetBytes(expected),
             Encoding.UTF8.GetBytes(signature));
     }
+
+    /// <summary>
+    /// Extracts the Unix timestamp from a QR code payload.
+    /// Format: {ticketId}:{timestamp}:{signature}
+    /// </summary>
+    /// <param name="qrPayload">The QR code payload string</param>
+    /// <returns>The Unix timestamp (seconds)</returns>
+    /// <exception cref="FormatException">Thrown when the payload format is invalid</exception>
+    public static long ExtractTimestamp(string qrPayload)
+    {
+        if (string.IsNullOrWhiteSpace(qrPayload))
+        {
+            throw new FormatException("QR payload is null or empty");
+        }
+
+        var parts = qrPayload.Split(':');
+        if (parts.Length < 2)
+        {
+            throw new FormatException($"Invalid QR payload format: expected at least 2 colon-separated parts, got {parts.Length}");
+        }
+
+        if (!long.TryParse(parts[1], out var timestamp))
+        {
+            throw new FormatException($"Invalid timestamp format in QR payload: '{parts[1]}'");
+        }
+
+        return timestamp;
+    }
 }
