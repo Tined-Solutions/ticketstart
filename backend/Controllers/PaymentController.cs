@@ -134,11 +134,12 @@ public class PaymentController : TicketeraControllerBase
             var result = await _paymentService.ProcessWebhookAsync(payload, signature, rawBody);
 
             await TryLogAuditAsync(new AuditLogContext(
-                UserId: Guid.Empty,
+                UserId: null,
                 Action: AuditActionType.ProcessWebhook,
                 Resource: AuditResourceType.Payment,
                 ResourceId: null,
-                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}"));
+                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}",
+                UserIdentifier: "System"));
 
             if (!result.Success)
             {

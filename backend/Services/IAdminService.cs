@@ -17,6 +17,12 @@ public interface IAdminService
     /// Retrieves a paginated list of all events in the system regardless of organizer ownership.
     /// </summary>
     Task<PagedResult<EventSummary>> GetAllEventsAsync(int page, int pageSize);
+
+    /// <summary>
+    /// Retrieves a paginated list of all audit log entries in the system,
+    /// ordered by timestamp and id descending.
+    /// </summary>
+    Task<PagedResult<AuditLogEntry>> GetAllLogsAsync(int page, int pageSize);
 }
 
 /// <summary>

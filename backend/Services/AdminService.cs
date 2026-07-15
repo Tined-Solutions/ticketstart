@@ -95,4 +95,48 @@ public class AdminService : IAdminService
             PageSize = pageSize
         };
     }
+
+    /// <summary>
+    /// Retrieves a paginated list of all audit log entries in the system,
+    /// ordered by timestamp descending then by id descending.
+    /// </summary>
+    public async Task<PagedResult<AuditLogEntry>> GetAllLogsAsync(int page, int pageSize)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+
+        _logger.LogInformation("Retrieving audit logs for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
+
+        var total = await _context.AuditLogs.AsNoTracking().CountAsync();
+        var logs = await _context.AuditLogs
+            .AsNoTracking()
+            .OrderByDescending(l => l.Timestamp)
+            .ThenByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new AuditLogEntry
+            {
+                Id = l.Id,
+                UserId = l.UserId,
+                UserIdentifier = l.UserIdentifier,
+                ActionType = l.ActionType,
+                ResourceType = l.ResourceType,
+                ResourceId = l.ResourceId,
+                Details = l.Details,
+                IpAddress = l.IpAddress,
+                UserAgent = l.UserAgent,
+                Timestamp = l.Timestamp
+            })
+            .ToListAsync();
+
+        _logger.LogInformation("Retrieved {LogCount} audit log entries for admin view", logs.Count);
+
+        return new PagedResult<AuditLogEntry>
+        {
+            Items = logs,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
 }

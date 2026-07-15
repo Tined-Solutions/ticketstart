@@ -595,6 +595,10 @@ public class PaymentPropertyTests : IDisposable
 
     private string GenerateReservationToken(Guid reservationId)
     {
-        return ComputeHmacSha256(reservationId.ToString(), _tokenOptions.Value.TokenSecretKey);
+        var nonce = Guid.NewGuid().ToString("N")[..16];
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var dataToSign = $"{nonce}:{timestamp}";
+        var signature = ComputeHmacSha256(dataToSign, _tokenOptions.Value.TokenSecretKey);
+        return $"{nonce}:{timestamp}:{signature}";
     }
 }

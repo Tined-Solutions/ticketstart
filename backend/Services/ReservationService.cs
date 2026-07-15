@@ -423,6 +423,7 @@ public class ReservationService : IReservationService
 
     /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
+    /// Token format: nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.
     /// </summary>
     public string GenerateReservationToken(Guid reservationId)
@@ -432,10 +433,64 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException("Reservation:TokenSecretKey is not configured");
         }
 
-        var token = HmacHelper.ComputeHmacSha256(reservationId.ToString(), _tokenOptions.TokenSecretKey);
+        var nonce = Guid.NewGuid().ToString("N")[..16];
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var dataToSign = $"{nonce}:{timestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, _tokenOptions.TokenSecretKey);
+        var token = $"{nonce}:{timestamp}:{signature}";
 
         _logger.LogDebug("Generated reservation token for reservation {ReservationId}", reservationId);
 
         return token;
+    }
+
+    /// <summary>
+    /// Validates a reservation token.
+    /// Checks signature integrity and token expiry (default 10 minutes).
+    /// Returns the reservation ID if valid.
+    /// </summary>
+    public bool ValidateReservationToken(string token, out Guid reservationId, int expiryMinutes = 10)
+    {
+        reservationId = Guid.Empty;
+
+        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(_tokenOptions.TokenSecretKey))
+        {
+            return false;
+        }
+
+        var parts = token.Split(':');
+        if (parts.Length != 3)
+        {
+            _logger.LogWarning("Invalid reservation token format: expected 3 parts, got {Count}", parts.Length);
+            return false;
+        }
+
+        var nonce = parts[0];
+        var timestampStr = parts[1];
+        var providedSignature = parts[2];
+
+        if (!long.TryParse(timestampStr, out var timestamp))
+        {
+            _logger.LogWarning("Invalid timestamp in reservation token");
+            return false;
+        }
+
+        // Check expiry
+        var tokenTime = DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
+        if ((DateTime.UtcNow - tokenTime).TotalMinutes > expiryMinutes)
+        {
+            _logger.LogWarning("Reservation token expired. Token time: {TokenTime}, Now: {Now}", tokenTime, DateTime.UtcNow);
+            return false;
+        }
+
+        // Verify signature
+        var dataToVerify = $"{nonce}:{timestamp}";
+        if (!HmacHelper.ValidateHmacSha256(dataToVerify, _tokenOptions.TokenSecretKey, providedSignature))
+        {
+            _logger.LogWarning("Reservation token signature verification failed");
+            return false;
+        }
+
+        return true;
     }
 }

@@ -91,8 +91,12 @@ public class ReservationServiceTests : IDisposable
 
     #region CreateReservationAsync Tests
 
+    /// <summary>
+    /// Each call generates a unique token with a different nonce.
+    /// The new format (nonce:timestamp:signature) is non-deterministic per call.
+    /// </summary>
     [Fact]
-    public void GenerateReservationToken_WithSameId_ReturnsConsistentToken()
+    public void GenerateReservationToken_EachCall_GeneratesUniqueToken()
     {
         // Arrange
         var reservationId = Guid.NewGuid();
@@ -104,7 +108,12 @@ public class ReservationServiceTests : IDisposable
         // Assert
         Assert.NotNull(token1);
         Assert.NotEmpty(token1);
-        Assert.Equal(token1, token2);
+        // Tokens should differ because each has a unique nonce
+        Assert.NotEqual(token1, token2);
+
+        // Both should have the correct format: nonce:timestamp:signature
+        Assert.Equal(3, token1.Split(':').Length);
+        Assert.Equal(3, token2.Split(':').Length);
     }
 
     [Fact]

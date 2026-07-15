@@ -54,7 +54,7 @@ public class EventOwnershipHandler : AuthorizationHandler<EventOwnershipRequirem
             return; // Fail - no HTTP context
         }
 
-        var eventIdString = httpContext.Request.RouteValues["id"]?.ToString();
+        var eventIdString = httpContext.Request.RouteValues[requirement.RouteParameterName]?.ToString();
         if (string.IsNullOrEmpty(eventIdString) || !Guid.TryParse(eventIdString, out var eventId))
         {
             return; // Fail - no valid event ID in route

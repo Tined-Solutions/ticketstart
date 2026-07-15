@@ -54,9 +54,37 @@ public class PaymentService : IPaymentService
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
-        if (!HmacHelper.ValidateHmacSha256(reservationId.ToString(), _tokenOptions.TokenSecretKey, token))
+        // Validate new token format: nonce:timestamp:signature
+        var tokenParts = token.Split(':');
+        if (tokenParts.Length != 3)
         {
-            _logger.LogWarning("Invalid reservation token for reservation {ReservationId}", reservationId);
+            _logger.LogWarning("Invalid reservation token format for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        var nonce = tokenParts[0];
+        var timestampStr = tokenParts[1];
+        var providedSignature = tokenParts[2];
+
+        if (!long.TryParse(timestampStr, out var ts))
+        {
+            _logger.LogWarning("Invalid timestamp in reservation token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        // Check token expiry (10 minutes)
+        var tokenTime = DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime;
+        if ((DateTime.UtcNow - tokenTime).TotalMinutes > 10)
+        {
+            _logger.LogWarning("Reservation token expired for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Reservation token has expired");
+        }
+
+        // Verify signature
+        var dataToVerify = $"{nonce}:{ts}";
+        if (!HmacHelper.ValidateHmacSha256(dataToVerify, _tokenOptions.TokenSecretKey, providedSignature))
+        {
+            _logger.LogWarning("Invalid reservation token signature for reservation {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 

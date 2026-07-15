@@ -392,7 +392,8 @@ public class TicketService : ITicketService
     /// </summary>
     public async Task<IEnumerable<Ticket>> LookupTicketsAsync(string email, string dni)
     {
-        _logger.LogInformation("Looking up tickets for email {Email} and DNI {DNI}", email, dni);
+        _logger.LogInformation("Looking up tickets for email hash {EmailHash} and DNI hash {DNIHash}",
+            LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
 
         // Query tickets matching both email AND DNI
         var tickets = await _context.Tickets
@@ -402,8 +403,8 @@ public class TicketService : ITicketService
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
-        _logger.LogInformation("Found {Count} tickets for email {Email} and DNI {DNI}",
-            tickets.Count, email, dni);
+        _logger.LogInformation("Found {Count} tickets for email hash {EmailHash} and DNI hash {DNIHash}",
+            tickets.Count, LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
 
         return tickets;
     }
@@ -415,7 +416,7 @@ public class TicketService : ITicketService
     /// </summary>
     public async Task<IEnumerable<TicketLookupInfoResponse>> LookupTicketsByEmailAsync(string email)
     {
-        _logger.LogInformation("Looking up tickets by email {Email}", email);
+        _logger.LogInformation("Looking up tickets by email hash {EmailHash}", LogRedactor.HashIdentifier(email));
 
         var tickets = await _context.Tickets
             .Include(t => t.Event)
@@ -426,7 +427,7 @@ public class TicketService : ITicketService
 
         if (tickets.Count == 0)
         {
-            _logger.LogInformation("No tickets found for email {Email}", email);
+            _logger.LogInformation("No tickets found for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
             return Enumerable.Empty<TicketLookupInfoResponse>();
         }
 
@@ -443,8 +444,8 @@ public class TicketService : ITicketService
             })
             .ToList();
 
-        _logger.LogInformation("Found {Count} ticket groups for email {Email}",
-            responses.Count, email);
+        _logger.LogInformation("Found {Count} ticket groups for email hash {EmailHash}",
+            responses.Count, LogRedactor.HashIdentifier(email));
 
         return responses;
     }
@@ -455,7 +456,7 @@ public class TicketService : ITicketService
     /// </summary>
     public async Task<bool> ResendTicketsByEmailAsync(string email, string captchaToken)
     {
-        _logger.LogInformation("Resend tickets requested for email {Email}", email);
+        _logger.LogInformation("Resend tickets requested for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
 
         try
         {
@@ -468,8 +469,8 @@ public class TicketService : ITicketService
 
             if (tickets.Count > 0)
             {
-                _logger.LogInformation("Found {Count} tickets to resend for email {Email}",
-                    tickets.Count, email);
+                _logger.LogInformation("Found {Count} tickets to resend for email hash {EmailHash}",
+                    tickets.Count, LogRedactor.HashIdentifier(email));
 
                 // Queue resend (non-blocking) — in production this would go to a background queue
                 _ = Task.Run(async () =>
@@ -484,13 +485,13 @@ public class TicketService : ITicketService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error during background resend for email {Email}", email);
+                        _logger.LogError(ex, "Error during background resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
                     }
                 });
             }
             else
             {
-                _logger.LogInformation("No tickets found for email {Email} — still returning success", email);
+                _logger.LogInformation("No tickets found for email hash {EmailHash} — still returning success", LogRedactor.HashIdentifier(email));
             }
 
             // Always return success — prevents email enumeration
@@ -498,7 +499,7 @@ public class TicketService : ITicketService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ticket resend for email {Email}", email);
+            _logger.LogError(ex, "Error during ticket resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
             // Still return success to prevent info leak
             return true;
         }
