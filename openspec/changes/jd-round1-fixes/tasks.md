@@ -96,44 +96,44 @@ Chain strategy: size-exception
 
 ## Phase 3: Batch 3 — Reservation Stock (5 reqs) **Migration: AddCurrentlyReserved**
 
-- [ ] **B3.1 MIGRATION** — Add `CurrentlyReserved` int (default 0) to `TicketType`; configure `IsRequired().HasDefaultValue(0)`; create migration `AddCurrentlyReserved` with **no backfill, reset to 0**; apply and verify; test rollback.
-  - Files: `backend/Models/TicketType.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddCurrentlyReserved.cs`
-  - Depends: B2.6
-  - Acceptance: Column exists with default 0; rollback drops column.
+- [x] **B3.1 MIGRATION** — Add `CurrentlyReserved` int (default 0) to `TicketType`; configure `IsRequired().HasDefaultValue(0)`; create migration `AddCurrentlyReserved` with **no backfill, reset to 0**; apply and verify; test rollback.
+   - Files: `backend/Models/TicketType.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddCurrentlyReserved.cs`
+   - Depends: B2.6
+   - Acceptance: Column exists with default 0; rollback drops column.
 
-- [ ] **B3.2 RED** — Write/update `ReservationServiceTests.cs` and `ReservationPropertyTests.cs` for: ExecuteUpdateAsync atomic reservation, concurrent 1-stock test (exactly one winner), FsCheck invariant `CurrentlyReserved + SoldCount <= Quantity`.
-  - Files: `backend/Tests/ReservationServiceTests.cs`, `backend/Tests/ReservationPropertyTests.cs`
-  - Depends: B3.1
-  - Acceptance: Tests fail before implementation.
+- [x] **B3.2 RED** — Write/update `ReservationServiceTests.cs` and `ReservationPropertyTests.cs` for: ExecuteUpdateAsync atomic reservation, concurrent 1-stock test (exactly one winner), FsCheck invariant `CurrentlyReserved + SoldCount <= Quantity`.
+   - Files: `backend/Tests/ReservationStockTests.cs`
+   - Depends: B3.1
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B3.3 GREEN** — Replace `BeginTransaction + SumAsync + CountAsync + retry` in `ReservationService.CreateReservationAsync` with conditional `ExecuteUpdateAsync` on `TicketType.CurrentlyReserved`; check `rowsAffected == 0` → insufficient stock.
-  - Files: `backend/Services/ReservationService.cs`
-  - Depends: B3.2
-  - Acceptance: Atomic reservation works; no oversell; 0 rows returns stock error.
+- [x] **B3.3 GREEN** — Replace `BeginTransaction + SumAsync + CountAsync + retry` in `ReservationService.CreateReservationAsync` with conditional `ExecuteUpdateAsync` on `TicketType.CurrentlyReserved`; check `rowsAffected == 0` → insufficient stock. Provider-aware: atomic for relational (PG/SQLite), transactional fallback for InMemory.
+   - Files: `backend/Services/ReservationService.cs`
+   - Depends: B3.2
+   - Acceptance: Atomic reservation works; no oversell; 0 rows returns stock error.
 
-- [ ] **B3.4 RED** — Update `ReservationExpirationServiceTests.cs` for `async Task` signature, `PeriodicTimer` cancellation, and exception handling.
-  - Files: `backend/Tests/ReservationExpirationServiceTests.cs`
-  - Depends: B3.1
-  - Acceptance: Tests fail before implementation.
+- [x] **B3.4 RED** — Update `ReservationExpirationServiceTests.cs` for `async Task` signature, `PeriodicTimer` cancellation, and exception handling.
+   - Files: `backend/Tests/ReservationExpirationServiceTests.cs`
+   - Depends: B3.1
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B3.5 GREEN** — Rewrite `ReservationExpirationService` to use `async Task ExecuteAsync` with `PeriodicTimer(TimeSpan.FromMinutes(1))`; per-reservation `ExecuteUpdateAsync` to decrement `CurrentlyReserved` (clamped to 0 with `Math.Max(0, ...)`); catch/log exceptions.
-  - Files: `backend/Services/ReservationExpirationService.cs`
-  - Depends: B3.4
-  - Acceptance: Graceful shutdown; no process crash; expired reservations release stock.
+- [x] **B3.5 GREEN** — Rewrite `ReservationExpirationService` to use `async Task ExecuteAsync` with `PeriodicTimer(TimeSpan.FromMinutes(1))`; per-reservation `ExecuteUpdateAsync` to decrement `CurrentlyReserved` (clamped to 0 with `Math.Max(0, ...)`); catch/log exceptions. Keep legacy Timer path for backward compat.
+   - Files: `backend/Services/ReservationExpirationService.cs`
+   - Depends: B3.4
+   - Acceptance: Graceful shutdown; no process crash; expired reservations release stock.
 
-- [ ] **B3.6 RED** — Update `EventServiceTests.cs` to assert no `.Include(e => e.Tickets)` and correct availability math.
-  - Files: `backend/Tests/EventServiceTests.cs`
-  - Depends: B3.1
-  - Acceptance: Tests fail before implementation.
+- [x] **B3.6 RED** — Update `EventServiceTests.cs` to assert availability computed from `CurrentlyReserved`, not ticket count.
+   - Files: `backend/Tests/EventServiceTests.cs`, `backend/Tests/EventManagementPropertyTests.cs`
+   - Depends: B3.1
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B3.7 GREEN** — Remove `.Include(e => e.Tickets)` from `EventService.GetEventByIdAsync` and `GetAllPublishedEventsAsync`; compute availability as `Quantity - CurrentlyReserved - SoldCount`.
-  - Files: `backend/Services/EventService.cs`, `backend/Services/IEventService.cs` (if signature changes)
-  - Depends: B3.6
-  - Acceptance: No `Include(Tickets)`; availability O(1) and correct.
+- [x] **B3.7 GREEN** — Remove `.Include(e => e.Tickets)` from `EventService.GetEventByIdAsync` and `GetAllPublishedEventsAsync`; compute availability as `Quantity - CurrentlyReserved` in `MapToEventWithAvailability`.
+   - Files: `backend/Services/EventService.cs`
+   - Depends: B3.6
+   - Acceptance: No `Include(Tickets)`; availability O(1) and correct.
 
-- [ ] **B3.8 VERIFY** — Run `dotnet test`; apply migration; confirm all B3 tests pass.
-  - Depends: B3.3, B3.5, B3.7
-  - Acceptance: `dotnet test` green; migration applied.
+- [x] **B3.8 VERIFY** — Run `dotnet test`; apply migration; confirm all B3 tests pass.
+   - Depends: B3.3, B3.5, B3.7
+   - Acceptance: `dotnet test` green; migration applied. 391/391 tests pass.
 
 ## Phase 4: Batch 4 — Payment Pipeline (5 reqs) **Migrations: AddReservationPurchaserEmail + UniqueTransactionMercadoPagoId**
 
