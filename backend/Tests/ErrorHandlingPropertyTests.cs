@@ -116,10 +116,16 @@ public class ErrorHandlingPropertyTests
                     return false;
 
                 var keys = entry.State?.Select(kv => kv.Key).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>();
+                var scopeKeys = logger.Scopes
+                    .OfType<IEnumerable<KeyValuePair<string, object?>>>()
+                    .SelectMany(s => s)
+                    .Select(kv => kv.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 return keys.Contains("ExceptionType")
                     && keys.Contains("Path")
                     && keys.Contains("Method")
-                    && keys.Contains("StackTrace")
+                    && scopeKeys.Contains("StackTrace")
                     && entry.Exception != null;
             });
 
@@ -719,8 +725,13 @@ public class ErrorHandlingPropertyTests
     private sealed class CollectingLogger<T> : ILogger<T>
     {
         public List<LogEntry> Entries { get; } = new();
+        public List<object> Scopes { get; } = new();
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            Scopes.Add(state);
+            return null;
+        }
 
         public bool IsEnabled(LogLevel logLevel) => true;
 
