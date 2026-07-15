@@ -165,6 +165,15 @@ public class ApplicationDbContext : DbContext
                 .HasConversion<string>();
             entity.Property(a => a.Details).HasMaxLength(1000);
             entity.Property(a => a.Timestamp).IsRequired();
+            entity.Property(a => a.IpAddress).HasMaxLength(45);
+            entity.Property(a => a.UserAgent).HasMaxLength(500);
+            entity.Property(a => a.UserIdentifier).HasMaxLength(200);
+
+            entity.HasOne(a => a.User)
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
         });
     }
 }
