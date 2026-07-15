@@ -161,6 +161,7 @@ public class AuthService : IAuthService
                 Success = true,
                 Token = token,
                 UserId = user.Id,
+                Name = user.Name,
                 Role = user.Role
             };
         }

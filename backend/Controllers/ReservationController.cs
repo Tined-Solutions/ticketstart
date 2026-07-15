@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -27,6 +28,7 @@ public class ReservationController : ControllerBase
     /// <returns>Created reservation details</returns>
     [HttpPost]
     [AllowAnonymous]
+    [EnableRateLimiting("Reservations")]
     public async Task<IActionResult> CreateReservation([FromBody] CreateReservationRequest request)
     {
         if (request == null)

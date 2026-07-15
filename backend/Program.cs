@@ -106,6 +106,16 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
     };
+
+    // Extract JWT from httpOnly cookie (instead of Authorization header)
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            context.Token = context.Request.Cookies["token"];
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization(options =>
@@ -165,6 +175,25 @@ builder.Services.AddRateLimiter(options =>
         config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
         config.QueueLimit = 0;
     });
+
+    options.AddSlidingWindowLimiter("Login", config =>
+    {
+        config.PermitLimit = 10;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.SegmentsPerWindow = 4;
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+
+    options.AddFixedWindowLimiter("Reservations", config =>
+    {
+        config.PermitLimit = 5;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -224,6 +253,9 @@ app.UseHttpsRedirection();
 
 // Rate limiter must be after CORS/HTTPS but before auth/endpoints
 app.UseRateLimiter();
+
+// CSRF header protection must run before authentication
+app.UseMiddleware<CsrfHeaderMiddleware>();
 
 // Global exception handler must be early in the pipeline to catch errors from auth and endpoints.
 app.UseExceptionHandler();

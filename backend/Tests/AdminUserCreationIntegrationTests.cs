@@ -75,6 +75,8 @@ public class AdminUserCreationIntegrationTests : IClassFixture<AdminUserCreation
     {
         _factory = factory;
         _client = factory.CreateClient();
+        // Always include CSRF header for state-changing requests
+        _client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
     }
 
     private static bool HasLiveDatabase()
@@ -246,11 +248,25 @@ public class AdminUserCreationIntegrationTests : IClassFixture<AdminUserCreation
         });
 
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        Assert.NotNull(result);
-        Assert.False(string.IsNullOrEmpty(result.Token));
-        return result.Token;
+
+        // Extract token from Set-Cookie header (token is now httpOnly cookie, not in body)
+        if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+        {
+            foreach (var cookie in cookies)
+            {
+                if (cookie.StartsWith("token=", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Extract the token value: "token=VALUE; path=/; ..."
+                    var parts = cookie.Split(';');
+                    var tokenPart = parts[0]; // "token=VALUE"
+                    var tokenValue = tokenPart.Substring("token=".Length);
+                    return tokenValue;
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Login response did not contain a token cookie");
     }
 
-    private record LoginResponse(string Token, Guid UserId, string Role);
+    private record LoginResponse(Guid UserId, string Role, string Name);
 }
