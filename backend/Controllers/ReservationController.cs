@@ -34,6 +34,13 @@ public class ReservationController : ControllerBase
             return BadRequest(new { error = "Request body is required" });
         }
 
+        // Validate email confirmation match (Batch 4 B4.3)
+        if (!string.IsNullOrEmpty(request.PurchaserEmail) && 
+            !string.Equals(request.PurchaserEmail, request.ConfirmEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { error = "PurchaserEmail and ConfirmEmail do not match" });
+        }
+
         // Get userId from claims if authenticated, otherwise null (guest purchase)
         var userId = GetUserId();
 
@@ -56,6 +63,7 @@ public class ReservationController : ControllerBase
                 EventId = reservation.EventId,
                 TicketTypeId = reservation.TicketTypeId,
                 Quantity = reservation.Quantity,
+                PurchaserEmail = reservation.PurchaserEmail,
                 ExpiresAt = reservation.ExpiresAt,
                 Status = reservation.Status.ToString(),
                 Token = _reservationService.GenerateReservationToken(reservation.Id)
@@ -129,6 +137,7 @@ public class ReservationController : ControllerBase
                 EventId = reservation.EventId,
                 TicketTypeId = reservation.TicketTypeId,
                 Quantity = reservation.Quantity,
+                PurchaserEmail = reservation.PurchaserEmail,
                 ExpiresAt = reservation.ExpiresAt,
                 Status = reservation.Status.ToString(),
                 Event = reservation.Event != null ? new EventResponse

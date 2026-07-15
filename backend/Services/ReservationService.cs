@@ -124,6 +124,7 @@ public class ReservationService : IReservationService
                     TicketTypeId = ticketTypeId,
                     Quantity = quantity,
                     PurchaserDNI = purchaserDNI,
+                    PurchaserEmail = purchaserEmail,
                     ExpiresAt = now.AddMinutes(ReservationExpirationMinutes),
                     Status = ReservationStatus.Active,
                     CreatedAt = now
@@ -215,6 +216,7 @@ public class ReservationService : IReservationService
                         TicketTypeId = ticketTypeId,
                         Quantity = quantity,
                         PurchaserDNI = purchaserDNI,
+                        PurchaserEmail = purchaserEmail,
                         ExpiresAt = now.AddMinutes(ReservationExpirationMinutes),
                         Status = ReservationStatus.Active,
                         CreatedAt = now

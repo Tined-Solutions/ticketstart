@@ -22,6 +22,7 @@ public class PaymentPropertyTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
     private readonly Mock<IMercadoPagoClient> _mockMpClient;
+    private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<ILogger<PaymentService>> _mockLogger;
     private readonly PaymentService _paymentService;
     private readonly TicketService _ticketService;
@@ -37,6 +38,7 @@ public class PaymentPropertyTests : IDisposable
 
         _context = new ApplicationDbContext(dbOptions);
         _mockMpClient = new Mock<IMercadoPagoClient>();
+        _mockEmailService = new Mock<IEmailService>();
         _mockLogger = new Mock<ILogger<PaymentService>>();
         _options = Options.Create(new MercadoPagoOptions
         {
@@ -61,6 +63,7 @@ public class PaymentPropertyTests : IDisposable
             _options,
             _tokenOptions,
             _ticketService,
+            _mockEmailService.Object,
             _mockLogger.Object);
     }
 
