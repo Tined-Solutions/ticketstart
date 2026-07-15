@@ -32,8 +32,9 @@ public class ReservationService : IReservationService
 
     /// <summary>
     /// Creates a new reservation with 10-minute expiration.
-    /// Decrements ticket inventory atomically using database transactions and optimistic concurrency control.
-    /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6
+    /// Uses atomic ExecuteUpdateAsync on TicketType.CurrentlyReserved for relational providers,
+    /// and falls back to explicit transactions for InMemory provider.
+    /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6, Batch 3 REQ-7, REQ-8.
     /// </summary>
     public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
     {
@@ -60,7 +61,120 @@ public class ReservationService : IReservationService
             throw new ArgumentException("Purchaser DNI must not exceed 50 characters", nameof(purchaserDNI));
         }
 
-        // Use transaction with retry logic for optimistic concurrency
+        // Verify the ticket type exists for this event
+        var ticketTypeExists = await _context.TicketTypes
+            .AnyAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
+
+        if (!ticketTypeExists)
+        {
+            _logger.LogWarning("Ticket type {TicketTypeId} not found for event {EventId}", ticketTypeId, eventId);
+            throw new KeyNotFoundException($"Ticket type {ticketTypeId} not found for event {eventId}");
+        }
+
+        // Route to atomic (relational) or transaction-based (InMemory) path.
+        // InMemory does not support ExecuteUpdateAsync.
+        if (_context.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            return await CreateReservationAtomicAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI);
+        }
+
+        return await CreateReservationTransactionalAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI);
+    }
+
+    /// <summary>
+    /// Atomic stock check using ExecuteUpdateAsync on TicketType.CurrentlyReserved.
+    /// The WHERE clause ensures stock sufficiency at evaluation time;
+    /// the SET clause atomically increments CurrentlyReserved.
+    /// Used by PostgreSQL, SQLite, and other relational providers.
+    /// </summary>
+    private async Task<Reservation> CreateReservationAtomicAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
+    {
+        // Single atomic round-trip: check stock AND reserve in one SQL statement
+        var rowsAffected = await _context.TicketTypes
+            .Where(tt => tt.Id == ticketTypeId &&
+                         tt.Quantity - tt.CurrentlyReserved >= quantity)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(tt => tt.CurrentlyReserved, tt => tt.CurrentlyReserved + quantity));
+
+        if (rowsAffected == 0)
+        {
+            _logger.LogWarning("Insufficient tickets available. Requested: {Requested}, TicketType: {TicketTypeId}",
+                quantity, ticketTypeId);
+            throw new ArgumentException($"Insufficient tickets available. Requested: {quantity}", nameof(quantity));
+        }
+
+        _logger.LogInformation("Atomic stock reservation successful. Reserved {Quantity} tickets for type {TicketTypeId}",
+            quantity, ticketTypeId);
+
+        // Insert the Reservation entity with retry for concurrency conflicts.
+        // On failure, rollback the atomic stock increment.
+        const int maxRetries = 3;
+        int retryCount = 0;
+
+        while (retryCount < maxRetries)
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                var reservation = new Reservation
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    EventId = eventId,
+                    TicketTypeId = ticketTypeId,
+                    Quantity = quantity,
+                    PurchaserDNI = purchaserDNI,
+                    ExpiresAt = now.AddMinutes(ReservationExpirationMinutes),
+                    Status = ReservationStatus.Active,
+                    CreatedAt = now
+                };
+
+                _context.Reservations.Add(reservation);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Reservation {ReservationId} created successfully. Expires at {ExpiresAt}",
+                    reservation.Id, reservation.ExpiresAt);
+
+                return reservation;
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                retryCount++;
+                _logger.LogWarning(ex, "Concurrency conflict on attempt {AttemptCount}/{MaxRetries}", retryCount, maxRetries);
+
+                if (retryCount >= maxRetries)
+                {
+                    // Rollback the atomic stock reservation
+                    await _context.TicketTypes
+                        .Where(tt => tt.Id == ticketTypeId)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(tt => tt.CurrentlyReserved, tt => Math.Max(0, tt.CurrentlyReserved - quantity)));
+
+                    _logger.LogError("Max retries reached for reservation creation");
+                    throw new InvalidOperationException("Unable to create reservation due to concurrent updates.", ex);
+                }
+
+                await Task.Delay(100 * retryCount);
+            }
+            catch (Exception ex) when (ex is not DbUpdateConcurrencyException)
+            {
+                // Rollback stock on any non-concurrency error
+                await _context.TicketTypes
+                    .Where(tt => tt.Id == ticketTypeId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(tt => tt.CurrentlyReserved, tt => Math.Max(0, tt.CurrentlyReserved - quantity)));
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("Unable to create reservation after maximum retries");
+    }
+
+    /// <summary>
+    /// Transaction-based reservation for InMemory provider (does not support ExecuteUpdateAsync).
+    /// </summary>
+    private async Task<Reservation> CreateReservationTransactionalAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI)
+    {
         const int maxRetries = 3;
         int retryCount = 0;
 
@@ -72,42 +186,26 @@ public class ReservationService : IReservationService
 
                 try
                 {
-                    // Load ticket type with row-level locking for update (optimistic concurrency via RowVersion)
                     var ticketType = await _context.TicketTypes
                         .FirstOrDefaultAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
 
                     if (ticketType == null)
-                    {
-                        _logger.LogWarning("Ticket type {TicketTypeId} not found for event {EventId}", ticketTypeId, eventId);
                         throw new KeyNotFoundException($"Ticket type {ticketTypeId} not found for event {eventId}");
-                    }
 
-                    // Calculate currently reserved tickets (active reservations only)
                     var activeReservations = await _context.Reservations
                         .Where(r => r.TicketTypeId == ticketTypeId &&
                                     r.Status == ReservationStatus.Active &&
                                     r.ExpiresAt > DateTime.UtcNow)
                         .SumAsync(r => r.Quantity);
 
-                    // Calculate sold tickets (confirmed tickets in database)
                     var soldTickets = await _context.Tickets
                         .CountAsync(t => t.TicketTypeId == ticketTypeId);
 
-                    // Calculate available inventory: total quantity - sold tickets - active reservations
                     var availableTickets = ticketType.Quantity - soldTickets - activeReservations;
 
-                    _logger.LogInformation("Ticket availability check: Total={Total}, Sold={Sold}, Reserved={Reserved}, Available={Available}",
-                        ticketType.Quantity, soldTickets, activeReservations, availableTickets);
-
-                    // Validate sufficient inventory
                     if (availableTickets < quantity)
-                    {
-                        _logger.LogWarning("Insufficient tickets available. Requested: {Requested}, Available: {Available}",
-                            quantity, availableTickets);
                         throw new ArgumentException($"Insufficient tickets available. Requested: {quantity}, Available: {availableTickets}", nameof(quantity));
-                    }
 
-                    // Create reservation with 10-minute expiration
                     var now = DateTime.UtcNow;
                     var reservation = new Reservation
                     {
@@ -117,17 +215,13 @@ public class ReservationService : IReservationService
                         TicketTypeId = ticketTypeId,
                         Quantity = quantity,
                         PurchaserDNI = purchaserDNI,
-                        ExpiresAt = now.AddMinutes(ReservationExpirationMinutes), // Requirement 4.1: 10-minute expiration
+                        ExpiresAt = now.AddMinutes(ReservationExpirationMinutes),
                         Status = ReservationStatus.Active,
                         CreatedAt = now
                     };
 
                     _context.Reservations.Add(reservation);
-
-                    // Save changes - this will validate RowVersion for optimistic concurrency
                     await _context.SaveChangesAsync();
-
-                    // Commit transaction
                     await transaction.CommitAsync();
 
                     _logger.LogInformation("Reservation {ReservationId} created successfully. Expires at {ExpiresAt}",
@@ -137,37 +231,25 @@ public class ReservationService : IReservationService
                 }
                 catch (DbUpdateConcurrencyException ex)
                 {
-                    // Rollback on concurrency conflict
                     await transaction.RollbackAsync();
-
                     retryCount++;
-                    _logger.LogWarning(ex, "Concurrency conflict on attempt {AttemptCount}/{MaxRetries} for reservation creation",
-                        retryCount, maxRetries);
-
+                    _logger.LogWarning(ex, "Concurrency conflict on attempt {AttemptCount}/{MaxRetries}", retryCount, maxRetries);
                     if (retryCount >= maxRetries)
-                    {
-                        _logger.LogError("Maximum retry attempts ({MaxRetries}) reached for reservation creation", maxRetries);
-                        throw new InvalidOperationException("Unable to create reservation due to concurrent updates. Please try again.", ex);
-                    }
-
-                    // Wait before retry with exponential backoff
+                        throw new InvalidOperationException("Unable to create reservation due to concurrent updates.", ex);
                     await Task.Delay(100 * retryCount);
                 }
                 catch
                 {
-                    // Rollback on any other error
                     await transaction.RollbackAsync();
                     throw;
                 }
             }
             catch (DbUpdateConcurrencyException)
             {
-                // Continue retry loop
                 continue;
             }
         }
 
-        // Should never reach here due to exception handling above
         throw new InvalidOperationException("Unable to create reservation after maximum retries");
     }
 
