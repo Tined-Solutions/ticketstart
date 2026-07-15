@@ -173,34 +173,34 @@ Chain strategy: size-exception
 
 ## Phase 5: Batch 5 — Ticket Lookup (4 reqs)
 
-- [ ] **B5.1 RED** — Update `TicketLookupPropertyTests.cs` for: response excludes QR fields, resend rate limit (4th → 429), generic response regardless of email existence, QR timestamp window boundaries.
-  - Files: `backend/Tests/TicketLookupPropertyTests.cs`, `backend/Tests/TicketServiceTests.cs`
-  - Depends: B4.7
-  - Acceptance: Tests fail before implementation.
+- [x] **B5.1 RED** — Update `TicketLookupPropertyTests.cs` for: response excludes QR fields, resend rate limit (4th → 429), generic response regardless of email existence, QR timestamp window boundaries.
+   - Files: `backend/Tests/TicketControllerTests.cs`, `backend/Tests/TicketServiceTests.cs`
+   - Depends: B4.7
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B5.2 GREEN** — Modify `TicketController`: `GET /api/tickets/lookup` returns info-only DTO (no `qrCodeData`/`qrSrc`); remove `GET /api/reservations/{id}` from `ReservationController`; add `POST /api/tickets/resend` with `[EnableRateLimiting("Resend")]` accepting `{email, captchaToken}` and returning generic message.
-  - Files: `backend/Controllers/TicketController.cs`, `backend/Controllers/ReservationController.cs`, `backend/Services/ITicketService.cs`, `backend/Services/IEmailService.cs` (if needed)
-  - Depends: B5.1
-  - Acceptance: Lookup no QR; removed endpoint 404; resend generic response.
+- [x] **B5.2 GREEN** — Modify `TicketController`: `GET /api/tickets/lookup` returns info-only DTO (no `qrCodeData`/`qrSrc`); remove `GET /api/reservations/{id}` from `ReservationController`; add `POST /api/tickets/resend` with `[EnableRateLimiting("Resend")]` accepting `{email, captchaToken}` and returning generic message.
+   - Files: `backend/Controllers/TicketController.cs`, `backend/Controllers/ReservationController.cs`, `backend/Services/ITicketService.cs`, `backend/Services/IEmailService.cs` (if needed)
+   - Depends: B5.1
+   - Acceptance: Lookup no QR; removed endpoint 404; resend generic response.
 
-- [ ] **B5.3 GREEN** — Update `TicketService.VerifyQRCodeSignature` to validate timestamp window (`purchaseDate <= ts <= event.EndDate+24h` and `ts <= now`); add `HmacHelper` to extract timestamp from QR payload; add `ResendTicketsByEmailAsync`.
-  - Files: `backend/Services/TicketService.cs`, `backend/Helpers/HmacHelper.cs`
-  - Depends: B5.2
-  - Acceptance: QR outside window rejected; inside window accepted; resend queues email.
+- [x] **B5.3 GREEN** — Update `TicketService.VerifyQRCodeSignature` to validate timestamp window (`purchaseDate <= ts <= event.EndDate+24h` and `ts <= now`); add `HmacHelper` to extract timestamp from QR payload; add `ResendTicketsByEmailAsync`.
+   - Files: `backend/Services/TicketService.cs`, `backend/Helpers/HmacHelper.cs`
+   - Depends: B5.2
+   - Acceptance: QR outside window rejected; inside window accepted; resend queues email.
 
-- [ ] **B5.4 GREEN** — Add rate limiter policy `"Resend"` (FixedWindow 3/hour keyed by email) in `Program.cs`.
-  - Files: `backend/Program.cs`
-  - Depends: B5.2
-  - Acceptance: 4th resend within window returns 429.
+- [x] **B5.4 GREEN** — Add rate limiter policy `"Resend"` (FixedWindow 3/hour keyed by email) in `Program.cs`.
+   - Files: `backend/Program.cs`
+   - Depends: B5.2
+   - Acceptance: 4th resend within window returns 429.
 
-- [ ] **B5.5 GREEN** — Frontend: Update `TicketLookup.jsx` to info-only card (no print/download/QR); add resend form with email + CAPTCHA placeholder.
-  - Files: `frontend/src/pages/TicketLookup.jsx`
-  - Depends: B5.2
-  - Acceptance: No QR display; resend form visible; generic message shown.
+- [x] **B5.5 GREEN** — Frontend: Update `TicketLookup.jsx` to info-only card (no print/download/QR); add resend form with email + CAPTCHA placeholder.
+   - Files: `frontend/src/pages/TicketLookup.jsx`
+   - Depends: B5.2
+   - Acceptance: No QR display; resend form visible; generic message shown.
 
-- [ ] **B5.6 VERIFY** — Run `dotnet test` and `pnpm vitest` for B5.
-  - Depends: B5.3, B5.4, B5.5
-  - Acceptance: `dotnet test` green; `pnpm vitest` green.
+- [x] **B5.6 VERIFY** — Run `dotnet test` and `pnpm vitest` for B5.
+   - Depends: B5.3, B5.4, B5.5
+   - Acceptance: `dotnet test` 409/409 green; `pnpm vitest` 218/218 green.
 
 ## Phase 6: Batch 6 — Auth Session (6 reqs) **No migration**
 

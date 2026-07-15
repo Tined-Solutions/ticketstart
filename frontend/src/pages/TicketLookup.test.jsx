@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import TicketLookup from './TicketLookup.jsx'
 
 const mockGet = vi.fn()
+const mockPost = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   Link: ({ to, children, className }) => (
@@ -16,6 +17,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/client.js', () => ({
   default: {
     get: (...args) => mockGet(...args),
+    post: (...args) => mockPost(...args),
   },
 }))
 
@@ -31,8 +33,7 @@ const mockTicket = {
   eventLocation: 'Estadio Luna Park, Buenos Aires',
   ticketTypeName: 'Platea',
   price: 15000,
-  qrCodeData: 'ticket-001:1750000000:abc123signature',
-  qrCodeImage: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  quantity: 2,
   isUsed: false,
   usedAt: null,
   createdAt: '2026-07-10T12:00:00Z',
@@ -46,6 +47,7 @@ const mockUsedTicket = {
   eventLocation: 'La Rural, Buenos Aires',
   ticketTypeName: 'General',
   price: 0,
+  quantity: 1,
   isUsed: true,
   usedAt: '2026-09-01T15:30:00Z',
 }
@@ -54,19 +56,32 @@ const mockUsedTicket = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fillForm(user, { email = 'juan@example.com', dni = '12345678' } = {}) {
+// The first email input in DOM is lookup, second is resend
+function getLookupEmailInput() {
+  return screen.getAllByLabelText(/email/i)[0]
+}
+
+function getResendEmailInput() {
+  return screen.getAllByLabelText(/email/i)[1]
+}
+
+function fillLookupForm(user, { email = 'juan@example.com' } = {}) {
   return {
     async submit() {
       if (email) {
-        await user.clear(screen.getByLabelText(/email/i))
-        await user.type(screen.getByLabelText(/email/i), email)
+        await user.clear(getLookupEmailInput())
+        await user.type(getLookupEmailInput(), email)
       }
-      if (dni) {
-        await user.clear(screen.getByLabelText(/^dni$/i))
-        await user.type(screen.getByLabelText(/^dni$/i), dni)
-      }
-      await user.click(screen.getByRole('button', { name: /buscar entradas/i }))
+      const lookupButton = screen.getByRole('button', { name: /buscar entradas/i })
+      await user.click(lookupButton)
     },
+  }
+}
+
+async function fillResendForm(user, { email = 'juan@example.com' } = {}) {
+  if (email) {
+    await user.clear(getResendEmailInput())
+    await user.type(getResendEmailInput(), email)
   }
 }
 
@@ -78,31 +93,30 @@ describe('TicketLookup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
+    mockPost.mockReset()
   })
 
   afterEach(() => {
-    // Restore any mocked browser APIs
     vi.restoreAllMocks()
   })
 
   // -- Rendering --------------------------------------------------------
 
-  it('renders the lookup form with email and DNI inputs', () => {
+  it('renders the lookup form with email input', () => {
     render(<TicketLookup />)
 
     expect(
       screen.getByRole('heading', { name: /buscar mis entradas/i })
     ).toBeInTheDocument()
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
+    expect(getLookupEmailInput()).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /buscar entradas/i })
     ).toBeInTheDocument()
   })
 
-  // -- Validation -------------------------------------------------------
+  // -- Validation (lookup) ----------------------------------------------
 
-  it('shows validation errors for empty fields', async () => {
+  it('shows validation error for empty email', async () => {
     render(<TicketLookup />)
 
     await userEvent.click(
@@ -110,13 +124,12 @@ describe('TicketLookup', () => {
     )
 
     expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
-    expect(screen.getByText(/el dni es obligatorio/i)).toBeInTheDocument()
     expect(mockGet).not.toHaveBeenCalled()
   })
 
   it('shows validation error for invalid email format', async () => {
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup(), { email: 'not-an-email' })
+    const form = fillLookupForm(userEvent.setup(), { email: 'not-an-email' })
     await form.submit()
 
     expect(
@@ -133,7 +146,7 @@ describe('TicketLookup', () => {
     )
     expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText(/email/i), 'a')
+    await userEvent.type(getLookupEmailInput(), 'a')
     expect(
       screen.queryByText(/el email es obligatorio/i)
     ).not.toBeInTheDocument()
@@ -141,11 +154,11 @@ describe('TicketLookup', () => {
 
   // -- Successful lookup ------------------------------------------------
 
-  it('calls the lookup API and displays tickets on success', async () => {
+  it('calls the lookup API with email only and displays tickets on success', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket, mockUsedTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -153,7 +166,7 @@ describe('TicketLookup', () => {
     })
 
     expect(mockGet).toHaveBeenCalledWith('/tickets/lookup', {
-      params: { email: 'juan@example.com', dni: '12345678' },
+      params: { email: 'juan@example.com' },
     })
 
     expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
@@ -166,7 +179,7 @@ describe('TicketLookup', () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -174,43 +187,41 @@ describe('TicketLookup', () => {
     })
   })
 
-  // -- QR code display --------------------------------------------------
+  // -- No QR / no print / no download -----------------------------------
 
-  it('displays QR code images for each ticket', async () => {
+  it('does NOT display QR code images', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      expect(
-        screen.getByAltText(/codigo qr de recital de rock nacional/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    const qrImage = screen.getByAltText(/codigo qr de recital de rock nacional/i)
-    expect(qrImage).toHaveAttribute(
-      'src',
-      `data:image/png;base64,${mockTicket.qrCodeImage}`
-    )
+    expect(
+      screen.queryByAltText(/codigo qr/i)
+    ).not.toBeInTheDocument()
   })
 
-  it('shows download and print buttons for each ticket', async () => {
+  it('does NOT show download or print buttons', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /descargar qr/i })
-      ).toBeInTheDocument()
-      expect(
-        screen.getByRole('button', { name: /imprimir entrada/i })
-      ).toBeInTheDocument()
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
+
+    expect(
+      screen.queryByRole('button', { name: /descargar qr/i })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /imprimir entrada/i })
+    ).not.toBeInTheDocument()
   })
 
   // -- Ticket used status -----------------------------------------------
@@ -219,17 +230,15 @@ describe('TicketLookup', () => {
     mockGet.mockResolvedValue({ data: [mockUsedTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      // The badge div has class "ticket-usage-badge used" with text "Usada"
       const badges = screen.getAllByText(/^Usada$/)
       expect(badges.length).toBe(1)
       expect(badges[0]).toBeInTheDocument()
     })
 
-    // The usage timestamp appears in the "ticket-used-at" paragraph
     const usedAtParagraph = document.querySelector('.ticket-used-at')
     expect(usedAtParagraph).toBeInTheDocument()
     expect(usedAtParagraph.textContent).toMatch(/septiembre/i)
@@ -239,7 +248,7 @@ describe('TicketLookup', () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -253,44 +262,28 @@ describe('TicketLookup', () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
       expect(screen.getByText(/platea/i)).toBeInTheDocument()
     })
 
-    // Price formatted in es-AR locale
     expect(screen.getByText(/\$ 15\.000,00/)).toBeInTheDocument()
   })
 
-  // -- Download functionality -------------------------------------------
-
-  it('renders download and print buttons with accessible labels', async () => {
-    mockGet.mockResolvedValue({ data: [mockTicket, mockUsedTicket] })
+  it('displays ticket quantity when present', async () => {
+    mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      expect(screen.getByText(/2 entradas encontradas/i)).toBeInTheDocument()
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    // Each ticket has its own download + print button
-    const downloadButtons = screen.getAllByRole('button', {
-      name: /descargar qr/i,
-    })
-    const printButtons = screen.getAllByRole('button', {
-      name: /imprimir entrada/i,
-    })
-
-    expect(downloadButtons).toHaveLength(2)
-    expect(printButtons).toHaveLength(2)
-
-    // Buttons are not disabled
-    downloadButtons.forEach((btn) => expect(btn).not.toBeDisabled())
-    printButtons.forEach((btn) => expect(btn).not.toBeDisabled())
+    expect(screen.getByText(/cantidad: 2/i)).toBeInTheDocument()
   })
 
   // -- Empty state ------------------------------------------------------
@@ -299,17 +292,17 @@ describe('TicketLookup', () => {
     mockGet.mockResolvedValue({ data: [] })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
       expect(
-        screen.getByText(/no se encontraron entradas con esos datos/i)
+        screen.getByText(/no se encontraron entradas con ese email/i)
       ).toBeInTheDocument()
     })
 
     expect(
-      screen.getByText(/verifica que el email y dni sean correctos/i)
+      screen.getByText(/verifica que el email sea correcto/i)
     ).toBeInTheDocument()
 
     expect(screen.getByRole('link', { name: /ver eventos/i })).toHaveAttribute(
@@ -318,7 +311,7 @@ describe('TicketLookup', () => {
     )
   })
 
-  // -- Error state ------------------------------------------------------
+  // -- Error state (lookup) --------------------------------------------
 
   it('shows error message and retry button on API failure', async () => {
     mockGet.mockRejectedValue({
@@ -326,7 +319,7 @@ describe('TicketLookup', () => {
     })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -342,7 +335,7 @@ describe('TicketLookup', () => {
     })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -351,7 +344,6 @@ describe('TicketLookup', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
 
-    // After "reintentar" the error message and retry button should disappear
     expect(screen.queryByText(/error de conexion/i)).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /reintentar/i })
@@ -365,7 +357,7 @@ describe('TicketLookup', () => {
     mockGet.mockRejectedValue(new Error('Network error'))
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
@@ -377,15 +369,17 @@ describe('TicketLookup', () => {
 
   it('shows error message from backend plain string error', async () => {
     mockGet.mockRejectedValue({
-      response: { data: { error: 'El DNI es obligatorio' } },
+      response: { data: { error: 'El email no esta registrado' } },
     })
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      expect(screen.getByText(/el dni es obligatorio/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/el email no esta registrado/i)
+      ).toBeInTheDocument()
     })
   })
 
@@ -401,7 +395,7 @@ describe('TicketLookup', () => {
     )
 
     render(<TicketLookup />)
-    const form = fillForm(userEvent.setup())
+    const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     expect(
@@ -409,5 +403,112 @@ describe('TicketLookup', () => {
     ).toBeDisabled()
 
     resolveGet({ data: [mockTicket] })
+  })
+
+  // ── Resend section ──────────────────────────────────────────────────
+
+  it('renders the resend form with email input, CAPTCHA, and submit button', () => {
+    render(<TicketLookup />)
+
+    expect(
+      screen.getByRole('heading', { name: /reenviar entradas/i })
+    ).toBeInTheDocument()
+
+    expect(screen.getByLabelText(/no soy un robot/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    ).toBeInTheDocument()
+  })
+
+  it('shows CAPTCHA placeholder note', () => {
+    render(<TicketLookup />)
+
+    expect(
+      screen.getByText(/CAPTCHA — sera reemplazado por Turnstile/i)
+    ).toBeInTheDocument()
+  })
+
+  it('disables the resend submit button when CAPTCHA is not checked', () => {
+    render(<TicketLookup />)
+
+    expect(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    ).toBeDisabled()
+  })
+
+  it('enables the resend submit button when CAPTCHA is checked', async () => {
+    render(<TicketLookup />)
+
+    const captchaCheckbox = screen.getByLabelText(/no soy un robot/i)
+    await userEvent.click(captchaCheckbox)
+
+    expect(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    ).not.toBeDisabled()
+  })
+
+  it('calls POST /tickets/resend and shows success message', async () => {
+    mockPost.mockResolvedValue({ data: {} })
+
+    render(<TicketLookup />)
+
+    // Check the CAPTCHA box first so the button is enabled
+    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
+
+    await fillResendForm(userEvent.setup())
+    await userEvent.click(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    )
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith('/tickets/resend', {
+        email: 'juan@example.com',
+        captchaToken: 'placeholder',
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /si el email esta registrado, recibiras las entradas en tu casilla/i
+        )
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('shows rate-limit message on 429 response', async () => {
+    mockPost.mockRejectedValue({
+      response: { status: 429 },
+    })
+
+    render(<TicketLookup />)
+
+    // Check the CAPTCHA box
+    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
+
+    await fillResendForm(userEvent.setup())
+    await userEvent.click(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/demasiados intentos. intenta de nuevo en una hora/i)
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('shows validation error for empty resend email', async () => {
+    render(<TicketLookup />)
+
+    // Check the CAPTCHA box
+    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /reenviar entradas/i })
+    )
+
+    expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
   })
 })
