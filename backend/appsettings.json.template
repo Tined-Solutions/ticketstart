@@ -11,6 +11,8 @@
     "MigrationConnection": "Host=YOUR_SUPABASE_HOST;Port=5432;Database=postgres;Username=YOUR_DB_USER;Password=YOUR_DB_PASSWORD;Timeout=60"
   },
   "Jwt": {
+    // In production inject Jwt:SecretKey via an environment variable (e.g. ASPNETCORE_Jwt__SecretKey).
+    // It must be at least 32 characters long and must NOT start with "YOUR_".
     "SecretKey": "YOUR_JWT_SECRET_KEY_MINIMUM_32_CHARACTERS_LONG",
     "Issuer": "TicketeraOnline",
     "Audience": "TicketeraOnline",

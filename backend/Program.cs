@@ -37,7 +37,10 @@ builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
 // Configure Mercado Pago
 builder.Services.Configure<MercadoPagoOptions>(builder.Configuration.GetSection(MercadoPagoOptions.SectionName));
-builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>();
+builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadopago.com/");
+});
 
 // Configure Resend email
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
@@ -48,12 +51,8 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));
 
 var resendSettings = builder.Configuration.GetSection("Resend");
-var resendApiKey = resendSettings["ApiKey"] ?? throw new InvalidOperationException("Resend ApiKey is not configured");
-if (string.IsNullOrWhiteSpace(resendApiKey))
-    throw new InvalidOperationException("Resend ApiKey is not configured");
-var resendFromEmail = resendSettings["FromEmail"] ?? throw new InvalidOperationException("Resend FromEmail is not configured");
-if (string.IsNullOrWhiteSpace(resendFromEmail))
-    throw new InvalidOperationException("Resend FromEmail is not configured");
+var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
+var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
@@ -84,6 +83,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured");
+if (secretKey.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase) || secretKey.Length < 32)
+    throw new InvalidOperationException("JWT SecretKey is not configured or is a placeholder. Provide a key with at least 32 characters that does not start with 'YOUR_'.");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -134,9 +135,9 @@ builder.Services.AddProblemDetails();
 
 // Configure Cloudflare R2 (S3-compatible storage)
 var r2Settings = builder.Configuration.GetSection("CloudflareR2");
-var r2AccessKey = r2Settings["AccessKey"] ?? throw new InvalidOperationException("R2 AccessKey is not configured");
-var r2SecretKey = r2Settings["SecretKey"] ?? throw new InvalidOperationException("R2 SecretKey is not configured");
-var r2ServiceUrl = r2Settings["ServiceUrl"] ?? throw new InvalidOperationException("R2 ServiceUrl is not configured");
+var r2AccessKey = GetRequiredValue(r2Settings, "AccessKey");
+var r2SecretKey = GetRequiredValue(r2Settings, "SecretKey");
+var r2ServiceUrl = GetRequiredValue(r2Settings, "ServiceUrl");
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
@@ -216,6 +217,16 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Shared helper that centralizes the repeated "required configuration value" validation
+// and produces a consistent exception message containing the missing key.
+static string GetRequiredValue(IConfigurationSection section, string key)
+{
+    var value = section[key] ?? throw new InvalidOperationException($"{section.Path}:{key} is not configured");
+    if (string.IsNullOrWhiteSpace(value))
+        throw new InvalidOperationException($"{section.Path}:{key} is not configured");
+    return value;
+}
 
 // Make Program class accessible for integration tests
 public partial class Program { }

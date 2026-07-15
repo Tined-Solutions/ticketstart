@@ -42,16 +42,23 @@ public class GlobalExceptionHandler : IExceptionHandler
             }
             else
             {
-                _logger.LogError(
-                    exception,
-                    "Unhandled exception {ExceptionType} on {Method} {Path} with correlation {CorrelationId} — {ErrorCode}: {Message} {StackTrace}",
-                    exception.GetType().Name,
-                    method,
-                    pathAndQuery,
-                    correlationId,
-                    errorCode,
-                    LogRedactor.RedactMessage(message),
-                    exception.StackTrace);
+                // Log the exception message as the primary message and emit the stack trace
+                // as a separate structured property so it can be filtered out in production.
+                using (_logger.BeginScope(new Dictionary<string, object?>
+                       {
+                           ["StackTrace"] = exception.StackTrace
+                       }))
+                {
+                    _logger.LogError(
+                        exception,
+                        "Unhandled exception {ExceptionType} on {Method} {Path} with correlation {CorrelationId} — {ErrorCode}: {Message}",
+                        exception.GetType().Name,
+                        method,
+                        pathAndQuery,
+                        correlationId,
+                        errorCode,
+                        LogRedactor.RedactMessage(exception.Message));
+                }
             }
 
             httpContext.Response.StatusCode = statusCode;

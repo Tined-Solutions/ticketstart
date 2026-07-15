@@ -39,12 +39,12 @@ public class AuthService : IAuthService
             }
 
             // Validate password
-            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
             {
                 return new AuthResult
                 {
                     Success = false,
-                    Error = "Password must be at least 6 characters long"
+                    Error = "Password must be at least 8 characters long"
                 };
             }
 
@@ -217,7 +217,9 @@ public class AuthService : IAuthService
         var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured");
         var issuer = jwtSettings["Issuer"];
         var audience = jwtSettings["Audience"];
-        var expirationMinutes = int.Parse(jwtSettings["ExpirationMinutes"] ?? "1440");
+        var expirationMinutes = int.TryParse(jwtSettings["ExpirationMinutes"], out var parsedMinutes)
+            ? parsedMinutes
+            : 1440;
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);

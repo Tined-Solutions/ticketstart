@@ -1,6 +1,8 @@
 using System.Net;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace TicketeraOnline.Api.Tests;
@@ -28,6 +30,17 @@ public class TicketeraApiFactory : WebApplicationFactory<Program>
         SetConfigEnvVar("CloudflareR2__SecretKey", "test-r2-secret-key");
         SetConfigEnvVar("CloudflareR2__ServiceUrl", "https://test-account.r2.cloudflarestorage.com");
         SetConfigEnvVar("Jwt__SecretKey", "ThisIsAVerySecureSecretKeyForTestingPurposesOnly123456789");
+
+        // Background services try to connect to the real database; remove them
+        // from the integration-test host to keep tests fast and isolated.
+        builder.ConfigureServices(services =>
+        {
+            var hostedServices = services.Where(d => d.ServiceType == typeof(IHostedService)).ToList();
+            foreach (var descriptor in hostedServices)
+            {
+                services.Remove(descriptor);
+            }
+        });
     }
 
     private void SetConfigEnvVar(string name, string value)
