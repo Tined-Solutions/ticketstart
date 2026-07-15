@@ -51,16 +51,21 @@ function buildReservation(overrides = {}) {
 
 async function fillPurchaserForm(
   user,
-  { name = 'Juan Perez', email = 'juan@example.com', dni = '12345678' } = {}
+  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678' } = {}
 ) {
   await user.clear(screen.getByLabelText(/nombre completo/i))
   if (name) {
     await user.type(screen.getByLabelText(/nombre completo/i), name)
   }
 
-  await user.clear(screen.getByLabelText(/email/i))
+  await user.clear(screen.getByLabelText('Email'))
   if (email) {
-    await user.type(screen.getByLabelText(/email/i), email)
+    await user.type(screen.getByLabelText('Email'), email)
+  }
+
+  await user.clear(screen.getByLabelText('Confirmar email'))
+  if (confirmEmail) {
+    await user.type(screen.getByLabelText('Confirmar email'), confirmEmail)
   }
 
   await user.clear(screen.getByLabelText(/^dni$/i))
@@ -70,13 +75,16 @@ async function fillPurchaserForm(
 }
 
 function fillPurchaserFormFire(
-  { name = 'Juan Perez', email = 'juan@example.com', dni = '12345678' } = {}
+  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678' } = {}
 ) {
   fireEvent.change(screen.getByLabelText(/nombre completo/i), {
     target: { value: name },
   })
-  fireEvent.change(screen.getByLabelText(/email/i), {
+  fireEvent.change(screen.getByLabelText('Email'), {
     target: { value: email },
+  })
+  fireEvent.change(screen.getByLabelText('Confirmar email'), {
+    target: { value: confirmEmail },
   })
   fireEvent.change(screen.getByLabelText(/^dni$/i), {
     target: { value: dni },
@@ -116,7 +124,8 @@ describe('Checkout', () => {
     expect(screen.getByText(/x 2/i)).toBeInTheDocument()
     expect(screen.getByText(/total:/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/nombre completo/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
     expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /reservar entradas/i })
@@ -153,6 +162,8 @@ describe('Checkout', () => {
       eventId: cart.eventId,
       ticketTypeId: cart.selection.ticketTypeId,
       quantity: cart.selection.quantity,
+      purchaserEmail: 'juan@example.com',
+      confirmEmail: 'juan@example.com',
       purchaserDNI: '12345678',
     })
     expect(
@@ -350,5 +361,61 @@ describe('Checkout', () => {
     })
 
     expect(screen.queryByRole('button', { name: /pagar con mercado pago/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a second email input labeled "Confirmar email"', () => {
+    render(<Checkout />)
+
+    expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar email')).toHaveAttribute('type', 'email')
+    expect(screen.getByLabelText('Confirmar email')).toBeRequired()
+  })
+
+  it('blocks paste on the confirm email field', () => {
+    render(<Checkout />)
+
+    const confirmInput = screen.getByLabelText('Confirmar email')
+    const pasteEvent = new Event('paste', { bubbles: true, cancelable: true })
+    const prevented = !confirmInput.dispatchEvent(pasteEvent)
+
+    expect(prevented).toBe(true)
+  })
+
+  it('shows validation error when emails do not match', async () => {
+    render(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), {
+      email: 'juan@example.com',
+      confirmEmail: 'diferente@example.com',
+    })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/los emails no coinciden/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows both email fields in the form with correct labels', () => {
+    render(<Checkout />)
+
+    expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
+  })
+
+  it('clears error when user types in either email field after a mismatch', async () => {
+    const user = userEvent.setup()
+    render(<Checkout />)
+
+    await fillPurchaserForm(user, {
+      email: 'juan@example.com',
+      confirmEmail: 'diferente@example.com',
+    })
+    await user.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/los emails no coinciden/i)).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Email'))
+    await user.type(screen.getByLabelText('Email'), 'juan@example.com')
+
+    expect(screen.queryByText(/los emails no coinciden/i)).not.toBeInTheDocument()
   })
 })

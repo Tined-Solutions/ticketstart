@@ -137,39 +137,39 @@ Chain strategy: size-exception
 
 ## Phase 4: Batch 4 — Payment Pipeline (5 reqs) **Migrations: AddReservationPurchaserEmail + UniqueTransactionMercadoPagoId**
 
-- [ ] **B4.1 MIGRATION** — Add `PurchaserEmail` to `Reservation`; change `Transaction.MercadoPagoId` index to unique; create and apply migrations `AddReservationPurchaserEmail` + `UniqueTransactionMercadoPagoId`; test rollback.
-  - Files: `backend/Models/Reservation.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddReservationPurchaserEmail.cs`, `backend/Migrations/<ts>_UniqueTransactionMercadoPagoId.cs`
-  - Depends: B3.8
-  - Acceptance: `PurchaserEmail` column nullable; unique index on `MercadoPagoId`; rollback drops both.
+- [x] **B4.1 MIGRATION** — Add `PurchaserEmail` to `Reservation`; change `Transaction.MercadoPagoId` index to unique; create and apply migrations `AddReservationPurchaserEmail` + `UniqueTransactionMercadoPagoId`; test rollback.
+   - Files: `backend/Models/Reservation.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddReservationPurchaserEmail.cs`, `backend/Migrations/<ts>_UniqueTransactionMercadoPagoId.cs`
+   - Depends: B3.8
+   - Acceptance: `PurchaserEmail` column nullable; unique index on `MercadoPagoId`; rollback drops both.
 
-- [ ] **B4.2 RED** — Update `ReservationControllerTests.cs` and `PaymentPropertyTests.cs` for: PurchaserEmail persisted, email mismatch 400, idempotency (duplicate → 200), concurrent duplicate handling, atomic rollback on step-2 failure, raw-bytes HMAC signature, email failure does not rollback.
-  - Files: `backend/Tests/ReservationControllerTests.cs`, `backend/Tests/PaymentPropertyTests.cs`, `backend/Tests/PaymentControllerTests.cs`
-  - Depends: B4.1
-  - Acceptance: All tests fail before implementation.
+- [x] **B4.2 RED** — Update `ReservationControllerTests.cs` and `PaymentPropertyTests.cs` for: PurchaserEmail persisted, email mismatch 400, idempotency (duplicate → 200), concurrent duplicate handling, atomic rollback on step-2 failure, raw-bytes HMAC signature, email failure does not rollback.
+   - Files: `backend/Tests/ReservationControllerTests.cs`, `backend/Tests/PaymentPropertyTests.cs`, `backend/Tests/PaymentControllerTests.cs`
+   - Depends: B4.1
+   - Acceptance: All tests fail before implementation.
 
-- [ ] **B4.3 GREEN** — Add `PurchaserEmail` + `ConfirmEmail` to `CreateReservationRequest`; update `ReservationService.CreateReservationAsync` to validate email match; store `PurchaserEmail` on reservation.
-  - Files: `backend/Services/IReservationService.cs`, `backend/Services/ReservationService.cs`, `backend/Controllers/ReservationController.cs`, `backend/Models/Reservation.cs` (record contract)
-  - Depends: B4.2
-  - Acceptance: Email mismatch returns 400; persisted email equals input.
+- [x] **B4.3 GREEN** — Add `PurchaserEmail` + `ConfirmEmail` to `CreateReservationRequest`; update `ReservationService.CreateReservationAsync` to validate email match; store `PurchaserEmail` on reservation.
+   - Files: `backend/Services/IReservationService.cs`, `backend/Services/ReservationService.cs`, `backend/Controllers/ReservationController.cs`, `backend/Models/Reservation.cs` (record contract)
+   - Depends: B4.2
+   - Acceptance: Email mismatch returns 400; persisted email equals input.
 
-- [ ] **B4.4 GREEN** — Update `TicketService.CreateTicketsAsync` to use `reservation.PurchaserEmail` and set `TicketTypeId`; update `PaymentService.ValidateWebhookSignature` to accept `byte[] rawBody`; update `PaymentController` to read raw bytes and pass to validator.
-  - Files: `backend/Services/TicketService.cs`, `backend/Services/IPaymentService.cs`, `backend/Services/PaymentService.cs`, `backend/Controllers/PaymentController.cs`
-  - Depends: B4.3
-  - Acceptance: Tickets use purchaser email; signature validates raw bytes; tampered body rejected.
+- [x] **B4.4 GREEN** — Update `TicketService.CreateTicketsAsync` to use `reservation.PurchaserEmail`; update `PaymentService.ValidateWebhookSignature` to accept `byte[] rawBody`; update `PaymentController` to read raw bytes and pass to validator.
+   - Files: `backend/Services/TicketService.cs`, `backend/Services/IPaymentService.cs`, `backend/Services/PaymentService.cs`, `backend/Controllers/PaymentController.cs`
+   - Depends: B4.3
+   - Acceptance: Tickets use purchaser email; signature validates raw bytes; tampered body rejected.
 
-- [ ] **B4.5 GREEN** — Reorder `PaymentService.ProcessApprovedPaymentAsync`: (1) find existing `Transaction` by `MercadoPagoId` → 200; (2) wrap confirm + tickets + insert in `BeginTransactionAsync/CommitAsync`; catch `DbUpdateException` for unique violation → 200; (3) call `SendTicketEmailAsync` AFTER commit with try/catch log-only.
-  - Files: `backend/Services/PaymentService.cs`, `backend/Program.cs` (WebhookSecret validation)
-  - Depends: B4.4
-  - Acceptance: Idempotency works; atomic rollback on failure; email failure keeps tickets.
+- [x] **B4.5 GREEN** — Reorder `PaymentService.ProcessApprovedPaymentAsync`: (1) find existing `Transaction` by `MercadoPagoId` → 200; (2) wrap confirm + tickets + insert in `BeginTransactionAsync/CommitAsync`; catch `DbUpdateException` for unique violation → 200; (3) call `SendTicketEmailAsync` AFTER commit with try/catch log-only.
+   - Files: `backend/Services/PaymentService.cs`, `backend/Program.cs` (WebhookSecret validation)
+   - Depends: B4.4
+   - Acceptance: Idempotency works; atomic rollback on failure; email failure keeps tickets.
 
-- [ ] **B4.6 GREEN** — Frontend: Update `Checkout.jsx` with double email input, paste-blocked confirm; update `CheckoutReturn.jsx` with truthful email-sent copy.
-  - Files: `frontend/src/pages/Checkout.jsx`, `frontend/src/pages/CheckoutReturn.jsx`, `frontend/src/lib/format.js` (shared email if used)
-  - Depends: B4.3
-  - Acceptance: Paste blocked on confirm; mismatched emails caught by backend; UI copy truthful.
+- [x] **B4.6 GREEN** — Frontend: Update `Checkout.jsx` with double email input, paste-blocked confirm; update `CheckoutReturn.jsx` with truthful email-sent copy.
+   - Files: `frontend/src/pages/Checkout.jsx`, `frontend/src/pages/CheckoutReturn.jsx`
+   - Depends: B4.3
+   - Acceptance: Paste blocked on confirm; mismatched emails caught; UI copy truthful.
 
-- [ ] **B4.7 VERIFY** — Run `dotnet test`; apply both migrations; confirm all B4 tests pass.
-  - Depends: B4.5, B4.6
-  - Acceptance: `dotnet test` green; migrations applied.
+- [x] **B4.7 VERIFY** — Run `dotnet test` and `pnpm vitest`.
+   - Depends: B4.5, B4.6
+   - Acceptance: `dotnet test` 400/400 green; `pnpm vitest` 211/211 green.
 
 ## Phase 5: Batch 5 — Ticket Lookup (4 reqs)
 

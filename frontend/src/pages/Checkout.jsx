@@ -69,6 +69,7 @@ export default function Checkout() {
 
   const [purchaserName, setPurchaserName] = useState(user?.name || '')
   const [purchaserEmail, setPurchaserEmail] = useState(user?.email || '')
+  const [confirmEmail, setConfirmEmail] = useState('')
   const [purchaserDNI, setPurchaserDNI] = useState('')
   const [reservation, setReservation] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -111,6 +112,12 @@ export default function Checkout() {
     setLoading(true)
 
     try {
+      if (purchaserEmail.trim() !== confirmEmail.trim()) {
+        setError('Los emails no coinciden')
+        setLoading(false)
+        return
+      }
+
       const dni = purchaserDNI.trim()
       if (!dni) {
         setError('El DNI es obligatorio')
@@ -122,6 +129,8 @@ export default function Checkout() {
         eventId: cart.eventId,
         ticketTypeId: selection.ticketTypeId,
         quantity: selection.quantity,
+        purchaserEmail: purchaserEmail.trim(),
+        confirmEmail: confirmEmail.trim(),
         purchaserDNI: dni,
       })
       setReservation(response.data)
@@ -226,7 +235,19 @@ export default function Checkout() {
               id="purchaserEmail"
               type="email"
               value={purchaserEmail}
-              onChange={(e) => setPurchaserEmail(e.target.value)}
+              onChange={(e) => { setPurchaserEmail(e.target.value); setError(''); }}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="confirmEmail">Confirmar email</label>
+            <input
+              id="confirmEmail"
+              type="email"
+              value={confirmEmail}
+              onChange={(e) => { setConfirmEmail(e.target.value); setError(''); }}
+              onPaste={(e) => e.preventDefault()}
               required
             />
           </div>
