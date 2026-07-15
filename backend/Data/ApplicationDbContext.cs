@@ -86,6 +86,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(r => r.UserId);
             entity.Property(r => r.Quantity).IsRequired();
             entity.Property(r => r.PurchaserDNI).IsRequired().HasMaxLength(50);
+            entity.Property(r => r.PurchaserEmail).HasMaxLength(255);
             entity.Property(r => r.ExpiresAt).IsRequired();
             entity.Property(r => r.Status).IsRequired();
             entity.Property(r => r.CreatedAt).IsRequired();
@@ -134,7 +135,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(t => t.Id);
             entity.HasIndex(t => t.ReservationId);
-            entity.HasIndex(t => t.MercadoPagoId);
+            entity.HasIndex(t => t.MercadoPagoId).IsUnique();
             entity.Property(t => t.MercadoPagoId).IsRequired().HasMaxLength(255);
             entity.Property(t => t.Amount).IsRequired().HasColumnType("decimal(18,2)");
             entity.Property(t => t.Status).IsRequired();

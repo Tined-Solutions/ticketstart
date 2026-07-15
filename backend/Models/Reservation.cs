@@ -8,6 +8,7 @@ public class Reservation
     public Guid TicketTypeId { get; set; }
     public int Quantity { get; set; }
     public string PurchaserDNI { get; set; } = string.Empty;
+    public string? PurchaserEmail { get; set; }
     public DateTime ExpiresAt { get; set; }
     public ReservationStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
