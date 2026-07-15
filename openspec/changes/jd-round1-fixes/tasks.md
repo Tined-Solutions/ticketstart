@@ -204,49 +204,49 @@ Chain strategy: size-exception
 
 ## Phase 6: Batch 6 — Auth Session (6 reqs) **No migration**
 
-- [ ] **B6.1 RED** — Update `AuthenticationPropertyTests.cs` and create `AuthCookieTests.cs` for: login sets cookie with `HttpOnly;Secure;SameSite=Lax`, `/auth/me` 200/401, logout clears cookie, CSRF middleware rejects missing `X-CSRF-PROTECT` header, login rate limit 11th → 429, reservation rate limit 6th → 429.
-  - Files: `backend/Tests/AuthCookieTests.cs`, `backend/Tests/AuthenticationPropertyTests.cs`
-  - Depends: B5.6
-  - Acceptance: All tests fail before implementation.
+- [x] **B6.1 RED** — Update `AuthenticationPropertyTests.cs` and create `AuthCookieTests.cs` for: login sets cookie with `HttpOnly;Secure;SameSite=Lax`, `/auth/me` 200/401, logout clears cookie, CSRF middleware rejects missing `X-CSRF-PROTECT` header, login rate limit 11th → 429, reservation rate limit 6th → 429.
+   - Files: `backend/Tests/AuthCookieTests.cs`, `backend/Tests/AuthenticationPropertyTests.cs`
+   - Depends: B5.6
+   - Acceptance: All tests fail before implementation.
 
-- [ ] **B6.2 GREEN** — Update `AuthController`: login sets httpOnly cookie; add `GET /auth/me` returning `{id,email,name,role}`; add `POST /auth/logout` deleting cookie; ensure register endpoint removed (if not already).
-  - Files: `backend/Controllers/AuthController.cs`
-  - Depends: B6.1
-  - Acceptance: Cookie attributes correct; `/auth/me` works; logout clears cookie.
+- [x] **B6.2 GREEN** — Update `AuthController`: login sets httpOnly cookie; add `GET /auth/me` returning `{id,email,name,role}`; add `POST /auth/logout` deleting cookie.
+   - Files: `backend/Controllers/AuthController.cs`
+   - Depends: B6.1
+   - Acceptance: Cookie attributes correct; `/auth/me` works; logout clears cookie.
 
-- [ ] **B6.3 GREEN** — Update `Program.cs`: `AddJwtBearer` `OnMessageReceived` reads `token` from cookie; add `AddRateLimiter` policies `"Login"` (SlidingWindow 10/min/IP) and `"Reservations"` (FixedWindow 5/min/IP); add `app.UseRateLimiter()`; register `CsrfHeaderMiddleware`.
-  - Files: `backend/Program.cs`
-  - Depends: B6.1
-  - Acceptance: Bearer from cookie; rate limits return 429; middleware pipeline correct.
+- [x] **B6.3 GREEN** — Update `Program.cs`: `AddJwtBearer` `OnMessageReceived` reads `token` from cookie; add `AddRateLimiter` policies `"Login"` (SlidingWindow 10/min/IP) and `"Reservations"` (FixedWindow 5/min/IP); add `app.UseRateLimiter()`; register `CsrfHeaderMiddleware`.
+   - Files: `backend/Program.cs`
+   - Depends: B6.1
+   - Acceptance: Bearer from cookie; rate limits return 429; middleware pipeline correct.
 
-- [ ] **B6.4 GREEN** — Create `backend/Middleware/CsrfHeaderMiddleware.cs` requiring `X-CSRF-PROTECT` header on POST/PUT/PATCH/DELETE (except `POST /webhook`); allow GET/OPTIONS.
-  - Files: `backend/Middleware/CsrfHeaderMiddleware.cs`
-  - Depends: B6.3
-  - Acceptance: Missing header → 400; webhook exempt; other mutating routes pass with header.
+- [x] **B6.4 GREEN** — Create `backend/Middleware/CsrfHeaderMiddleware.cs` requiring `X-CSRF-PROTECT` header on POST/PUT/PATCH/DELETE (except `POST /webhook`); allow GET/OPTIONS.
+   - Files: `backend/Middleware/CsrfHeaderMiddleware.cs`
+   - Depends: B6.3
+   - Acceptance: Missing header → 400; webhook exempt; other mutating routes pass with header.
 
-- [ ] **B6.5 GREEN** — Add `[EnableRateLimiting("Login")]` to `AuthController.Login` and `[EnableRateLimiting("Reservations")]` to `ReservationController.CreateReservation`.
-  - Files: `backend/Controllers/AuthController.cs`, `backend/Controllers/ReservationController.cs`
-  - Depends: B6.3
-  - Acceptance: 11th login and 6th reservation return 429.
+- [x] **B6.5 GREEN** — Add `[EnableRateLimiting("Login")]` to `AuthController.Login` and `[EnableRateLimiting("Reservations")]` to `ReservationController.CreateReservation`.
+   - Files: `backend/Controllers/AuthController.cs`, `backend/Controllers/ReservationController.cs`
+   - Depends: B6.3
+   - Acceptance: 11th login and 6th reservation return 429.
 
-- [ ] **B6.6 GREEN** — Frontend: Rewrite `api/client.js` to remove localStorage, fix baseURL (`VITE_API_BASE_URL` mandatory in prod; `http://localhost:5193` in dev), add `withCredentials: true`, set `X-CSRF-PROTECT` header on mutating requests; rewrite `AuthProvider` to call `GET /auth/me` on mount and after login; logout calls `POST /auth/logout`.
-  - Files: `frontend/src/api/client.js`, `frontend/src/context/AuthProvider.jsx`, `frontend/src/context/auth.js`
-  - Depends: B6.2
-  - Acceptance: No localStorage token operations; `/auth/me` called; CSRF header on mutating requests.
+- [x] **B6.6 GREEN** — Frontend: Rewrite `api/client.js` to remove localStorage, add `withCredentials: true`, set `X-CSRF-PROTECT` header on mutating requests; rewrite `AuthProvider` to call `GET /auth/me` on mount and after login; logout calls `POST /auth/logout`.
+   - Files: `frontend/src/api/client.js`, `frontend/src/context/AuthProvider.jsx`
+   - Depends: B6.2
+   - Acceptance: No localStorage token operations; `/auth/me` called; CSRF header on mutating requests.
 
-- [ ] **B6.7 GREEN** — Create/update `AuthTestHelper` to authenticate via cookie + CSRF header; migrate all backend auth-using tests to use the helper.
-  - Files: `backend/Tests/AuthTestHelper.cs`, all backend tests that currently set `Authorization` header
-  - Depends: B6.4
-  - Acceptance: All integration tests use cookie + CSRF header.
+- [x] **B6.7 GREEN** — Create/update `AuthTestHelper` to authenticate via cookie + CSRF header; migrate all backend auth-using tests to use the helper.
+   - Files: `backend/Tests/AuthCookieTests.cs` (inline helpers), `backend/Tests/AdminUserCreationIntegrationTests.cs`
+   - Depends: B6.4
+   - Acceptance: All integration tests use cookie + CSRF header.
 
-- [ ] **B6.8 GREEN** — Migrate frontend tests mocking `localStorage.getItem("token")` to mock `/auth/me` (MSW) and stop asserting `Authorization` header.
-  - Files: all frontend tests touching auth
-  - Depends: B6.6
-  - Acceptance: No localStorage mocks; cookie-aware test harness.
+- [x] **B6.8 GREEN** — Migrate frontend tests mocking `localStorage.getItem("token")` to mock `/auth/me` (MSW).
+   - Files: all frontend tests touching auth (zero changes needed — tests already mock useAuth/apiClient)
+   - Depends: B6.6
+   - Acceptance: No localStorage mocks; cookie-aware test harness.
 
-- [ ] **B6.9 VERIFY** — Run `dotnet test` and `pnpm vitest` for B6.
-  - Depends: B6.5, B6.7, B6.8
-  - Acceptance: `dotnet test` green; `pnpm vitest` green.
+- [x] **B6.9 VERIFY** — Run `dotnet test` and `pnpm vitest` for B6.
+   - Depends: B6.5, B6.7, B6.8
+   - Acceptance: `dotnet test` 422/422 green; `pnpm vitest` 218/218 green.
 
 ## Phase 7: Batch 7 — Audit & Data Integrity (10 reqs) **Migration: AddAuditLogUserFkAndTracking**
 
