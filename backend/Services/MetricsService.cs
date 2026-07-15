@@ -47,6 +47,8 @@ public class MetricsService : IMetricsService
 
     /// <summary>
     /// Calculates metrics for all events owned by the specified organizer.
+    /// Uses consolidated GroupBy projections — one query per aggregate dimension
+    /// (tickets, inventory, reservations) instead of per-event N+1 loops.
     /// </summary>
     public async Task<IEnumerable<EventMetrics>> GetOrganizerMetricsAsync(Guid organizerId)
     {
@@ -58,13 +60,88 @@ public class MetricsService : IMetricsService
             .OrderBy(e => e.Date)
             .ToListAsync();
 
-        var metrics = new List<EventMetrics>();
-        foreach (var eventEntity in events)
+        if (events.Count == 0)
         {
-            metrics.Add(await CalculateMetricsAsync(eventEntity));
+            _logger.LogInformation("No events found for organizer {OrganizerId}", organizerId);
+            return Enumerable.Empty<EventMetrics>();
         }
 
-        _logger.LogInformation("Retrieved metrics for {EventCount} events owned by organizer {OrganizerId}", metrics.Count, organizerId);
+        var eventIds = events.Select(e => e.Id).ToList();
+
+        // Single GroupBy query: ticket aggregates (sold, revenue, scanned) per event
+        var ticketAggregates = await _context.Tickets
+            .AsNoTracking()
+            .Where(t => eventIds.Contains(t.EventId))
+            .GroupBy(t => t.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                TicketsSold = g.Count(),
+                TicketsScanned = g.Count(t => t.IsUsed),
+                Revenue = g.Join(
+                    _context.TicketTypes.AsNoTracking(),
+                    t => t.TicketTypeId,
+                    tt => tt.Id,
+                    (t, tt) => tt.Price).Sum()
+            })
+            .ToListAsync();
+
+        // Single GroupBy query: inventory totals per event
+        var inventoryAggregates = await _context.TicketTypes
+            .AsNoTracking()
+            .Where(tt => eventIds.Contains(tt.EventId))
+            .GroupBy(tt => tt.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                TotalInventory = g.Sum(tt => (int?)tt.Quantity) ?? 0
+            })
+            .ToListAsync();
+
+        // Single GroupBy query: active reservations per event
+        var reservationAggregates = await _context.Reservations
+            .AsNoTracking()
+            .Where(r => eventIds.Contains(r.EventId) &&
+                        r.Status == ReservationStatus.Active &&
+                        r.ExpiresAt > DateTime.UtcNow)
+            .GroupBy(r => r.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                ActiveReservations = g.Sum(r => (int?)r.Quantity) ?? 0
+            })
+            .ToListAsync();
+
+        // Merge results: O(events) with O(1) lookups (dictionaries)
+        var ticketLookup = ticketAggregates.ToDictionary(a => a.EventId);
+        var inventoryLookup = inventoryAggregates.ToDictionary(a => a.EventId);
+        var reservationLookup = reservationAggregates.ToDictionary(a => a.EventId);
+
+        var metrics = events.Select(e =>
+        {
+            ticketLookup.TryGetValue(e.Id, out var t);
+            inventoryLookup.TryGetValue(e.Id, out var inv);
+            reservationLookup.TryGetValue(e.Id, out var res);
+
+            var ticketsSold = t?.TicketsSold ?? 0;
+            var activeReservations = res?.ActiveReservations ?? 0;
+            var totalInventory = inv?.TotalInventory ?? 0;
+
+            return new EventMetrics
+            {
+                Id = e.Id,
+                EventId = e.Id,
+                EventName = e.Name,
+                EventDate = e.Date,
+                TicketsSold = ticketsSold,
+                TotalRevenue = t?.Revenue ?? 0m,
+                RemainingInventory = totalInventory - ticketsSold - activeReservations,
+                TicketsScanned = t?.TicketsScanned ?? 0
+            };
+        }).ToList();
+
+        _logger.LogInformation("Retrieved consolidated metrics for {EventCount} events owned by organizer {OrganizerId}",
+            metrics.Count, organizerId);
 
         return metrics;
     }
