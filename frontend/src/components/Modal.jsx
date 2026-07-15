@@ -53,6 +53,7 @@ export default function Modal({
       'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
     const handleFocusTrap = (e) => {
+      // Re-evaluate focusable nodes on each Tab press for dynamic content
       const focusable = overlay.querySelectorAll(focusableSelector)
       if (focusable.length === 0) return
 

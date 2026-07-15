@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import EventList from './pages/EventList.jsx'
@@ -18,6 +19,7 @@ import NotFound from './pages/NotFound.jsx'
 
 function App() {
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
@@ -93,6 +95,7 @@ function App() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </ErrorBoundary>
   )
 }
 

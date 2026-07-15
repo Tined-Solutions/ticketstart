@@ -9,7 +9,13 @@ export default function RoleGuard({ allowedRoles, children, fallback = '/' }) {
   }
 
   if (!allowedRoles.includes(user?.role)) {
-    return <Navigate to={fallback} replace />
+    return (
+      <div className="error-page">
+        <h1>403 — Acceso denegado</h1>
+        <p>No tenes permisos para acceder a esta pagina.</p>
+        <a href={fallback}>Volver al inicio</a>
+      </div>
+    )
   }
 
   return children

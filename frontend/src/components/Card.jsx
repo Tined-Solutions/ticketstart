@@ -6,6 +6,9 @@ export default function Card({
   className = '',
   ...rest
 }) {
+  // Only pass known HTML-safe props to the DOM
+  const { style, id, title, lang, dir, hidden } = rest
+
   const paddingClasses = {
     none: '',
     sm: 'p-4',
@@ -16,7 +19,12 @@ export default function Card({
   return (
     <div
       className={`border border-border rounded-xl bg-white overflow-hidden ${className}`}
-      {...rest}
+      style={style}
+      id={id}
+      title={title}
+      lang={lang}
+      dir={dir}
+      hidden={hidden}
     >
       {header && (
         <div className="px-6 py-4 border-b border-border font-semibold text-gray-900">

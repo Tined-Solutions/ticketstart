@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { render, screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import StaffScan from './StaffScan.jsx'
@@ -33,6 +33,19 @@ vi.mock('../context/auth.js', () => ({
     token: 'mock-staff-token',
   }),
 }))
+
+// ---------------------------------------------------------------------------
+// sessionStorage mock
+// ---------------------------------------------------------------------------
+
+const sessionStore = {}
+
+beforeAll(() => {
+  vi.stubGlobal('sessionStorage', {
+    getItem: vi.fn((key) => sessionStore[key] || null),
+    setItem: vi.fn((key, value) => { sessionStore[key] = value }),
+  })
+})
 
 vi.mock('html5-qrcode', () => ({
   Html5Qrcode: vi.fn().mockImplementation(function (elementId) {
@@ -125,6 +138,8 @@ beforeEach(() => {
   capturedSuccessCallback = null
   fakeIsScanning = false
   shouldFailCamera = false
+  // Clear sessionStorage mock between tests
+  Object.keys(sessionStore).forEach((k) => delete sessionStore[k])
 
   audioCtxInstance = {
     currentTime: 123,
@@ -526,5 +541,61 @@ describe('StaffScan', () => {
     await startScanning(user)
 
     expect(screen.getByLabelText(/id del evento/i)).toBeDisabled()
+  })
+
+  // -- GUID validation ----------------------------------------------------
+  it('rejects an invalid event ID format before starting the scanner', async () => {
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await user.clear(screen.getByLabelText(/id del evento/i))
+    await user.type(screen.getByLabelText(/id del evento/i), 'not-a-valid-guid')
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    expect(
+      screen.getByText(/formato de id invalido/i)
+    ).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('accepts a valid GUID and starts the scanner', async () => {
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await startScanning(user) // Uses valid GUID from eventId constant
+
+    expect(
+      screen.getByRole('button', { name: /detener escaneo/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/formato de id invalido/i)
+    ).not.toBeInTheDocument()
+  })
+
+  // -- sessionStorage scan history ----------------------------------------
+  it('persists scan history to sessionStorage', async () => {
+    mockPost.mockResolvedValueOnce(successResponse)
+
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await startScanning(user)
+
+    await act(async () => {
+      simulateQrScan()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+    })
+
+    // History should be saved to sessionStorage
+    const stored = sessionStorage.getItem('staff_scan_history')
+    expect(stored).toBeTruthy()
+    const parsed = JSON.parse(stored)
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(parsed.length).toBeGreaterThan(0)
+    expect(parsed[0].eventId).toBe(eventId)
+    expect(parsed[0].isValid).toBe(true)
   })
 })

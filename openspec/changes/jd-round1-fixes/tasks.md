@@ -301,54 +301,54 @@ Chain strategy: size-exception
 
 ## Phase 8: Batch 8 — Frontend Quality (13 reqs)
 
-- [ ] **B8.1 RED** — Write `frontend/src/lib/__tests__/format.test.js` and `apiError.test.js` for `formatEventDate`, `formatCurrency`, `getErrorMessage`.
-  - Files: `frontend/src/lib/__tests__/format.test.js`, `frontend/src/lib/__tests__/apiError.test.js`
-  - Depends: B7.10
-  - Acceptance: Tests fail before implementation.
+- [x] **B8.1 RED** — Write `frontend/src/lib/__tests__/format.test.js` and `apiError.test.js` for `formatEventDate`, `formatCurrency`, `getErrorMessage`.
+   - Files: `frontend/src/lib/__tests__/format.test.js`, `frontend/src/lib/__tests__/apiError.test.js`
+   - Depends: B7.10
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B8.2 GREEN** — Create `frontend/src/lib/format.js` with `formatEventDate` and `formatCurrency`; create `frontend/src/lib/apiError.js` with `getErrorMessage`; replace inline implementations in 7+ consuming files.
-  - Files: `frontend/src/lib/format.js`, `frontend/src/lib/apiError.js`, 7+ consuming files
-  - Depends: B8.1
-  - Acceptance: All consumers import shared utils; no duplicated inline formatters.
+- [x] **B8.2 GREEN** — Create `frontend/src/lib/format.js` with `formatEventDate` and `formatCurrency`; create `frontend/src/lib/apiError.js` with `getErrorMessage`; replace inline implementations in 7+ consuming files.
+   - Files: `frontend/src/lib/format.js`, `frontend/src/lib/apiError.js`, 7+ consuming files
+   - Depends: B8.1
+   - Acceptance: All consumers import shared utils; no duplicated inline formatters.
 
-- [ ] **B8.3 RED** — Write/update component tests: `RoleGuard` 403 render, `EventForm` undefined eventId + catch-block feedback, `Modal` dynamic focus trap, `ToastProvider` remount `nextId`, `StaffScan` GUID validation + sessionStorage, `OrganizerEventDetail` correct fetch URL, `ErrorBoundary` fallback, `Card` prop filter, `EventList` native button, `NotFound` home link.
-  - Files: per-component test files under `frontend/src/components/__tests__/` and `frontend/src/pages/__tests__/`
-  - Depends: B7.10
-  - Acceptance: Tests fail before implementation.
+- [x] **B8.3 RED** — Write/update component tests: `RoleGuard` 403 render, `EventForm` undefined eventId + catch-block feedback, `Modal` dynamic focus trap, `ToastProvider` remount `nextId`, `StaffScan` GUID validation + sessionStorage, `OrganizerEventDetail` correct fetch URL, `ErrorBoundary` fallback, `Card` prop filter, `EventList` native button, `NotFound` home link.
+   - Files: per-component test files under `frontend/src/components/__tests__/` and `frontend/src/pages/__tests__/`
+   - Depends: B7.10
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B8.4 GREEN** — Update `RoleGuard.jsx` to render 403 page (no redirect); update `EventForm.jsx` to validate `eventId` before PUT and fix catch feedback to `error`/`warning`; remove explicit `Content-Type`.
-  - Files: `frontend/src/components/RoleGuard.jsx`, `frontend/src/components/EventForm.jsx`
-  - Depends: B8.3
-  - Acceptance: 403 page shown; PUT blocked when eventId undefined; upload error shown as error.
+- [x] **B8.4 GREEN** — Update `RoleGuard.jsx` to render 403 page (no redirect); update `EventForm.jsx` to validate `eventId` before PUT and fix catch feedback to `error`/`warning`; remove explicit `Content-Type`.
+   - Files: `frontend/src/components/RoleGuard.jsx`, `frontend/src/components/EventForm.jsx`
+   - Depends: B8.3
+   - Acceptance: 403 page shown; PUT blocked when eventId undefined; upload error shown as error.
 
-- [ ] **B8.5 GREEN** — Update `Modal.jsx` to re-evaluate focusable nodes on each Tab; update `ToastProvider.jsx` to use `useRef` for `nextId`.
-  - Files: `frontend/src/components/Modal.jsx`, `frontend/src/context/ToastProvider.jsx`
-  - Depends: B8.3
-  - Acceptance: Dynamic focusables included; nextId resets on remount.
+- [x] **B8.5 GREEN** — Update `Modal.jsx` to re-evaluate focusable nodes on each Tab; update `ToastProvider.jsx` to use `useRef` for `nextId`.
+   - Files: `frontend/src/components/Modal.jsx`, `frontend/src/context/ToastProvider.jsx`
+   - Depends: B8.3
+   - Acceptance: Dynamic focusables included; nextId resets on remount.
 
-- [ ] **B8.6 GREEN** — Update `StaffScan.jsx`: GUID regex validation before API call; `useRef` for scanner with cleanup; `sessionStorage` for scan history.
-  - Files: `frontend/src/pages/StaffScan.jsx`
-  - Depends: B8.3
-  - Acceptance: Invalid GUID rejected; history persists across refresh.
+- [x] **B8.6 GREEN** — Update `StaffScan.jsx`: GUID regex validation before API call; `useRef` for scanner with cleanup; `sessionStorage` for scan history.
+   - Files: `frontend/src/pages/StaffScan.jsx`
+   - Depends: B8.3
+   - Acceptance: Invalid GUID rejected; history persists across refresh.
 
-- [ ] **B8.7 GREEN** — Update `OrganizerEventDetail.jsx` to use `GET /events/{id}/manage`; update `Card.jsx` to filter unknown props; update `EventList.jsx` to use native `<button>`; update `NotFound.jsx` to add home link.
-  - Files: `frontend/src/pages/OrganizerEventDetail.jsx`, `frontend/src/components/Card.jsx`, `frontend/src/pages/EventList.jsx`, `frontend/src/pages/NotFound.jsx`
-  - Depends: B8.3
-  - Acceptance: Authenticated endpoint used; no arbitrary props on DOM; native buttons; home link present.
+- [x] **B8.7 GREEN** — Update `OrganizerEventDetail.jsx` to use `GET /events/{id}/manage`; update `Card.jsx` to filter unknown props; update `EventList.jsx` to use native `<button>`; update `NotFound.jsx` to add home link.
+   - Files: `frontend/src/pages/OrganizerEventDetail.jsx`, `frontend/src/components/Card.jsx`, `frontend/src/pages/EventList.jsx`, `frontend/src/pages/NotFound.jsx`
+   - Depends: B8.3
+   - Acceptance: Authenticated endpoint used; no arbitrary props on DOM; native buttons; home link present.
 
-- [ ] **B8.8 GREEN** — Create `frontend/src/components/ErrorBoundary.jsx`; update `App.jsx` to wrap routes with `ErrorBoundary`.
-  - Files: `frontend/src/components/ErrorBoundary.jsx`, `frontend/src/App.jsx`
-  - Depends: B8.3
-  - Acceptance: Throwing route caught by boundary; other routes functional.
+- [x] **B8.8 GREEN** — Create `frontend/src/components/ErrorBoundary.jsx`; update `App.jsx` to wrap routes with `ErrorBoundary`.
+   - Files: `frontend/src/components/ErrorBoundary.jsx`, `frontend/src/App.jsx`
+   - Depends: B8.3
+   - Acceptance: Throwing route caught by boundary; other routes functional.
 
-- [ ] **B8.9 GREEN** — Update `frontend/src/components/__tests__/accessibility.test.jsx` to explicitly import `vi` from `vitest`.
-  - Files: `frontend/src/components/__tests__/accessibility.test.jsx`
-  - Depends: B8.3
-  - Acceptance: `import { vi } from 'vitest'` present.
+- [x] **B8.9 GREEN** — Update `frontend/src/components/__tests__/accessibility.test.jsx` to explicitly import `vi` from `vitest`.
+   - Files: `frontend/src/components/__tests__/accessibility.test.jsx`
+   - Depends: B8.3
+   - Acceptance: `import { vi } from 'vitest'` present.
 
-- [ ] **B8.10 VERIFY** — Run `pnpm vitest` and lint; confirm all B8 tests pass.
-  - Depends: B8.2, B8.4, B8.5, B8.6, B8.7, B8.8, B8.9
-  - Acceptance: `pnpm vitest` green; no new lint errors.
+- [x] **B8.10 VERIFY** — Run `pnpm vitest` and lint; confirm all B8 tests pass.
+   - Depends: B8.2, B8.4, B8.5, B8.6, B8.7, B8.8, B8.9
+   - Acceptance: `pnpm vitest` 262/262 green; no new lint errors.
 
 ## Phase 9: Cross-Batch Verification & Cleanup
 

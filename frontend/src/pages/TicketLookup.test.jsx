@@ -353,7 +353,7 @@ describe('TicketLookup', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows fallback error message for unexpected error shapes', async () => {
+  it('shows the error message from a plain Error object', async () => {
     mockGet.mockRejectedValue(new Error('Network error'))
 
     render(<TicketLookup />)
@@ -361,9 +361,7 @@ describe('TicketLookup', () => {
     await form.submit()
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/ocurrio un error al buscar entradas/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/network error/i)).toBeInTheDocument()
     })
   })
 

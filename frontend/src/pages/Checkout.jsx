@@ -2,56 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import apiClient from '../api/client.js'
 import { useAuth } from '../context/auth.js'
-
-function formatEventDate(dateString) {
-  if (!dateString) return 'Fecha por confirmar'
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return 'Fecha no valida'
-  return date.toLocaleDateString('es-AR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatCurrency(amount) {
-  if (amount === undefined || amount === null) return '$ --'
-  return `$ ${Number(amount).toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
+import { formatEventDate, formatCurrency } from '../lib/format.js'
+import { getErrorMessage } from '../lib/apiError.js'
 
 function formatCountdown(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
-
-function getErrorMessage(error) {
-  if (!error) return 'Ocurrio un error inesperado'
-  if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
-  }
-  if (error.response?.data?.error) {
-    const backendError = error.response.data.error
-    return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
-  }
-  if (error.response?.data?.message) {
-    return error.response.data.message
-  }
-  if (error.response?.data?.detail) {
-    return error.response.data.detail
-  }
-  if (error.message) {
-    return error.message
-  }
-  return 'Ocurrio un error inesperado'
 }
 
 export default function Checkout() {
