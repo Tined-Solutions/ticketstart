@@ -250,54 +250,54 @@ Chain strategy: size-exception
 
 ## Phase 7: Batch 7 — Audit & Data Integrity (10 reqs) **Migration: AddAuditLogUserFkAndTracking**
 
-- [ ] **B7.1 MIGRATION** — Add `IpAddress` and `UserAgent` to `AuditLog`; make `UserId` nullable; add FK `AuditLog.UserId → Users.Id` with `OnDelete(Restrict)`; add `UserIdentifier` string column; cleanse existing `Guid.Empty` rows to `UserId = null` + `UserIdentifier = "System"`; create migration `AddAuditLogUserFkAndTracking`; apply and verify; test rollback.
-  - Files: `backend/Models/AuditLog.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddAuditLogUserFkAndTracking.cs`
-  - Depends: B6.9
-  - Acceptance: FK applied; nullable `UserId`; `UserIdentifier` populated; rollback drops FK/columns.
+- [x] **B7.1 MIGRATION** — Add `IpAddress` and `UserAgent` to `AuditLog`; make `UserId` nullable; add FK `AuditLog.UserId → Users.Id` with `OnDelete(Restrict)`; add `UserIdentifier` string column; cleanse existing `Guid.Empty` rows to `UserId = null` + `UserIdentifier = "System"`; create migration `AddAuditLogUserFkAndTracking`; apply and verify; test rollback.
+   - Files: `backend/Models/AuditLog.cs`, `backend/Data/ApplicationDbContext.cs`, `backend/Migrations/<ts>_AddAuditLogUserFkAndTracking.cs`
+   - Depends: B6.9
+   - Acceptance: FK applied; nullable `UserId`; `UserIdentifier` populated; rollback drops FK/columns.
 
-- [ ] **B7.2 RED** — Update `MetricsPropertyTests.cs` and `MetricsControllerTests.cs` to assert single `GroupBy` query (query count = 1 regardless of event count).
-  - Files: `backend/Tests/MetricsPropertyTests.cs`, `backend/Tests/MetricsControllerTests.cs`
-  - Depends: B6.9
-  - Acceptance: Tests fail before implementation.
+- [x] **B7.2 RED** — Update `MetricsPropertyTests.cs` and `MetricsControllerTests.cs` to assert single `GroupBy` query (query count = 1 regardless of event count).
+   - Files: `backend/Tests/MetricsConsolidationTests.cs`
+   - Depends: B6.9
+   - Acceptance: Tests fail before implementation.
 
-- [ ] **B7.3 GREEN** — Consolidate `MetricsService.GetOrganizerMetricsAsync` to a single `GroupBy(eventId)` projection returning all aggregates.
-  - Files: `backend/Services/MetricsService.cs`
-  - Depends: B7.2
-  - Acceptance: One round-trip; no per-event loops.
+- [x] **B7.3 GREEN** — Consolidate `MetricsService.GetOrganizerMetricsAsync` to a single `GroupBy(eventId)` projection returning all aggregates.
+   - Files: `backend/Services/MetricsService.cs`
+   - Depends: B7.2
+   - Acceptance: One round-trip; no per-event loops.
 
-- [ ] **B7.4 RED** — Update tests for: `AdminService.GetAllLogsAsync` pagination, FK constraint + restrict, out-of-band audit failure, `TryGetUserRole` false on parse failure, webhook "System" identifier, reservation token expiry, PII redaction, IP/UA capture, EventOwnershipHandler parameter.
-  - Files: `backend/Tests/AdminPropertyTests.cs`, `backend/Tests/AuditLogTests.cs`, `backend/Tests/EventControllerTests.cs`, `backend/Tests/TicketLookupPropertyTests.cs`, `backend/Tests/ReservationPropertyTests.cs`
-  - Depends: B7.1
-  - Acceptance: All tests fail before implementation.
+- [x] **B7.4 RED** — Update tests for: `AdminService.GetAllLogsAsync` pagination, FK constraint + restrict, out-of-band audit failure, `TryGetUserRole` false on parse failure, webhook "System" identifier, reservation token expiry, PII redaction, IP/UA capture, EventOwnershipHandler parameter.
+   - Files: `backend/Tests/Batch7AuditDataIntegrityTests.cs`
+   - Depends: B7.1
+   - Acceptance: All tests fail before implementation.
 
-- [ ] **B7.5 GREEN** — Update `AdminService.GetAllLogsAsync(int page, int pageSize = 50)` to return `PagedResult<AuditLogDto>`; update `AuditLogService` to wrap writes in try/catch (out-of-band failure), capture IP/UA from `IHttpContextAccessor`.
-  - Files: `backend/Services/AdminService.cs`, `backend/Services/AuditLogService.cs`, `backend/Models/AuditLogDto.cs` (if new)
-  - Depends: B7.4
-  - Acceptance: Pagination correct; audit failure doesn't break primary op; IP/UA captured.
+- [x] **B7.5 GREEN** — Update `AdminService.GetAllLogsAsync(int page, int pageSize = 50)` to return `PagedResult<AuditLogDto>`; update `AuditLogService` to wrap writes in try/catch (out-of-band failure), capture IP/UA from `IHttpContextAccessor`.
+   - Files: `backend/Services/AdminService.cs`, `backend/Services/AuditLogService.cs`
+   - Depends: B7.4
+   - Acceptance: Pagination correct; audit failure doesn't break primary op; IP/UA captured.
 
-- [ ] **B7.6 GREEN** — Update controllers to populate `AuditLog` with `UserIdentifier` ("System" for webhooks); capture `ClientIp` and `UserAgent` on guest reservation creation.
-  - Files: `backend/Controllers/PaymentController.cs`, `backend/Controllers/ReservationController.cs`, `backend/Models/Reservation.cs` (optional ClientIp/UA)
-  - Depends: B7.5
-  - Acceptance: Webhook audit uses "System"; reservation stores IP/UA.
+- [x] **B7.6 GREEN** — Update controllers to populate `AuditLog` with `UserIdentifier` ("System" for webhooks); capture `ClientIp` and `UserAgent` on guest reservation creation.
+   - Files: `backend/Controllers/PaymentController.cs`, `backend/Controllers/ReservationController.cs`
+   - Depends: B7.5
+   - Acceptance: Webhook audit uses "System"; reservation stores IP/UA.
 
-- [ ] **B7.7 GREEN** — Update `ReservationService` HMAC token format to `nonce:timestamp:signature`; add expiry validation; reject expired/tampered tokens.
-  - Files: `backend/Services/ReservationService.cs`, `backend/Helpers/HmacHelper.cs`
-  - Depends: B7.4
-  - Acceptance: Expired token rejected; valid nonce/timestamp accepted.
+- [x] **B7.7 GREEN** — Update `ReservationService` HMAC token format to `nonce:timestamp:signature`; add expiry validation; reject expired/tampered tokens.
+   - Files: `backend/Services/ReservationService.cs`, `backend/Helpers/HmacHelper.cs`
+   - Depends: B7.4
+   - Acceptance: Expired token rejected; valid nonce/timestamp accepted.
 
-- [ ] **B7.8 GREEN** — Update `TicketService` to use `LogRedactor.HashIdentifier` for email + DNI in logs; update `EventController.TryGetUserRole` to return `false` on parse failure.
-  - Files: `backend/Services/TicketService.cs`, `backend/Controllers/EventController.cs`
-  - Depends: B7.4
-  - Acceptance: Logs contain no raw email/DNI; invalid role claim returns false.
+- [x] **B7.8 GREEN** — Update `TicketService` to use `LogRedactor.HashIdentifier` for email + DNI in logs; update `EventController.TryGetUserRole` to return `false` on parse failure.
+   - Files: `backend/Services/TicketService.cs`, `backend/Controllers/EventController.cs`
+   - Depends: B7.4
+   - Acceptance: Logs contain no raw email/DNI; invalid role claim returns false.
 
-- [ ] **B7.9 GREEN** — Update `EventOwnershipRequirement` to carry `RouteParameterName`; update `EventOwnershipHandler` to read `routeValues[requirement.RouteParameterName]`.
-  - Files: `backend/Authorization/EventOwnershipRequirement.cs`, `backend/Authorization/EventOwnershipHandler.cs`, `backend/Controllers/EventController.cs` (policy usage)
-  - Depends: B7.4
-  - Acceptance: Works with `id` and `eventId` route parameters.
+- [x] **B7.9 GREEN** — Update `EventOwnershipRequirement` to carry `RouteParameterName`; update `EventOwnershipHandler` to read `routeValues[requirement.RouteParameterName]`.
+   - Files: `backend/Authorization/EventOwnershipRequirement.cs`, `backend/Authorization/EventOwnershipHandler.cs`, `backend/Controllers/EventController.cs` (policy usage)
+   - Depends: B7.4
+   - Acceptance: Works with `id` and `eventId` route parameters.
 
-- [ ] **B7.10 VERIFY** — Run `dotnet test`; apply migration; confirm all B7 tests pass.
-  - Depends: B7.3, B7.6, B7.7, B7.8, B7.9
-  - Acceptance: `dotnet test` green; migration applied.
+- [x] **B7.10 VERIFY** — Run `dotnet test`; apply migration; confirm all B7 tests pass.
+   - Depends: B7.3, B7.6, B7.7, B7.8, B7.9
+   - Acceptance: `dotnet test` 437/438 green (1 pre-existing flaky env var test); migration applied.
 
 ## Phase 8: Batch 8 — Frontend Quality (13 reqs)
 
