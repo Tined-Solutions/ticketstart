@@ -17,6 +17,7 @@ public class PaymentService : IPaymentService
     private readonly MercadoPagoOptions _options;
     private readonly ReservationTokenOptions _tokenOptions;
     private readonly ITicketService _ticketService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
@@ -25,6 +26,7 @@ public class PaymentService : IPaymentService
         IOptions<MercadoPagoOptions> options,
         IOptions<ReservationTokenOptions> tokenOptions,
         ITicketService ticketService,
+        IEmailService emailService,
         ILogger<PaymentService> logger)
     {
         _context = context;
@@ -32,6 +34,7 @@ public class PaymentService : IPaymentService
         _options = options.Value;
         _tokenOptions = tokenOptions.Value;
         _ticketService = ticketService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -51,9 +54,37 @@ public class PaymentService : IPaymentService
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
-        if (!HmacHelper.ValidateHmacSha256(reservationId.ToString(), _tokenOptions.TokenSecretKey, token))
+        // Validate new token format: nonce:timestamp:signature
+        var tokenParts = token.Split(':');
+        if (tokenParts.Length != 3)
         {
-            _logger.LogWarning("Invalid reservation token for reservation {ReservationId}", reservationId);
+            _logger.LogWarning("Invalid reservation token format for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        var nonce = tokenParts[0];
+        var timestampStr = tokenParts[1];
+        var providedSignature = tokenParts[2];
+
+        if (!long.TryParse(timestampStr, out var ts))
+        {
+            _logger.LogWarning("Invalid timestamp in reservation token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        // Check token expiry (10 minutes)
+        var tokenTime = DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime;
+        if ((DateTime.UtcNow - tokenTime).TotalMinutes > 10)
+        {
+            _logger.LogWarning("Reservation token expired for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Reservation token has expired");
+        }
+
+        // Verify signature
+        var dataToVerify = $"{nonce}:{ts}";
+        if (!HmacHelper.ValidateHmacSha256(dataToVerify, _tokenOptions.TokenSecretKey, providedSignature))
+        {
+            _logger.LogWarning("Invalid reservation token signature for reservation {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
@@ -102,7 +133,7 @@ public class PaymentService : IPaymentService
     }
 
     /// <inheritdoc />
-    public async Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature)
+    public async Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature, byte[]? rawBody = null)
     {
         _logger.LogInformation(
             "Processing webhook for payment {PaymentId} with status {Status}",
@@ -110,7 +141,17 @@ public class PaymentService : IPaymentService
 
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        if (!ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret))
+        bool signatureValid;
+        if (rawBody != null)
+        {
+            signatureValid = ValidateWebhookSignature(rawBody, signature, _options.WebhookSecret);
+        }
+        else
+        {
+            signatureValid = ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret);
+        }
+
+        if (!signatureValid)
         {
             _logger.LogWarning("Invalid webhook signature for payment {PaymentId}", payload.PaymentId);
             return new WebhookResult
@@ -163,31 +204,81 @@ public class PaymentService : IPaymentService
 
     private async Task<WebhookResult> ProcessApprovedPaymentAsync(Reservation reservation, string paymentId, decimal amount)
     {
+        // B4.5: Check idempotency — if a transaction with this MercadoPagoId already exists, return 200
+        var existingTransaction = await _context.Transactions
+            .FirstOrDefaultAsync(t => t.MercadoPagoId == paymentId);
+        if (existingTransaction != null)
+        {
+            _logger.LogInformation(
+                "Duplicate webhook for payment {PaymentId} — transaction already exists. Returning 200 (idempotent).",
+                paymentId);
+            return new WebhookResult { Success = true, PaymentId = paymentId };
+        }
+
         if (reservation.Status == ReservationStatus.Active && reservation.ExpiresAt > DateTime.UtcNow)
         {
-            reservation.Status = ReservationStatus.Confirmed;
-            await _context.SaveChangesAsync();
+            // B4.5: Wrap in transaction for atomicity
+            using var dbTransaction = await _context.Database.BeginTransactionAsync();
 
-            var email = reservation.User?.Email ?? "guest@ticketera.com";
-            await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI);
-
-            _context.Transactions.Add(new Transaction
+            try
             {
-                Id = Guid.NewGuid(),
-                ReservationId = reservation.Id,
-                MercadoPagoId = paymentId,
-                Amount = amount,
-                Status = TransactionStatus.Approved,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-            await _context.SaveChangesAsync();
+                reservation.Status = ReservationStatus.Confirmed;
+                await _context.SaveChangesAsync();
 
-            _logger.LogInformation(
-                "Payment {PaymentId} approved; reservation {ReservationId} confirmed and tickets created",
-                paymentId, reservation.Id);
+                var email = reservation.PurchaserEmail ?? reservation.User?.Email ?? "guest@ticketera.com";
+                var tickets = (await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI)).ToList();
 
-            return new WebhookResult { Success = true, PaymentId = paymentId };
+                _context.Transactions.Add(new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    ReservationId = reservation.Id,
+                    MercadoPagoId = paymentId,
+                    Amount = amount,
+                    Status = TransactionStatus.Approved,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+
+                await dbTransaction.CommitAsync();
+
+                _logger.LogInformation(
+                    "Payment {PaymentId} approved; reservation {ReservationId} confirmed and tickets created",
+                    paymentId, reservation.Id);
+
+                // B4.5: Send email AFTER commit with try/catch (log only, don't rollback)
+                if (tickets.Count > 0)
+                {
+                    try
+                    {
+                        var eventEntity = tickets[0].Event ?? reservation.Event;
+                        await _emailService.SendTicketEmailAsync(email, tickets, eventEntity);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Failed to send ticket email for reservation {ReservationId}. Payment was successful.",
+                            reservation.Id);
+                    }
+                }
+
+                return new WebhookResult { Success = true, PaymentId = paymentId };
+            }
+            catch (DbUpdateException) when (_context.Transactions.Any(t => t.MercadoPagoId == paymentId))
+            {
+                // B4.5: Concurrent duplicate — another request already inserted this transaction
+                await dbTransaction.RollbackAsync();
+                _logger.LogInformation(
+                    "Concurrent duplicate webhook for payment {PaymentId} — transaction already exists. Returning 200.",
+                    paymentId);
+                return new WebhookResult { Success = true, PaymentId = paymentId };
+            }
+            catch (Exception)
+            {
+                // B4.5: Atomic rollback — any failure rolls back the entire operation
+                await dbTransaction.RollbackAsync();
+                throw;
+            }
         }
 
         _logger.LogWarning(
@@ -275,10 +366,20 @@ public class PaymentService : IPaymentService
     }
 
     /// <summary>
-    /// Validates a webhook HMAC-SHA256 signature.
+    /// Validates a webhook HMAC-SHA256 signature from a string payload.
     /// </summary>
     public static bool ValidateWebhookSignature(string payload, string signature, string secret)
     {
         return HmacHelper.ValidateHmacSha256(payload, secret, signature);
+    }
+
+    /// <summary>
+    /// Validates a webhook HMAC-SHA256 signature from raw bytes.
+    /// Use this overload when the webhook body was received as raw bytes to avoid
+    /// encoding mismatches between the sender and receiver.
+    /// </summary>
+    public static bool ValidateWebhookSignature(byte[] rawBody, string signature, string secret)
+    {
+        return HmacHelper.ValidateHmacSha256(rawBody, secret, signature);
     }
 }

@@ -18,11 +18,12 @@ public interface IReservationService
     /// <param name="ticketTypeId">Ticket type identifier</param>
     /// <param name="quantity">Number of tickets to reserve</param>
     /// <param name="purchaserDNI">Purchaser DNI (required, max 50 characters)</param>
+    /// <param name="purchaserEmail">Purchaser email (optional)</param>
     /// <returns>Created reservation with identifier</returns>
     /// <exception cref="ArgumentException">Thrown when quantity is invalid, DNI is invalid, or insufficient tickets available</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event or ticket type not found</exception>
     /// <exception cref="InvalidOperationException">Thrown on concurrency conflicts</exception>
-    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI);
+    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null);
 
     /// <summary>
     /// Validates if a reservation exists, is active, and not expired.
@@ -68,12 +69,22 @@ public interface IReservationService
 
     /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
+    /// Token format: nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.
     /// Validates: IDOR protection for guest checkout.
     /// </summary>
     /// <param name="reservationId">Reservation identifier</param>
-    /// <returns>HMAC-SHA256 token</returns>
+    /// <returns>HMAC-SHA256 token in nonce:timestamp:signature format</returns>
     string GenerateReservationToken(Guid reservationId);
+
+    /// <summary>
+    /// Validates a reservation token for signature integrity and expiry.
+    /// </summary>
+    /// <param name="token">The reservation token to validate</param>
+    /// <param name="reservationId">Output: reservation ID (unused in new format but kept for API compat)</param>
+    /// <param name="expiryMinutes">Max token age in minutes (default: 10)</param>
+    /// <returns>True if the token is valid and not expired</returns>
+    bool ValidateReservationToken(string token, out Guid reservationId, int expiryMinutes = 10);
 }
 
 /// <summary>
@@ -85,6 +96,8 @@ public class CreateReservationRequest
     public Guid TicketTypeId { get; set; }
     public int Quantity { get; set; }
     public string PurchaserDNI { get; set; } = string.Empty;
+    public string? PurchaserEmail { get; set; }
+    public string? ConfirmEmail { get; set; }
 }
 
 /// <summary>
@@ -96,6 +109,7 @@ public class ReservationResponse
     public Guid EventId { get; set; }
     public Guid TicketTypeId { get; set; }
     public int Quantity { get; set; }
+    public string? PurchaserEmail { get; set; }
     public DateTime ExpiresAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;

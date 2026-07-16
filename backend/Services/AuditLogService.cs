@@ -29,10 +29,13 @@ public class AuditLogService : IAuditLogService
         {
             Id = Guid.NewGuid(),
             UserId = context.UserId,
+            UserIdentifier = context.UserIdentifier,
             ActionType = context.Action,
             ResourceType = context.Resource,
             ResourceId = context.ResourceId,
             Details = context.Details,
+            IpAddress = context.IpAddress,
+            UserAgent = context.UserAgent,
             Timestamp = DateTime.UtcNow
         };
 
@@ -44,8 +47,8 @@ public class AuditLogService : IAuditLogService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to write audit log for admin {AdminId} action {ActionType} resource {ResourceType} id {ResourceId}",
-                context.UserId, context.Action, context.Resource, context.ResourceId);
+                "Failed to write audit log for user {UserIdentifier} action {ActionType} resource {ResourceType} id {ResourceId}",
+                context.UserIdentifier ?? context.UserId?.ToString(), context.Action, context.Resource, context.ResourceId);
         }
     }
 
@@ -82,10 +85,13 @@ public class AuditLogService : IAuditLogService
         {
             Id = log.Id,
             UserId = log.UserId,
+            UserIdentifier = log.UserIdentifier,
             ActionType = log.ActionType,
             ResourceType = log.ResourceType,
             ResourceId = log.ResourceId,
             Details = log.Details,
+            IpAddress = log.IpAddress,
+            UserAgent = log.UserAgent,
             Timestamp = log.Timestamp
         };
     }

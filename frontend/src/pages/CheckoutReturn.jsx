@@ -6,7 +6,7 @@ function resolveStatus(status) {
   if (normalized === 'approved' || normalized === 'success') {
     return {
       title: '¡Pago confirmado!',
-      message: 'Tus entradas fueron enviadas a tu email.',
+      message: 'Si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada',
       type: 'success',
     }
   }

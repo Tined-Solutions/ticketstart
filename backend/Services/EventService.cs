@@ -110,7 +110,8 @@ public class EventService : IEventService
 
     /// <summary>
     /// Retrieves an event by ID with ticket availability calculation.
-    /// Availability = ticket type quantity - sold tickets (confirmed tickets in database).
+    /// Availability = ticket type quantity - currently reserved tickets.
+    /// No longer loads all Tickets via Include (O(1) availability check).
     /// </summary>
     public async Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId)
     {
@@ -118,7 +119,6 @@ public class EventService : IEventService
 
         var eventEntity = await _context.Events
             .Include(e => e.TicketTypes)
-            .Include(e => e.Tickets)
             .FirstOrDefaultAsync(e => e.Id == eventId);
 
         if (eventEntity == null)
@@ -139,7 +139,6 @@ public class EventService : IEventService
 
         var events = await _context.Events
             .Include(e => e.TicketTypes)
-            .Include(e => e.Tickets)
             .ToListAsync();
 
         return events.Select(MapToEventWithAvailability);
@@ -420,23 +419,19 @@ public class EventService : IEventService
 
     /// <summary>
     /// Maps an Event entity to EventWithAvailability response model.
-    /// Calculates ticket availability: quantity - sold tickets.
+    /// Calculates ticket availability: quantity - currently reserved (O(1), no Tickets table scan).
     /// </summary>
-    private EventWithAvailability MapToEventWithAvailability(Event eventEntity)
+    private static EventWithAvailability MapToEventWithAvailability(Event eventEntity)
     {
         var ticketTypesWithAvailability = eventEntity.TicketTypes.Select(tt =>
         {
-            // Calculate sold tickets for this ticket type
-            var soldTickets = eventEntity.Tickets
-                .Count(t => t.TicketTypeId == tt.Id);
-
             return new TicketTypeWithAvailability
             {
                 Id = tt.Id,
                 Name = tt.Name,
                 Price = tt.Price,
                 Quantity = tt.Quantity,
-                Available = tt.Quantity - soldTickets
+                Available = tt.Quantity - tt.CurrentlyReserved
             };
         }).ToList();
 

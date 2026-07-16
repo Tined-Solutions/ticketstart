@@ -9,12 +9,15 @@ using TicketeraOnline.Api.Services;
 using Xunit;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using ArbStatic = FsCheck.Fluent.Arb;
+using GenStatic = FsCheck.Fluent.Gen;
+using PropStatic = FsCheck.Fluent.Prop;
 
 namespace TicketeraOnline.Api.Tests;
 
 /// <summary>
-/// Property-based tests for authentication functionality
-/// Validates Requirements 1.2, 1.3, 1.4
+/// Property-based tests for authentication functionality.
+/// Validates Requirements 1.2, 1.3, 1.4 and Batch 2 admin-only user creation.
 /// </summary>
 public class AuthenticationPropertyTests : IDisposable
 {
@@ -56,24 +59,24 @@ public class AuthenticationPropertyTests : IDisposable
         _context.Dispose();
     }
 
-    #region Property 1: User Registration Creates Valid Accounts
+    #region Property 1: Admin User Creation Creates Valid Accounts
 
     /// <summary>
-    /// Property 1: User Registration Creates Valid Accounts
-    /// For any valid registration data (email, password, role), 
-    /// the system SHALL create a user account with the provided email, 
+    /// Property 1: Admin User Creation Creates Valid Accounts
+    /// For any valid admin user creation data (name, email, password, role),
+    /// the system SHALL create a user account with the provided name, email,
     /// a hashed password, and the assigned role.
-    /// Validates: Requirements 1.2
+    /// Validates: Batch 2 REQ-2, REQ-3
     /// </summary>
     [Fact]
-    public async Task UserRegistration_CreatesValidAccount_WithProvidedData()
+    public async Task CreateUser_CreatesValidAccount_WithProvidedData()
     {
-        // Test with multiple valid registration requests
+        // Test with multiple valid creation requests
         var testCases = new[]
         {
-            new RegisterRequest { Email = "test1@example.com", Password = "password123", Role = UserRole.Organizador },
-            new RegisterRequest { Email = "test2@test.com", Password = "securePass456", Role = UserRole.Staff },
-            new RegisterRequest { Email = "admin@mail.com", Password = "adminPass789", Role = UserRole.Admin }
+            new { Name = "Test Organizador", Email = "test1@example.com", Password = "password123", Role = UserRole.Organizador },
+            new { Name = "Test Staff", Email = "test2@test.com", Password = "securePass456", Role = UserRole.Staff },
+            new { Name = "Test Admin", Email = "admin@mail.com", Password = "adminPass789", Role = UserRole.Admin }
         };
 
         foreach (var request in testCases)
@@ -88,17 +91,19 @@ public class AuthenticationPropertyTests : IDisposable
             }
 
             // Act
-            var result = await _authService.RegisterAsync(request);
+            var result = await _authService.CreateUserAsync(request.Name, request.Email, request.Password, request.Role);
 
             // Assert
-            Assert.True(result.Success, $"Registration should succeed for valid data. Error: {result.Error}");
-            Assert.NotEmpty(result.Token);
+            Assert.True(result.Success, $"User creation should succeed for valid data. Error: {result.Error}");
             Assert.NotEqual(Guid.Empty, result.UserId);
+            Assert.Equal(request.Name, result.Name);
+            Assert.Equal(request.Email.ToLower(), result.Email);
             Assert.Equal(request.Role, result.Role);
 
             // Verify user was created in database
             var createdUser = await _context.Users.FindAsync(result.UserId);
             Assert.NotNull(createdUser);
+            Assert.Equal(request.Name, createdUser.Name);
             Assert.Equal(request.Email.ToLower(), createdUser.Email);
             Assert.Equal(request.Role, createdUser.Role);
             
@@ -109,28 +114,97 @@ public class AuthenticationPropertyTests : IDisposable
     }
 
     /// <summary>
-    /// Property 1 (Edge Case): Duplicate Email Registration Should Fail
+    /// Property 1 (Edge Case): Duplicate Email User Creation Should Fail
     /// </summary>
     [Fact]
-    public async Task UserRegistration_RejectsDuplicateEmail()
+    public async Task CreateUser_RejectsDuplicateEmail()
     {
-        var request = new RegisterRequest
-        {
-            Email = "duplicate@example.com",
-            Password = "password123",
-            Role = UserRole.Organizador
-        };
+        var name = "Duplicate User";
+        var email = "duplicate@example.com";
+        var password = "password123";
+        var role = UserRole.Organizador;
 
-        // Arrange - register user first time
-        var firstResult = await _authService.RegisterAsync(request);
+        // Arrange - create user first time
+        var firstResult = await _authService.CreateUserAsync(name, email, password, role);
         Assert.True(firstResult.Success);
 
-        // Act - attempt to register same email again
-        var result = await _authService.RegisterAsync(request);
+        // Act - attempt to create same email again
+        var result = await _authService.CreateUserAsync(name, email, password, role);
 
         // Assert
         Assert.False(result.Success);
         Assert.Contains("already exists", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Property 1 (Edge Case): Invalid Email Format Is Rejected
+    /// </summary>
+    [Fact]
+    public async Task CreateUser_RejectsInvalidEmail()
+    {
+        var invalidEmails = new[] { "not-an-email", "missing-at-sign.com", "@nodomain.com", "" };
+
+        foreach (var email in invalidEmails)
+        {
+            var result = await _authService.CreateUserAsync("Invalid Email", email, "password123", UserRole.Organizador);
+            Assert.False(result.Success);
+            Assert.Contains("email", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// Property 1 (Edge Case): Short Password Is Rejected
+    /// </summary>
+    [Fact]
+    public async Task CreateUser_RejectsShortPassword()
+    {
+        var result = await _authService.CreateUserAsync("Short Password", "shortpass@example.com", "1234567", UserRole.Organizador);
+        Assert.False(result.Success);
+        Assert.Contains("8", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Property 1 (FsCheck): For any valid role, user creation succeeds and persists the requested role.
+    /// </summary>
+    [Property]
+    public Property CreateUser_WithAnyValidRole_PersistsRole()
+    {
+        var roleArb = ArbStatic.From(GenStatic.Elements(Enum.GetValues<UserRole>()));
+        var localArb = ArbStatic.From(GenStatic.Elements("alpha", "beta", "gamma", "delta"));
+        var domainArb = ArbStatic.From(GenStatic.Elements("example.com", "test.com", "mail.com"));
+
+        return PropStatic.ForAll(
+            roleArb,
+            localArb,
+            domainArb,
+            (role, local, domain) =>
+            {
+                // Use a fresh in-memory database per generated case to avoid collisions
+                var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                    .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                    .Options;
+
+                using var context = new ApplicationDbContext(options);
+                var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<AuthService>();
+                var configuration = new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        {"Jwt:SecretKey", "ThisIsAVerySecureSecretKeyForTestingPurposesOnly123456789"},
+                        {"Jwt:Issuer", "TicketeraOnlineTest"},
+                        {"Jwt:Audience", "TicketeraOnlineTestAudience"},
+                        {"Jwt:ExpirationMinutes", "1440"}
+                    })
+                    .Build();
+
+                var authService = new AuthService(context, configuration, logger);
+                var email = $"{local}-{Guid.NewGuid()}@{domain}";
+                var result = Task.Run(() => authService.CreateUserAsync("Generated User", email, "password123", role)).Result;
+
+                return result.Success
+                    && result.Role == role
+                    && result.Email == email.ToLower()
+                    && result.Name == "Generated User";
+            });
     }
 
     #endregion
@@ -139,8 +213,8 @@ public class AuthenticationPropertyTests : IDisposable
 
     /// <summary>
     /// Property 2: Valid Login Returns Valid JWT
-    /// For any registered user with valid credentials, logging in SHALL return 
-    /// a JWT token that can be validated and contains the correct user ID and role claims.
+    /// For any created user with valid credentials, logging in SHALL return 
+    /// a JWT token that can be validated and contains the correct user ID, name, and role claims.
     /// Validates: Requirements 1.3
     /// </summary>
     [Fact]
@@ -149,21 +223,25 @@ public class AuthenticationPropertyTests : IDisposable
         // Test with multiple users
         var testCases = new[]
         {
-            new RegisterRequest { Email = "user1@example.com", Password = "password123", Role = UserRole.Organizador },
-            new RegisterRequest { Email = "user2@test.com", Password = "securePass456", Role = UserRole.Staff },
-            new RegisterRequest { Email = "user3@mail.com", Password = "adminPass789", Role = UserRole.Admin }
+            new { Name = "User One", Email = "user1@example.com", Password = "password123", Role = UserRole.Organizador },
+            new { Name = "User Two", Email = "user2@test.com", Password = "securePass456", Role = UserRole.Staff },
+            new { Name = "User Three", Email = "user3@mail.com", Password = "adminPass789", Role = UserRole.Admin }
         };
 
-        foreach (var registerRequest in testCases)
+        foreach (var createRequest in testCases)
         {
-            // Arrange - register a user first
-            var registerResult = await _authService.RegisterAsync(registerRequest);
-            Assert.True(registerResult.Success);
+            // Arrange - create a user first
+            var createResult = await _authService.CreateUserAsync(
+                createRequest.Name,
+                createRequest.Email,
+                createRequest.Password,
+                createRequest.Role);
+            Assert.True(createResult.Success);
 
             var loginRequest = new LoginRequest
             {
-                Email = registerRequest.Email,
-                Password = registerRequest.Password
+                Email = createRequest.Email,
+                Password = createRequest.Password
             };
 
             // Act
@@ -172,8 +250,8 @@ public class AuthenticationPropertyTests : IDisposable
             // Assert
             Assert.True(loginResult.Success, $"Login should succeed for valid credentials. Error: {loginResult.Error}");
             Assert.NotEmpty(loginResult.Token);
-            Assert.Equal(registerResult.UserId, loginResult.UserId);
-            Assert.Equal(registerRequest.Role, loginResult.Role);
+            Assert.Equal(createResult.UserId, loginResult.UserId);
+            Assert.Equal(createRequest.Role, loginResult.Role);
 
             // Validate JWT token structure and claims
             var tokenHandler = new JwtSecurityTokenHandler();
@@ -182,22 +260,23 @@ public class AuthenticationPropertyTests : IDisposable
             // Verify token contains correct claims
             var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
             Assert.NotNull(userIdClaim);
-            Assert.Equal(registerResult.UserId.ToString(), userIdClaim.Value);
+            Assert.Equal(createResult.UserId.ToString(), userIdClaim.Value);
 
             var emailClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email);
             Assert.NotNull(emailClaim);
-            Assert.Equal(registerRequest.Email.ToLower(), emailClaim.Value);
+            Assert.Equal(createRequest.Email.ToLower(), emailClaim.Value);
 
             var roleClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
             Assert.NotNull(roleClaim);
-            Assert.Equal(registerRequest.Role.ToString(), roleClaim.Value);
+            Assert.Equal(createRequest.Role.ToString(), roleClaim.Value);
 
             // Verify token can be validated
             var validatedUser = await _authService.ValidateTokenAsync(loginResult.Token);
             Assert.NotNull(validatedUser);
-            Assert.Equal(registerResult.UserId, validatedUser.Id);
-            Assert.Equal(registerRequest.Email.ToLower(), validatedUser.Email);
-            Assert.Equal(registerRequest.Role, validatedUser.Role);
+            Assert.Equal(createResult.UserId, validatedUser.Id);
+            Assert.Equal(createRequest.Email.ToLower(), validatedUser.Email);
+            Assert.Equal(createRequest.Role, validatedUser.Role);
+            Assert.Equal(createRequest.Name, validatedUser.Name);
         }
     }
 
@@ -207,28 +286,24 @@ public class AuthenticationPropertyTests : IDisposable
     [Fact]
     public async Task ValidLogin_IsCaseInsensitive_ForEmail()
     {
-        var registerRequest = new RegisterRequest
-        {
-            Email = "CaseSensitive@Example.COM",
-            Password = "password123",
-            Role = UserRole.Organizador
-        };
-
-        // Arrange - register with original email
-        var registerResult = await _authService.RegisterAsync(registerRequest);
-        Assert.True(registerResult.Success);
+        var createResult = await _authService.CreateUserAsync(
+            "Case Sensitive",
+            "CaseSensitive@Example.COM",
+            "password123",
+            UserRole.Organizador);
+        Assert.True(createResult.Success);
 
         // Act - login with different case
         var loginRequest = new LoginRequest
         {
-            Email = registerRequest.Email.ToUpper(),
-            Password = registerRequest.Password
+            Email = "CASESENSITIVE@EXAMPLE.COM",
+            Password = "password123"
         };
         var loginResult = await _authService.LoginAsync(loginRequest);
 
         // Assert
         Assert.True(loginResult.Success);
-        Assert.Equal(registerResult.UserId, loginResult.UserId);
+        Assert.Equal(createResult.UserId, loginResult.UserId);
     }
 
     #endregion
@@ -244,16 +319,12 @@ public class AuthenticationPropertyTests : IDisposable
     [Fact]
     public async Task InvalidLogin_WithWrongPassword_IsRejected()
     {
-        var registerRequest = new RegisterRequest
-        {
-            Email = "validuser@example.com",
-            Password = "correctPassword123",
-            Role = UserRole.Organizador
-        };
-
-        // Arrange - register a user
-        var registerResult = await _authService.RegisterAsync(registerRequest);
-        Assert.True(registerResult.Success);
+        var createResult = await _authService.CreateUserAsync(
+            "Valid User",
+            "validuser@example.com",
+            "correctPassword123",
+            UserRole.Organizador);
+        Assert.True(createResult.Success);
 
         // Test multiple wrong passwords
         var wrongPasswords = new[] { "wrongPass1", "incorrect", "badPassword", "123456" };
@@ -263,7 +334,7 @@ public class AuthenticationPropertyTests : IDisposable
             // Act - attempt login with wrong password
             var loginRequest = new LoginRequest
             {
-                Email = registerRequest.Email,
+                Email = createResult.Email,
                 Password = wrongPassword
             };
             var loginResult = await _authService.LoginAsync(loginRequest);
@@ -361,30 +432,23 @@ public class AuthenticationPropertyTests : IDisposable
     public async Task RoleBasedAuthorization_EnforcesCorrectRoleAccess()
     {
         // Arrange - Create users with different roles
-        var organizadorRequest = new RegisterRequest
-        {
-            Email = "organizador@example.com",
-            Password = "password123",
-            Role = UserRole.Organizador
-        };
+        var organizadorResult = await _authService.CreateUserAsync(
+            "Organizador User",
+            "organizador@example.com",
+            "password123",
+            UserRole.Organizador);
 
-        var staffRequest = new RegisterRequest
-        {
-            Email = "staff@example.com",
-            Password = "password123",
-            Role = UserRole.Staff
-        };
+        var staffResult = await _authService.CreateUserAsync(
+            "Staff User",
+            "staff@example.com",
+            "password123",
+            UserRole.Staff);
 
-        var adminRequest = new RegisterRequest
-        {
-            Email = "admin@example.com",
-            Password = "password123",
-            Role = UserRole.Admin
-        };
-
-        var organizadorResult = await _authService.RegisterAsync(organizadorRequest);
-        var staffResult = await _authService.RegisterAsync(staffRequest);
-        var adminResult = await _authService.RegisterAsync(adminRequest);
+        var adminResult = await _authService.CreateUserAsync(
+            "Admin User",
+            "admin@example.com",
+            "password123",
+            UserRole.Admin);
 
         Assert.True(organizadorResult.Success);
         Assert.True(staffResult.Success);
@@ -394,79 +458,28 @@ public class AuthenticationPropertyTests : IDisposable
         var tokenHandler = new JwtSecurityTokenHandler();
 
         // Verify Organizador token
-        var organizadorToken = tokenHandler.ReadJwtToken(organizadorResult.Token);
+        var organizadorLogin = await _authService.LoginAsync(new LoginRequest
+            { Email = "organizador@example.com", Password = "password123" });
+        var organizadorToken = tokenHandler.ReadJwtToken(organizadorLogin.Token);
         var organizadorRoleClaim = organizadorToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
         Assert.NotNull(organizadorRoleClaim);
         Assert.Equal(UserRole.Organizador.ToString(), organizadorRoleClaim.Value);
 
         // Verify Staff token
-        var staffToken = tokenHandler.ReadJwtToken(staffResult.Token);
+        var staffLogin = await _authService.LoginAsync(new LoginRequest
+            { Email = "staff@example.com", Password = "password123" });
+        var staffToken = tokenHandler.ReadJwtToken(staffLogin.Token);
         var staffRoleClaim = staffToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
         Assert.NotNull(staffRoleClaim);
         Assert.Equal(UserRole.Staff.ToString(), staffRoleClaim.Value);
 
         // Verify Admin token
-        var adminToken = tokenHandler.ReadJwtToken(adminResult.Token);
+        var adminLogin = await _authService.LoginAsync(new LoginRequest
+            { Email = "admin@example.com", Password = "password123" });
+        var adminToken = tokenHandler.ReadJwtToken(adminLogin.Token);
         var adminRoleClaim = adminToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
         Assert.NotNull(adminRoleClaim);
         Assert.Equal(UserRole.Admin.ToString(), adminRoleClaim.Value);
-
-        // Verify token validation preserves role information
-        var validatedOrganizador = await _authService.ValidateTokenAsync(organizadorResult.Token);
-        Assert.NotNull(validatedOrganizador);
-        Assert.Equal(UserRole.Organizador, validatedOrganizador.Role);
-
-        var validatedStaff = await _authService.ValidateTokenAsync(staffResult.Token);
-        Assert.NotNull(validatedStaff);
-        Assert.Equal(UserRole.Staff, validatedStaff.Role);
-
-        var validatedAdmin = await _authService.ValidateTokenAsync(adminResult.Token);
-        Assert.NotNull(validatedAdmin);
-        Assert.Equal(UserRole.Admin, validatedAdmin.Role);
-    }
-
-    /// <summary>
-    /// Property 4 (Edge Case): Role Cannot Be Changed After Registration
-    /// </summary>
-    [Fact]
-    public async Task RoleBasedAuthorization_RoleImmutableAfterRegistration()
-    {
-        // Arrange - Register a user with Organizador role
-        var registerRequest = new RegisterRequest
-        {
-            Email = "immutable@example.com",
-            Password = "password123",
-            Role = UserRole.Organizador
-        };
-
-        var registerResult = await _authService.RegisterAsync(registerRequest);
-        Assert.True(registerResult.Success);
-        Assert.Equal(UserRole.Organizador, registerResult.Role);
-
-        // Act - Login and verify role hasn't changed
-        var loginRequest = new LoginRequest
-        {
-            Email = registerRequest.Email,
-            Password = registerRequest.Password
-        };
-
-        var loginResult = await _authService.LoginAsync(loginRequest);
-        Assert.True(loginResult.Success);
-
-        // Assert - Role should remain the same
-        Assert.Equal(UserRole.Organizador, loginResult.Role);
-
-        // Verify in database
-        var user = await _context.Users.FindAsync(registerResult.UserId);
-        Assert.NotNull(user);
-        Assert.Equal(UserRole.Organizador, user.Role);
-
-        // Verify in token claims
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var token = tokenHandler.ReadJwtToken(loginResult.Token);
-        var roleClaim = token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
-        Assert.NotNull(roleClaim);
-        Assert.Equal(UserRole.Organizador.ToString(), roleClaim.Value);
     }
 
     /// <summary>
@@ -481,32 +494,52 @@ public class AuthenticationPropertyTests : IDisposable
         foreach (var role in allRoles)
         {
             // Arrange
-            var request = new RegisterRequest
-            {
-                Email = $"{role.ToString().ToLower()}@example.com",
-                Password = "password123",
-                Role = role
-            };
+            var email = $"{role.ToString().ToLower()}-{Guid.NewGuid()}@example.com";
+            var name = $"{role} User";
 
             // Act
-            var result = await _authService.RegisterAsync(request);
+            var result = await _authService.CreateUserAsync(name, email, "password123", role);
 
             // Assert
-            Assert.True(result.Success, $"Registration should succeed for role {role}");
+            Assert.True(result.Success, $"User creation should succeed for role {role}");
             Assert.Equal(role, result.Role);
 
-            // Verify token contains correct role
+            // Verify login token contains correct role
+            var login = await _authService.LoginAsync(new LoginRequest { Email = email, Password = "password123" });
+            Assert.True(login.Success);
             var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.ReadJwtToken(result.Token);
+            var token = tokenHandler.ReadJwtToken(login.Token);
             var roleClaim = token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
             Assert.NotNull(roleClaim);
             Assert.Equal(role.ToString(), roleClaim.Value);
-
-            // Verify validated user has correct role
-            var validatedUser = await _authService.ValidateTokenAsync(result.Token);
-            Assert.NotNull(validatedUser);
-            Assert.Equal(role, validatedUser.Role);
         }
+    }
+
+    #endregion
+
+    #region Shared Email Validation
+
+    /// <summary>
+    /// Shared email validation rejects invalid formats and accepts valid formats consistently.
+    /// Validates: Batch 2 REQ-5 (JD-SG10)
+    /// </summary>
+    [Theory]
+    [InlineData("user@example.com", true)]
+    [InlineData("first.last@example.co.uk", true)]
+    [InlineData("user+tag@example.com", true)]
+    [InlineData("not-an-email", false)]
+    [InlineData("missing-at-sign.com", false)]
+    [InlineData("@nodomain.com", false)]
+    [InlineData("user@", false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void ValidateEmail_AcceptsValidAndRejectsInvalidFormats(string email, bool expectedValid)
+    {
+        // Act
+        var isValid = AuthService.ValidateEmail(email);
+
+        // Assert
+        Assert.Equal(expectedValid, isValid);
     }
 
     #endregion

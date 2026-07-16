@@ -1,28 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import apiClient from '../api/client.js'
-
-function formatEventDate(dateString) {
-  if (!dateString) return 'Fecha por confirmar'
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return 'Fecha no valida'
-  return date.toLocaleDateString('es-AR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatCurrency(amount) {
-  if (amount === undefined || amount === null) return '$ --'
-  return `$ ${Number(amount).toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
+import { formatEventDate, formatCurrency } from '../lib/format.js'
 
 function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange }) {
   const available = ticketType.available ?? ticketType.quantity ?? 0

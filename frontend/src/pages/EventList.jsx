@@ -1,33 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import apiClient from '../api/client.js'
-
-function formatEventDate(dateString) {
-  if (!dateString) return 'Fecha por confirmar'
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return 'Fecha no valida'
-  return date.toLocaleDateString('es-AR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { formatEventDate } from '../lib/format.js'
 
 function EventCard({ event, onClick }) {
   return (
-    <article
+    <button
+      type="button"
       className="event-card"
       onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          onClick()
-        }
-      }}
-      role="button"
-      tabIndex={0}
       aria-label={`Ver detalle de ${event.name}`}
     >
       <div className="event-card-image">
@@ -42,7 +23,7 @@ function EventCard({ event, onClick }) {
         <p className="event-card-date">{formatEventDate(event.date)}</p>
         <p className="event-card-location">{event.location}</p>
       </div>
-    </article>
+    </button>
   )
 }
 

@@ -72,11 +72,31 @@ function playErrorBeep() {
 // Component
 // ---------------------------------------------------------------------------
 
+const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SESSION_STORAGE_KEY = 'staff_scan_history'
+
+function loadHistoryFromStorage() {
+  try {
+    const stored = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+function saveHistoryToStorage(history) {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(history))
+  } catch {
+    // Storage may be unavailable — fail silently
+  }
+}
+
 export default function StaffScan() {
   const [eventId, setEventId] = useState('')
   const [scanning, setScanning] = useState(false)
   const [result, setResult] = useState(null) // { type: 'success'|'error', message, ticket }
-  const [history, setHistory] = useState([]) // Array of scan entries
+  const [history, setHistory] = useState(() => loadHistoryFromStorage()) // Initialize from sessionStorage
   const [error, setError] = useState('')
   const scannerRef = useRef(null)
 
@@ -117,7 +137,11 @@ export default function StaffScan() {
           error: apiError || null,
           ticket: ticket || null,
         }
-        setHistory((prev) => [entry, ...prev])
+        setHistory((prev) => {
+          const updated = [entry, ...prev]
+          saveHistoryToStorage(updated)
+          return updated
+        })
 
         if (isValid) {
           setResult({ type: 'success', message: 'Ticket válido', ticket })
@@ -140,7 +164,11 @@ export default function StaffScan() {
           error: typeof message === 'string' ? message : 'Error de validación',
           ticket: null,
         }
-        setHistory((prev) => [entry, ...prev])
+        setHistory((prev) => {
+          const updated = [entry, ...prev]
+          saveHistoryToStorage(updated)
+          return updated
+        })
 
         setResult({
           type: 'error',
@@ -156,6 +184,11 @@ export default function StaffScan() {
   const startScanning = useCallback(async () => {
     if (!eventId.trim()) {
       setError('Debe ingresar el ID del evento')
+      return
+    }
+
+    if (!GUID_REGEX.test(eventId.trim())) {
+      setError('Formato de ID invalido. Use un UUID valido (ej: 00000000-0000-0000-0000-000000000000)')
       return
     }
 

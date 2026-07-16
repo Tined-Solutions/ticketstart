@@ -24,14 +24,24 @@ public class AuthService : IAuthService
         _logger = logger;
     }
 
-    public async Task<AuthResult> RegisterAsync(RegisterRequest request)
+    public async Task<CreateUserResult> CreateUserAsync(string name, string email, string password, UserRole role)
     {
         try
         {
-            // Validate email format
-            if (string.IsNullOrWhiteSpace(request.Email) || !IsValidEmail(request.Email))
+            // Validate name
+            if (string.IsNullOrWhiteSpace(name))
             {
-                return new AuthResult
+                return new CreateUserResult
+                {
+                    Success = false,
+                    Error = "Name is required"
+                };
+            }
+
+            // Validate email format using shared validator
+            if (string.IsNullOrWhiteSpace(email) || !ValidateEmail(email))
+            {
+                return new CreateUserResult
                 {
                     Success = false,
                     Error = "Invalid email format"
@@ -39,22 +49,22 @@ public class AuthService : IAuthService
             }
 
             // Validate password
-            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
             {
-                return new AuthResult
+                return new CreateUserResult
                 {
                     Success = false,
-                    Error = "Password must be at least 6 characters long"
+                    Error = "Password must be at least 8 characters long"
                 };
             }
 
             // Check if user already exists
             var existingUser = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
 
             if (existingUser != null)
             {
-                return new AuthResult
+                return new CreateUserResult
                 {
                     Success = false,
                     Error = "User with this email already exists"
@@ -62,41 +72,40 @@ public class AuthService : IAuthService
             }
 
             // Hash password using BCrypt
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(password);
 
             // Create new user
             var user = new User
             {
                 Id = Guid.NewGuid(),
-                Email = request.Email.ToLower(),
+                Name = name.Trim(),
+                Email = email.ToLower(),
                 PasswordHash = passwordHash,
-                Role = request.Role,
+                Role = role,
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("User registered successfully: {Email}, Role: {Role}", user.Email, user.Role);
+            _logger.LogInformation("User created successfully: {Email}, Role: {Role}, Name: {Name}", user.Email, user.Role, user.Name);
 
-            // Generate JWT token
-            var token = GenerateJwtToken(user);
-
-            return new AuthResult
+            return new CreateUserResult
             {
                 Success = true,
-                Token = token,
                 UserId = user.Id,
+                Name = user.Name,
+                Email = user.Email,
                 Role = user.Role
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during user registration for email: {Email}", request.Email);
-            return new AuthResult
+            _logger.LogError(ex, "Error during user creation for email: {Email}", email);
+            return new CreateUserResult
             {
                 Success = false,
-                Error = "An error occurred during registration"
+                Error = $"An error occurred during user creation: {ex.Message}"
             };
         }
     }
@@ -152,6 +161,7 @@ public class AuthService : IAuthService
                 Success = true,
                 Token = token,
                 UserId = user.Id,
+                Name = user.Name,
                 Role = user.Role
             };
         }
@@ -217,7 +227,9 @@ public class AuthService : IAuthService
         var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured");
         var issuer = jwtSettings["Issuer"];
         var audience = jwtSettings["Audience"];
-        var expirationMinutes = int.Parse(jwtSettings["ExpirationMinutes"] ?? "1440");
+        var expirationMinutes = int.TryParse(jwtSettings["ExpirationMinutes"], out var parsedMinutes)
+            ? parsedMinutes
+            : 1440;
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -226,6 +238,7 @@ public class AuthService : IAuthService
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
+            new Claim(ClaimTypes.Name, user.Name),
             new Claim(ClaimTypes.Role, user.Role.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
@@ -241,8 +254,16 @@ public class AuthService : IAuthService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private bool IsValidEmail(string email)
+    /// <summary>
+    /// Shared email validation used by all authentication-related flows.
+    /// </summary>
+    public static bool ValidateEmail(string email)
     {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
         try
         {
             var addr = new System.Net.Mail.MailAddress(email);

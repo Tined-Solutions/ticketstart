@@ -308,6 +308,8 @@ public class EventServiceTests : IDisposable
             });
         }
 
+        // Set CurrentlyReserved = 10 (simulating active reservations)
+        ticketType.CurrentlyReserved = 10;
         _context.Events.Add(eventEntity);
         _context.TicketTypes.Add(ticketType);
         await _context.SaveChangesAsync();
@@ -317,7 +319,7 @@ public class EventServiceTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(40, result.TicketTypes.First().Available); // 50 - 10 = 40
+        Assert.Equal(40, result.TicketTypes.First().Available); // 50 - 10 (CurrentlyReserved) = 40
     }
 
     [Fact]
@@ -759,6 +761,106 @@ public class EventServiceTests : IDisposable
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.Null(deletedEvent);
         _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+    }
+
+    #endregion
+
+    #region B3.6: Availability computed from CurrentlyReserved (not Tickets count)
+
+    [Fact]
+    public async Task GetEventByIdAsync_ComputesAvailability_FromCurrentlyReserved()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateEventWithTickets(10);
+        ticketType.CurrentlyReserved = 3;
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
+
+        // Assert
+        Assert.NotNull(result);
+        var tt = Assert.Single(result.TicketTypes);
+        Assert.Equal(7, tt.Available); // 10 - 3 = 7
+    }
+
+    [Fact]
+    public async Task GetEventByIdAsync_IgnoresSoldTickets_WhenUsingCurrentlyReserved()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateEventWithTickets(10);
+        ticketType.CurrentlyReserved = 4;
+        await _context.SaveChangesAsync();
+
+        // Add sold tickets — these should NOT affect availability when using CurrentlyReserved
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(), TicketTypeId = ticketType.Id,
+            EventId = eventEntity.Id, PurchaserEmail = "a@b.com",
+            PurchaserDNI = "111", QRCodeData = "qr1", CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(), TicketTypeId = ticketType.Id,
+            EventId = eventEntity.Id, PurchaserEmail = "c@d.com",
+            PurchaserDNI = "222", QRCodeData = "qr2", CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
+
+        // Assert — availability should be based on CurrentlyReserved, not ticket count
+        Assert.NotNull(result);
+        var tt = Assert.Single(result.TicketTypes);
+        Assert.Equal(6, tt.Available); // 10 - 4 = 6 (ignores 2 sold tickets)
+    }
+
+    [Fact]
+    public async Task GetAllPublishedEventsAsync_ComputesAvailability_FromCurrentlyReserved()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateEventWithTickets(20);
+        ticketType.CurrentlyReserved = 8;
+        await _context.SaveChangesAsync();
+
+        // Act
+        var results = await _eventService.GetAllPublishedEventsAsync();
+        var result = results.FirstOrDefault(e => e.Id == eventEntity.Id);
+
+        // Assert
+        Assert.NotNull(result);
+        var tt = Assert.Single(result.TicketTypes);
+        Assert.Equal(12, tt.Available); // 20 - 8 = 12
+    }
+
+    private async Task<(Event, TicketType)> CreateEventWithTickets(int quantity)
+    {
+        var organizerId = Guid.NewGuid();
+        var user = new User
+        {
+            Id = organizerId, Name = "Org", Email = "org@test.com",
+            PasswordHash = "h", Role = UserRole.Organizador, CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(user);
+
+        var evt = new Event
+        {
+            Id = Guid.NewGuid(), Name = "Test", Description = "D",
+            Date = DateTime.UtcNow.AddDays(1), Location = "L",
+            OrganizerId = organizerId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(evt);
+
+        var tt = new TicketType
+        {
+            Id = Guid.NewGuid(), EventId = evt.Id, Name = "GA",
+            Price = 50m, Quantity = quantity, CurrentlyReserved = 0, CreatedAt = DateTime.UtcNow
+        };
+        _context.TicketTypes.Add(tt);
+        await _context.SaveChangesAsync();
+
+        return (evt, tt);
     }
 
     #endregion

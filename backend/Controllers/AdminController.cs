@@ -15,14 +15,76 @@ namespace TicketeraOnline.Api.Controllers;
 public class AdminController : TicketeraControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly IAuthService _authService;
     private readonly IAuditLogService _auditLogService;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IAdminService adminService, IAuditLogService auditLogService, ILogger<AdminController> logger)
+    public AdminController(
+        IAdminService adminService,
+        IAuthService authService,
+        IAuditLogService auditLogService,
+        ILogger<AdminController> logger)
     {
         _adminService = adminService;
+        _authService = authService;
         _auditLogService = auditLogService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Creates a new user account. Only administrators can create users.
+    /// </summary>
+    /// <param name="request">User creation details including name, email, password, and role</param>
+    /// <returns>Created user information</returns>
+    [HttpPost("users")]
+    public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserRequest request)
+    {
+        if (!TryGetUserId(out var adminId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var result = await _authService.CreateUserAsync(request.Name, request.Email, request.Password, request.Role);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("User creation failed for email {Email}: {Error}", request.Email, result.Error);
+
+                if (result.Error.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Conflict(new { error = result.Error });
+                }
+
+                return BadRequest(new { error = result.Error });
+            }
+
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.CreateUser,
+                AuditResourceType.User,
+                result.UserId,
+                $"Admin created user {result.Email} with role {result.Role}"));
+
+            _logger.LogInformation("User created successfully by admin {AdminId}: {Email}", adminId, result.Email);
+
+            var response = new AdminUserResponse
+            {
+                Id = result.UserId,
+                Name = result.Name,
+                Email = result.Email,
+                Role = result.Role
+            };
+
+            return Created($"/api/admin/users/{result.UserId}", response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating user for admin {AdminId}", adminId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while creating the user" });
+        }
     }
 
     /// <summary>
@@ -120,4 +182,20 @@ public class AdminController : TicketeraControllerBase
                 adminId, context.Action, context.Resource, context.ResourceId);
         }
     }
+}
+
+/// <summary>
+/// Request body for creating a new user account as an administrator.
+/// </summary>
+public record AdminCreateUserRequest(string Name, string Email, string Password, UserRole Role);
+
+/// <summary>
+/// Response returned after a user is created by an administrator.
+/// </summary>
+public class AdminUserResponse
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public UserRole Role { get; set; }
 }

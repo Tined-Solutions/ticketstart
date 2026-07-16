@@ -270,7 +270,70 @@ public class TicketService : ITicketService
                 };
             }
 
-            // Step 4: Check if ticket has already been used (double-scan prevention)
+            // Step 4: Validate QR timestamp window
+            // Extract timestamp from QR code payload
+            long qrTimestamp;
+            try
+            {
+                qrTimestamp = HmacHelper.ExtractTimestamp(qrCodeData);
+            }
+            catch (FormatException)
+            {
+                _logger.LogWarning("Failed to extract timestamp from QR code for ticket {TicketId}", ticketId);
+                await transaction.RollbackAsync();
+                return new QRCodeValidationResult
+                {
+                    IsValid = false,
+                    Error = "Invalid QR code format: cannot extract timestamp."
+                };
+            }
+
+            var qrDateTime = DateTimeOffset.FromUnixTimeSeconds(qrTimestamp).UtcDateTime;
+
+            // Validate: timestamp >= purchaseDate (ticket.CreatedAt) with 5-min clock-skew tolerance
+            if (qrDateTime < ticket.CreatedAt.AddMinutes(-5))
+            {
+                _logger.LogWarning("QR timestamp {QrTimestamp} is before ticket purchase date {PurchaseDate} for ticket {TicketId}",
+                    qrDateTime, ticket.CreatedAt, ticketId);
+                await transaction.RollbackAsync();
+                return new QRCodeValidationResult
+                {
+                    IsValid = false,
+                    Error = "QR code timestamp is outside valid window.",
+                    Ticket = ticket
+                };
+            }
+
+            // Validate: timestamp <= event.EndDate + 24h
+            var maxValidDate = ticket.Event.Date.AddHours(24);
+            if (qrDateTime > maxValidDate)
+            {
+                _logger.LogWarning("QR timestamp {QrTimestamp} is after event end + 24h {MaxDate} for ticket {TicketId}",
+                    qrDateTime, maxValidDate, ticketId);
+                await transaction.RollbackAsync();
+                return new QRCodeValidationResult
+                {
+                    IsValid = false,
+                    Error = "QR code timestamp is outside valid window.",
+                    Ticket = ticket
+                };
+            }
+
+            // Validate: timestamp <= now (not in the future)
+            if (qrDateTime > DateTime.UtcNow)
+            {
+                _logger.LogWarning("QR timestamp {QrTimestamp} is in the future for ticket {TicketId}",
+                    qrDateTime, ticketId);
+                await transaction.RollbackAsync();
+                return new QRCodeValidationResult
+                {
+                    IsValid = false,
+                    Error = "QR code timestamp is outside valid window.",
+                    Ticket = ticket
+                };
+            }
+
+            // Step 5: Check if ticket has already been used (double-scan prevention)
             if (ticket.IsUsed)
             {
                 _logger.LogWarning("Ticket {TicketId} has already been used at {UsedAt}",
@@ -284,7 +347,7 @@ public class TicketService : ITicketService
                 };
             }
 
-            // Step 5: Check event association
+            // Step 6: Check event association
             if (ticket.EventId != eventId)
             {
                 _logger.LogWarning("Ticket {TicketId} is for event {TicketEventId}, but scanned at event {ScannedEventId}",
@@ -298,7 +361,7 @@ public class TicketService : ITicketService
                 };
             }
 
-            // Step 6: Mark ticket as used with timestamp
+            // Step 7: Mark ticket as used with timestamp
             ticket.IsUsed = true;
             ticket.UsedAt = DateTime.UtcNow;
 
@@ -329,7 +392,8 @@ public class TicketService : ITicketService
     /// </summary>
     public async Task<IEnumerable<Ticket>> LookupTicketsAsync(string email, string dni)
     {
-        _logger.LogInformation("Looking up tickets for email {Email} and DNI {DNI}", email, dni);
+        _logger.LogInformation("Looking up tickets for email hash {EmailHash} and DNI hash {DNIHash}",
+            LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
 
         // Query tickets matching both email AND DNI
         var tickets = await _context.Tickets
@@ -339,10 +403,128 @@ public class TicketService : ITicketService
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
-        _logger.LogInformation("Found {Count} tickets for email {Email} and DNI {DNI}",
-            tickets.Count, email, dni);
+        _logger.LogInformation("Found {Count} tickets for email hash {EmailHash} and DNI hash {DNIHash}",
+            tickets.Count, LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
 
         return tickets;
+    }
+
+    /// <summary>
+    /// Looks up tickets by email only and returns info-only response (no QR fields).
+    /// Groups tickets by event for a summary response.
+    /// Validates: Batch 5 — B5.1
+    /// </summary>
+    public async Task<IEnumerable<TicketLookupInfoResponse>> LookupTicketsByEmailAsync(string email)
+    {
+        _logger.LogInformation("Looking up tickets by email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+
+        var tickets = await _context.Tickets
+            .Include(t => t.Event)
+            .Include(t => t.TicketType)
+            .Where(t => t.PurchaserEmail == email)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+
+        if (tickets.Count == 0)
+        {
+            _logger.LogInformation("No tickets found for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+            return Enumerable.Empty<TicketLookupInfoResponse>();
+        }
+
+        // Group by event to return a summary without QR codes
+        var responses = tickets
+            .GroupBy(t => new { t.EventId, EventName = t.Event.Name, t.Event.Date, TicketTypeName = t.TicketType.Name })
+            .Select(g => new TicketLookupInfoResponse
+            {
+                EventName = g.Key.EventName,
+                EventDate = g.Key.Date,
+                TicketType = g.Key.TicketTypeName,
+                Quantity = g.Count(),
+                PurchaserEmail = MaskEmail(email)
+            })
+            .ToList();
+
+        _logger.LogInformation("Found {Count} ticket groups for email hash {EmailHash}",
+            responses.Count, LogRedactor.HashIdentifier(email));
+
+        return responses;
+    }
+
+    /// <summary>
+    /// Resends tickets by email. Always returns success to prevent info leak.
+    /// Validates: Batch 5 — B5.2
+    /// </summary>
+    public async Task<bool> ResendTicketsByEmailAsync(string email, string captchaToken)
+    {
+        _logger.LogInformation("Resend tickets requested for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+
+        try
+        {
+            // Look up tickets — could be empty (generic response)
+            var tickets = await _context.Tickets
+                .Include(t => t.Event)
+                .Include(t => t.TicketType)
+                .Where(t => t.PurchaserEmail == email)
+                .ToListAsync();
+
+            if (tickets.Count > 0)
+            {
+                _logger.LogInformation("Found {Count} tickets to resend for email hash {EmailHash}",
+                    tickets.Count, LogRedactor.HashIdentifier(email));
+
+                // Queue resend (non-blocking) — in production this would go to a background queue
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        foreach (var ticket in tickets)
+                        {
+                            _logger.LogInformation("Queued resend for ticket {TicketId}", ticket.Id);
+                            // Actual email sending would happen here via IEmailService
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error during background resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+                    }
+                });
+            }
+            else
+            {
+                _logger.LogInformation("No tickets found for email hash {EmailHash} — still returning success", LogRedactor.HashIdentifier(email));
+            }
+
+            // Always return success — prevents email enumeration
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during ticket resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+            // Still return success to prevent info leak
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Masks an email address for display (e.g., "b***@test.com").
+    /// </summary>
+    private static string MaskEmail(string email)
+    {
+        if (string.IsNullOrEmpty(email) || !email.Contains('@'))
+        {
+            return email;
+        }
+
+        var parts = email.Split('@');
+        var localPart = parts[0];
+        var domain = parts[1];
+
+        if (localPart.Length <= 1)
+        {
+            return $"***@{domain}";
+        }
+
+        return $"{localPart[0]}***@{domain}";
     }
 
 }

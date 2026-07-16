@@ -10,8 +10,10 @@ using Microsoft.Extensions.Logging.Console;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.RateLimiting;
 using Amazon.S3;
 using Amazon.Runtime;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,7 +39,10 @@ builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
 // Configure Mercado Pago
 builder.Services.Configure<MercadoPagoOptions>(builder.Configuration.GetSection(MercadoPagoOptions.SectionName));
-builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>();
+builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadopago.com/");
+});
 
 // Configure Resend email
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
@@ -48,12 +53,8 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));
 
 var resendSettings = builder.Configuration.GetSection("Resend");
-var resendApiKey = resendSettings["ApiKey"] ?? throw new InvalidOperationException("Resend ApiKey is not configured");
-if (string.IsNullOrWhiteSpace(resendApiKey))
-    throw new InvalidOperationException("Resend ApiKey is not configured");
-var resendFromEmail = resendSettings["FromEmail"] ?? throw new InvalidOperationException("Resend FromEmail is not configured");
-if (string.IsNullOrWhiteSpace(resendFromEmail))
-    throw new InvalidOperationException("Resend FromEmail is not configured");
+var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
+var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
@@ -84,6 +85,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured");
+if (secretKey.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase) || secretKey.Length < 32)
+    throw new InvalidOperationException("JWT SecretKey is not configured or is a placeholder. Provide a key with at least 32 characters that does not start with 'YOUR_'.");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -102,6 +105,16 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
+    };
+
+    // Extract JWT from httpOnly cookie (instead of Authorization header)
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            context.Token = context.Request.Cookies["token"];
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -134,9 +147,9 @@ builder.Services.AddProblemDetails();
 
 // Configure Cloudflare R2 (S3-compatible storage)
 var r2Settings = builder.Configuration.GetSection("CloudflareR2");
-var r2AccessKey = r2Settings["AccessKey"] ?? throw new InvalidOperationException("R2 AccessKey is not configured");
-var r2SecretKey = r2Settings["SecretKey"] ?? throw new InvalidOperationException("R2 SecretKey is not configured");
-var r2ServiceUrl = r2Settings["ServiceUrl"] ?? throw new InvalidOperationException("R2 ServiceUrl is not configured");
+var r2AccessKey = GetRequiredValue(r2Settings, "AccessKey");
+var r2SecretKey = GetRequiredValue(r2Settings, "SecretKey");
+var r2ServiceUrl = GetRequiredValue(r2Settings, "ServiceUrl");
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
@@ -151,6 +164,37 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 
 // Add controllers
 builder.Services.AddControllers();
+
+// Configure rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("Resend", config =>
+    {
+        config.PermitLimit = 3;
+        config.Window = TimeSpan.FromHours(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+
+    options.AddSlidingWindowLimiter("Login", config =>
+    {
+        config.PermitLimit = 10;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.SegmentsPerWindow = 4;
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+
+    options.AddFixedWindowLimiter("Reservations", config =>
+    {
+        config.PermitLimit = 5;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -207,6 +251,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Rate limiter must be after CORS/HTTPS but before auth/endpoints
+app.UseRateLimiter();
+
+// CSRF header protection must run before authentication
+app.UseMiddleware<CsrfHeaderMiddleware>();
+
 // Global exception handler must be early in the pipeline to catch errors from auth and endpoints.
 app.UseExceptionHandler();
 
@@ -215,31 +265,16 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
-
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+// Shared helper that centralizes the repeated "required configuration value" validation
+// and produces a consistent exception message containing the missing key.
+static string GetRequiredValue(IConfigurationSection section, string key)
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    var value = section[key] ?? throw new InvalidOperationException($"{section.Path}:{key} is not configured");
+    if (string.IsNullOrWhiteSpace(value))
+        throw new InvalidOperationException($"{section.Path}:{key} is not configured");
+    return value;
 }
 
 // Make Program class accessible for integration tests

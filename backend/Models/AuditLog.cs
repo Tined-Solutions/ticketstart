@@ -13,8 +13,32 @@ public class AuditLog
 
     /// <summary>
     /// ID of the admin user who performed the action.
+    /// Null for system-initiated actions (e.g., webhooks).
     /// </summary>
-    public Guid UserId { get; set; }
+    public Guid? UserId { get; set; }
+
+    /// <summary>
+    /// Human-readable identifier used when UserId is null (e.g., "System" for webhooks).
+    /// Max length: 200 characters.
+    /// </summary>
+    public string? UserIdentifier { get; set; }
+
+    /// <summary>
+    /// Client IP address captured when the action was performed.
+    /// Max length: 45 characters (supports IPv6).
+    /// </summary>
+    public string? IpAddress { get; set; }
+
+    /// <summary>
+    /// Client User-Agent header captured when the action was performed.
+    /// Max length: 500 characters.
+    /// </summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>
+    /// Navigation property to the User entity.
+    /// </summary>
+    public User? User { get; set; }
 
     /// <summary>
     /// Type of action performed.
@@ -52,6 +76,7 @@ public enum AuditActionType
     ViewEvents,
     UpdateEvent,
     DeleteEvent,
+    CreateUser,
     ProcessWebhook,
     ValidateQr
 }

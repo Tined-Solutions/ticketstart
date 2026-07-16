@@ -45,11 +45,10 @@ function ToastItem({ toast, onDismiss }) {
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
-let nextId = 1
-
 export default function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timersRef = useRef({})
+  const nextIdRef = useRef(1)
 
   const dismiss = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -61,7 +60,7 @@ export default function ToastProvider({ children }) {
 
   const addToast = useCallback(
     (message, type = 'info', duration = 5000) => {
-      const id = nextId++
+      const id = nextIdRef.current++
       setToasts((prev) => [...prev, { id, message, type }])
 
       if (duration > 0) {

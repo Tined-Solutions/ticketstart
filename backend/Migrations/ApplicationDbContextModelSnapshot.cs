@@ -37,6 +37,10 @@ namespace TicketeraOnline.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
                     b.Property<Guid?>("ResourceId")
                         .HasColumnType("uuid");
 
@@ -48,8 +52,16 @@ namespace TicketeraOnline.Api.Migrations
                     b.Property<DateTime>("Timestamp")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("UserIdentifier")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
@@ -125,6 +137,10 @@ namespace TicketeraOnline.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("PurchaserEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
@@ -206,6 +222,11 @@ namespace TicketeraOnline.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("CurrentlyReserved")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
@@ -261,7 +282,8 @@ namespace TicketeraOnline.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MercadoPagoId");
+                    b.HasIndex("MercadoPagoId")
+                        .IsUnique();
 
                     b.HasIndex("ReservationId");
 
@@ -282,6 +304,10 @@ namespace TicketeraOnline.Api.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -295,6 +321,16 @@ namespace TicketeraOnline.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("TicketeraOnline.Api.Models.AuditLog", b =>
+                {
+                    b.HasOne("TicketeraOnline.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TicketeraOnline.Api.Models.Event", b =>

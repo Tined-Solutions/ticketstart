@@ -1,29 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import apiClient from '../api/client.js'
-
-function getErrorMessage(error) {
-  if (!error) return 'Ocurrio un error inesperado'
-  if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
-  }
-  if (error.response?.data?.error) {
-    const backendError = error.response.data.error
-    return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
-  }
-  if (error.response?.data?.message) {
-    return error.response.data.message
-  }
-  if (error.response?.data?.detail) {
-    return error.response.data.detail
-  }
-  if (error.message) {
-    return error.message
-  }
-  return 'Ocurrio un error inesperado'
-}
+import { getErrorMessage } from '../lib/apiError.js'
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -89,6 +67,12 @@ export default function AdminPanel() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [feedback, setFeedback] = useState({ type: '', message: '' })
+
+  const initialFormData = { name: '', email: '', password: '', role: '' }
+  const [formData, setFormData] = useState(initialFormData)
+  const [formErrors, setFormErrors] = useState({})
+  const [creating, setCreating] = useState(false)
+  const [createFeedback, setCreateFeedback] = useState({ type: '', message: '' })
 
   const loadData = useCallback((controller) => {
     setLoading(true)
@@ -172,6 +156,76 @@ export default function AdminPanel() {
     } finally {
       setDeleting(false)
       setDeleteTarget(null)
+    }
+  }
+
+  function updateFormField(field, value) {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormErrors((prev) => ({ ...prev, [field]: '' }))
+    setCreateFeedback({ type: '', message: '' })
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  function validateCreateForm() {
+    const errors = {}
+
+    if (!formData.name.trim()) {
+      errors.name = 'El nombre es obligatorio'
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = 'El email es obligatorio'
+    } else if (!isValidEmail(formData.email.trim())) {
+      errors.email = 'El email no es valido'
+    }
+
+    if (!formData.password) {
+      errors.password = 'La contrasena es obligatoria'
+    } else if (formData.password.length < 8) {
+      errors.password = 'La contrasena debe tener al menos 8 caracteres'
+    }
+
+    if (!formData.role) {
+      errors.role = 'Debes seleccionar un rol'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleCreateUser = async (event) => {
+    event.preventDefault()
+    setCreateFeedback({ type: '', message: '' })
+
+    if (!validateCreateForm()) {
+      return
+    }
+
+    setCreating(true)
+    try {
+      await apiClient.post('/admin/users', {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+        role: formData.role,
+      })
+      setCreateFeedback({
+        type: 'success',
+        message: 'Usuario creado correctamente',
+      })
+      setFormData(initialFormData)
+      setFormErrors({})
+
+      // Refresh user list
+      const controller = new AbortController()
+      loadData(controller)
+    } catch (err) {
+      setCreateFeedback({ type: 'error', message: getErrorMessage(err) })
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -295,11 +349,93 @@ export default function AdminPanel() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </section>
-        </>
-      )}
+            </div>
+          )}
+        </section>
+
+        {/* ── User Creation section ─────────────────────── */}
+        <section className="admin-section">
+          <h2>Crear usuario</h2>
+
+          {createFeedback.message && (
+            <div
+              className={`feedback-message feedback-message--${createFeedback.type}`}
+              role={createFeedback.type === 'error' ? 'alert' : 'status'}
+            >
+              {createFeedback.message}
+            </div>
+          )}
+
+          <form onSubmit={handleCreateUser} noValidate>
+            <div className="form-group">
+              <label htmlFor="new-user-name">Nombre</label>
+              <input
+                id="new-user-name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => updateFormField('name', e.target.value)}
+                disabled={creating}
+                autoComplete="name"
+              />
+              {formErrors.name && (
+                <span className="form-error">{formErrors.name}</span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="new-user-email">Email</label>
+              <input
+                id="new-user-email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => updateFormField('email', e.target.value)}
+                disabled={creating}
+                autoComplete="email"
+              />
+              {formErrors.email && (
+                <span className="form-error">{formErrors.email}</span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="new-user-password">Contrasena</label>
+              <input
+                id="new-user-password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => updateFormField('password', e.target.value)}
+                disabled={creating}
+                autoComplete="new-password"
+              />
+              {formErrors.password && (
+                <span className="form-error">{formErrors.password}</span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="new-user-role">Rol</label>
+              <select
+                id="new-user-role"
+                value={formData.role}
+                onChange={(e) => updateFormField('role', e.target.value)}
+                disabled={creating}
+              >
+                <option value="">Seleccionar rol</option>
+                <option value="Organizador">Organizador</option>
+                <option value="Staff">Staff</option>
+              </select>
+              {formErrors.role && (
+                <span className="form-error">{formErrors.role}</span>
+              )}
+            </div>
+
+            <button type="submit" className="button-primary" disabled={creating}>
+              {creating ? 'Creando...' : 'Crear usuario'}
+            </button>
+          </form>
+        </section>
+      </>
+    )}
 
       {deleteTarget && (
         <DeleteConfirmationDialog

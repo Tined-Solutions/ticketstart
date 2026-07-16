@@ -1,32 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import apiClient from '../api/client.js'
+import { formatEventDate, formatCurrency } from '../lib/format.js'
+import { getErrorMessage } from '../lib/apiError.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatEventDate(dateString) {
-  if (!dateString) return 'Fecha por confirmar'
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return 'Fecha no valida'
-  return date.toLocaleDateString('es-AR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatCurrency(amount) {
-  if (amount === undefined || amount === null) return '$ --'
-  return `$ ${Number(amount).toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
 
 function validateEmail(email) {
   if (!email.trim()) return 'El email es obligatorio'
@@ -35,72 +15,11 @@ function validateEmail(email) {
   return ''
 }
 
-function validateDNI(dni) {
-  if (!dni.trim()) return 'El DNI es obligatorio'
-  return ''
-}
-
-function getErrorMessage(error) {
-  if (!error) return 'Ocurrio un error inesperado'
-  if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
-  }
-  if (error.response?.data?.error) {
-    const backendError = error.response.data.error
-    return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
-  }
-  if (error.response?.data?.message) {
-    return error.response.data.message
-  }
-  return 'Ocurrio un error al buscar entradas'
-}
-
 // ---------------------------------------------------------------------------
-// Ticket card
+// Ticket card (info-only — no QR, no download, no print)
 // ---------------------------------------------------------------------------
 
-function TicketCard({ ticket, onDownload }) {
-  const qrSrc = `data:image/png;base64,${ticket.qrCodeImage}`
-
-  function handleDownload() {
-    onDownload(ticket.qrCodeImage, ticket.id)
-  }
-
-  function handlePrint() {
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Entrada - ${ticket.eventName}</title>
-          <style>
-            body { font-family: system-ui, sans-serif; text-align: center; padding: 20px; }
-            img { max-width: 300px; height: auto; }
-            h2 { margin-bottom: 4px; }
-            p { margin: 2px 0; color: #555; }
-          </style>
-        </head>
-        <body>
-          <h2>${ticket.eventName}</h2>
-          <p>${formatEventDate(ticket.eventDate)}</p>
-          <p>${ticket.eventLocation}</p>
-          <hr />
-          <p><strong>${ticket.ticketTypeName}</strong> — ${formatCurrency(ticket.price)}</p>
-          <img src="${qrSrc}" alt="Codigo QR de la entrada" />
-          <p style="font-size:0.8em;margin-top:8px;">${ticket.qrCodeData.slice(0, 30)}...</p>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-    printWindow.close()
-  }
-
+function TicketCard({ ticket }) {
   return (
     <article className="ticket-card">
       <div className="ticket-card-body">
@@ -117,32 +36,11 @@ function TicketCard({ ticket, onDownload }) {
           <span className="ticket-type-price">{formatCurrency(ticket.price)}</span>
         </div>
 
-        <div className="ticket-qr-container">
-          <img
-            src={qrSrc}
-            alt={`Codigo QR de ${ticket.eventName}`}
-            className="ticket-qr-image"
-          />
-        </div>
-
-        <div className="ticket-actions">
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={handleDownload}
-            aria-label={`Descargar QR de ${ticket.eventName}`}
-          >
-            Descargar QR
-          </button>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={handlePrint}
-            aria-label={`Imprimir entrada de ${ticket.eventName}`}
-          >
-            Imprimir entrada
-          </button>
-        </div>
+        {ticket.quantity !== undefined && ticket.quantity !== null && (
+          <p className="ticket-quantity">
+            Cantidad: {ticket.quantity}
+          </p>
+        )}
 
         {ticket.isUsed && ticket.usedAt && (
           <p className="ticket-used-at">
@@ -166,25 +64,34 @@ function TicketCard({ ticket, onDownload }) {
 // ---------------------------------------------------------------------------
 
 export default function TicketLookup() {
+  // Lookup form state
   const [email, setEmail] = useState('')
-  const [dni, setDni] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [tickets, setTickets] = useState(null) // null = not searched yet
   const [error, setError] = useState('')
 
-  function validateForm() {
+  // Resend form state
+  const [resendEmail, setResendEmail] = useState('')
+  const [resendErrors, setResendErrors] = useState({})
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
+  const [resendError, setResendError] = useState('')
+  const [captchaChecked, setCaptchaChecked] = useState(false)
+
+  // -- Lookup -----------------------------------------------------------
+
+  function validateLookupForm() {
     return {
       email: validateEmail(email),
-      dni: validateDNI(dni),
     }
   }
 
-  async function handleSubmit(e) {
+  async function handleLookupSubmit(e) {
     e.preventDefault()
 
-    const formErrors = validateForm()
-    const hasErrors = formErrors.email || formErrors.dni
+    const formErrors = validateLookupForm()
+    const hasErrors = formErrors.email
     setErrors(formErrors)
     if (hasErrors) return
 
@@ -194,7 +101,7 @@ export default function TicketLookup() {
 
     try {
       const response = await apiClient.get('/tickets/lookup', {
-        params: { email: email.trim(), dni: dni.trim() },
+        params: { email: email.trim() },
       })
       setTickets(response.data || [])
     } catch (err) {
@@ -204,28 +111,62 @@ export default function TicketLookup() {
     }
   }
 
-  function handleDownload(qrCodeImage, ticketId) {
-    const link = document.createElement('a')
-    link.href = `data:image/png;base64,${qrCodeImage}`
-    link.download = `qr-entrada-${ticketId.slice(0, 8)}.png`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  function handleClearError() {
+  function handleClearLookupError() {
     setError('')
     setTickets(null)
   }
 
+  // -- Resend -----------------------------------------------------------
+
+  function validateResendForm() {
+    const resendEmailError = validateEmail(resendEmail)
+    return { email: resendEmailError }
+  }
+
+  async function handleResendSubmit(e) {
+    e.preventDefault()
+
+    const formErrors = validateResendForm()
+    setResendErrors(formErrors)
+    if (formErrors.email) return
+
+    setResendLoading(true)
+    setResendMessage('')
+    setResendError('')
+
+    try {
+      await apiClient.post('/tickets/resend', {
+        email: resendEmail.trim(),
+        captchaToken: captchaChecked ? 'placeholder' : '',
+      })
+      setResendMessage(
+        'Si el email esta registrado, recibiras las entradas en tu casilla'
+      )
+    } catch (err) {
+      if (err.response?.status === 429) {
+        setResendError(
+          'Demasiados intentos. Intenta de nuevo en una hora.'
+        )
+      } else {
+        setResendError(getErrorMessage(err))
+      }
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  // -- Render -----------------------------------------------------------
+
   return (
     <div className="ticket-lookup-page">
+      {/* ── Lookup section ───────────────────────────────────────────── */}
+
       <header className="page-header">
         <h1>Buscar mis entradas</h1>
-        <p>Ingresa tu email y DNI para recuperar tus entradas</p>
+        <p>Ingresa tu email para recuperar tus entradas</p>
       </header>
 
-      <form onSubmit={handleSubmit} className="lookup-form" noValidate>
+      <form onSubmit={handleLookupSubmit} className="lookup-form" noValidate>
         <div className="form-group">
           <label htmlFor="lookup-email">Email</label>
           <input
@@ -247,28 +188,6 @@ export default function TicketLookup() {
           )}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="lookup-dni">DNI</label>
-          <input
-            id="lookup-dni"
-            type="text"
-            inputMode="numeric"
-            value={dni}
-            onChange={(e) => {
-              setDni(e.target.value)
-              if (errors.dni) setErrors((prev) => ({ ...prev, dni: '' }))
-            }}
-            placeholder="12345678"
-            disabled={loading}
-            aria-invalid={errors.dni ? 'true' : undefined}
-          />
-          {errors.dni && (
-            <span className="form-error" role="alert">
-              {errors.dni}
-            </span>
-          )}
-        </div>
-
         <button type="submit" className="button-primary" disabled={loading}>
           {loading ? 'Buscando...' : 'Buscar entradas'}
         </button>
@@ -277,7 +196,7 @@ export default function TicketLookup() {
       {error && (
         <div className="error-container" role="alert">
           <p>{error}</p>
-          <button type="button" onClick={handleClearError}>
+          <button type="button" onClick={handleClearLookupError}>
             Reintentar
           </button>
         </div>
@@ -285,8 +204,8 @@ export default function TicketLookup() {
 
       {tickets !== null && !error && tickets.length === 0 && (
         <div className="empty-state">
-          <p>No se encontraron entradas con esos datos.</p>
-          <p>Verifica que el email y DNI sean correctos.</p>
+          <p>No se encontraron entradas con ese email.</p>
+          <p>Verifica que el email sea correcto.</p>
           <Link to="/events" className="button-link">
             Ver eventos
           </Link>
@@ -302,15 +221,83 @@ export default function TicketLookup() {
           </h2>
           <div className="tickets-grid">
             {tickets.map((ticket) => (
-              <TicketCard
-                key={ticket.id}
-                ticket={ticket}
-                onDownload={handleDownload}
-              />
+              <TicketCard key={ticket.id} ticket={ticket} />
             ))}
           </div>
         </div>
       )}
+
+      {/* ── Resend section ───────────────────────────────────────────── */}
+
+      <section className="resend-section">
+        <header className="page-header">
+          <h2>Reenviar entradas</h2>
+          <p>Si no encuentras tus entradas, podemos reenviartelas por email</p>
+        </header>
+
+        <form onSubmit={handleResendSubmit} className="lookup-form" noValidate>
+          <div className="form-group">
+            <label htmlFor="resend-email">Email</label>
+            <input
+              id="resend-email"
+              type="email"
+              value={resendEmail}
+              onChange={(e) => {
+                setResendEmail(e.target.value)
+                if (resendErrors.email)
+                  setResendErrors((prev) => ({ ...prev, email: '' }))
+              }}
+              placeholder="tu@email.com"
+              disabled={resendLoading}
+              aria-invalid={resendErrors.email ? 'true' : undefined}
+            />
+            {resendErrors.email && (
+              <span className="form-error" role="alert">
+                {resendErrors.email}
+              </span>
+            )}
+          </div>
+
+          <div className="form-group captcha-group">
+            <label className="captcha-label">
+              <input
+                type="checkbox"
+                checked={captchaChecked}
+                onChange={(e) => setCaptchaChecked(e.target.checked)}
+                disabled={resendLoading}
+                aria-label="No soy un robot"
+              />
+              <span className="captcha-text">No soy un robot</span>
+            </label>
+            {/* TODO: Replace checkbox CAPTCHA with Cloudflare Turnstile widget.
+               Load turnstile script, use Turnstile's onSuccess callback to set captchaChecked,
+               and pass the real Turnstile token as captchaToken in the API request. */}
+            <p className="captcha-placeholder-note">
+              CAPTCHA placeholder — reemplazar por Turnstile
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            className="button-primary"
+            disabled={resendLoading || !captchaChecked}
+          >
+            {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
+          </button>
+        </form>
+
+        {resendMessage && (
+          <div className="resend-message" role="status">
+            <p>{resendMessage}</p>
+          </div>
+        )}
+
+        {resendError && (
+          <div className="error-container" role="alert">
+            <p>{resendError}</p>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

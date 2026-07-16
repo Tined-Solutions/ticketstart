@@ -26,7 +26,7 @@ describe('CheckoutReturn', () => {
 
     expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
     expect(
-      screen.getByText(/tus entradas fueron enviadas a tu email/i)
+      screen.getByText(/si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada/i)
     ).toBeInTheDocument()
     expect(screen.getByText(/revisá tu casilla de correo/i)).toBeInTheDocument()
     expect(screen.getByText('pay-123')).toBeInTheDocument()
@@ -44,7 +44,7 @@ describe('CheckoutReturn', () => {
 
     expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
     expect(
-      screen.getByText(/tus entradas fueron enviadas a tu email/i)
+      screen.getByText(/si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada/i)
     ).toBeInTheDocument()
   })
 

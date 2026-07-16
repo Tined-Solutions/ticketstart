@@ -47,4 +47,56 @@ public static class HmacHelper
             Encoding.UTF8.GetBytes(expected),
             Encoding.UTF8.GetBytes(signature));
     }
+
+    /// <summary>
+    /// Validates an HMAC-SHA256 signature from raw bytes using constant-time comparison.
+    /// Use this overload when the payload was received as raw bytes (e.g., webhook body)
+    /// to avoid encoding mismatches between the sender and receiver.
+    /// </summary>
+    /// <param name="data">Raw data bytes that were signed</param>
+    /// <param name="key">Secret key</param>
+    /// <param name="signature">Signature to validate</param>
+    /// <returns>True if the signature is valid, false otherwise</returns>
+    public static bool ValidateHmacSha256(byte[] data, string key, string signature)
+    {
+        if (data == null || data.Length == 0 || string.IsNullOrEmpty(key) || string.IsNullOrEmpty(signature))
+        {
+            return false;
+        }
+
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
+        var hash = hmac.ComputeHash(data);
+        var expected = Convert.ToHexString(hash).ToLowerInvariant();
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expected),
+            Encoding.UTF8.GetBytes(signature));
+    }
+
+    /// <summary>
+    /// Extracts the Unix timestamp from a QR code payload.
+    /// Format: {ticketId}:{timestamp}:{signature}
+    /// </summary>
+    /// <param name="qrPayload">The QR code payload string</param>
+    /// <returns>The Unix timestamp (seconds)</returns>
+    /// <exception cref="FormatException">Thrown when the payload format is invalid</exception>
+    public static long ExtractTimestamp(string qrPayload)
+    {
+        if (string.IsNullOrWhiteSpace(qrPayload))
+        {
+            throw new FormatException("QR payload is null or empty");
+        }
+
+        var parts = qrPayload.Split(':');
+        if (parts.Length < 2)
+        {
+            throw new FormatException($"Invalid QR payload format: expected at least 2 colon-separated parts, got {parts.Length}");
+        }
+
+        if (!long.TryParse(parts[1], out var timestamp))
+        {
+            throw new FormatException($"Invalid timestamp format in QR payload: '{parts[1]}'");
+        }
+
+        return timestamp;
+    }
 }

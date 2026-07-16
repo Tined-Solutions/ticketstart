@@ -116,10 +116,16 @@ public class ErrorHandlingPropertyTests
                     return false;
 
                 var keys = entry.State?.Select(kv => kv.Key).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>();
+                var scopeKeys = logger.Scopes
+                    .OfType<IEnumerable<KeyValuePair<string, object?>>>()
+                    .SelectMany(s => s)
+                    .Select(kv => kv.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 return keys.Contains("ExceptionType")
                     && keys.Contains("Path")
                     && keys.Contains("Method")
-                    && keys.Contains("StackTrace")
+                    && scopeKeys.Contains("StackTrace")
                     && entry.Exception != null;
             });
 
@@ -276,7 +282,7 @@ public class ErrorHandlingPropertyTests
                 var audit = new FakeAuditLogService();
                 var paymentService = new Mock<IPaymentService>();
                 paymentService
-                    .Setup(s => s.ProcessWebhookAsync(scenario.Payload, scenario.Signature))
+                    .Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), scenario.Signature, It.IsAny<byte[]>()))
                     .ReturnsAsync(scenario.Result);
 
                 var controller = new PaymentController(
@@ -290,7 +296,12 @@ public class ErrorHandlingPropertyTests
                     }
                 };
 
-                var actionResult = Task.Run(() => controller.Webhook(scenario.Payload, scenario.Signature)).Result;
+                // Write payload to request body
+                var payloadJson = System.Text.Json.JsonSerializer.Serialize(scenario.Payload);
+                controller.ControllerContext.HttpContext.Request.Body = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(payloadJson));
+                controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+                var actionResult = Task.Run(() => controller.Webhook(scenario.Signature)).Result;
                 var auditEntry = audit.Contexts.FirstOrDefault();
 
                 return audit.Contexts.Count == 1
@@ -312,7 +323,7 @@ public class ErrorHandlingPropertyTests
         var paymentService = new Mock<IPaymentService>();
         var payload = new WebhookPayload { PaymentId = "pay-123", ExternalReference = Guid.NewGuid().ToString(), Status = "approved" };
         var signature = "valid-signature";
-        paymentService.Setup(s => s.ProcessWebhookAsync(payload, signature))
+        paymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
             .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
 
         var controller = new PaymentController(paymentService.Object, logger, audit)
@@ -320,7 +331,12 @@ public class ErrorHandlingPropertyTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
 
-        var result = Task.Run(() => controller.Webhook(payload, signature)).Result;
+        // Write payload to request body
+        var bodyJson = System.Text.Json.JsonSerializer.Serialize(payload);
+        controller.ControllerContext.HttpContext.Request.Body = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(bodyJson));
+        controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        var result = Task.Run(() => controller.Webhook(signature)).Result;
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
@@ -719,8 +735,13 @@ public class ErrorHandlingPropertyTests
     private sealed class CollectingLogger<T> : ILogger<T>
     {
         public List<LogEntry> Entries { get; } = new();
+        public List<object> Scopes { get; } = new();
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            Scopes.Add(state);
+            return null;
+        }
 
         public bool IsEnabled(LogLevel logLevel) => true;
 

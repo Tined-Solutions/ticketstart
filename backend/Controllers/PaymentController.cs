@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketeraOnline.Api.Models;
@@ -92,25 +94,52 @@ public class PaymentController : TicketeraControllerBase
     [HttpPost("webhook")]
     [AllowAnonymous]
     public async Task<IActionResult> Webhook(
-        [FromBody] WebhookPayload payload,
         [FromHeader(Name = "x-signature")] string? signature = null)
     {
-        if (payload == null || string.IsNullOrEmpty(signature))
+        if (string.IsNullOrEmpty(signature))
         {
-            _logger.LogWarning("Webhook received without payload or signature");
-            return Unauthorized(new { error = "Missing webhook payload or signature" });
+            _logger.LogWarning("Webhook received without signature");
+            return Unauthorized(new { error = "Missing webhook signature" });
+        }
+
+        WebhookPayload payload;
+        byte[] rawBody;
+
+        try
+        {
+            // Read raw bytes for HMAC validation (Batch 4 B4.4)
+            Request.EnableBuffering();
+            using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
+            var bodyString = await reader.ReadToEndAsync();
+            rawBody = Encoding.UTF8.GetBytes(bodyString);
+            Request.Body.Position = 0;
+
+            payload = JsonSerializer.Deserialize<WebhookPayload>(bodyString)
+                ?? new WebhookPayload();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read webhook body");
+            return BadRequest(new { error = "Invalid webhook payload" });
+        }
+
+        if (payload == null || string.IsNullOrEmpty(payload.PaymentId))
+        {
+            _logger.LogWarning("Webhook received without valid payload");
+            return BadRequest(new { error = "Missing webhook payload" });
         }
 
         try
         {
-            var result = await _paymentService.ProcessWebhookAsync(payload, signature);
+            var result = await _paymentService.ProcessWebhookAsync(payload, signature, rawBody);
 
             await TryLogAuditAsync(new AuditLogContext(
-                UserId: Guid.Empty,
+                UserId: null,
                 Action: AuditActionType.ProcessWebhook,
                 Resource: AuditResourceType.Payment,
                 ResourceId: null,
-                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}"));
+                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}",
+                UserIdentifier: "System"));
 
             if (!result.Success)
             {

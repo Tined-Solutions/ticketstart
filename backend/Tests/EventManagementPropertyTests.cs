@@ -175,14 +175,15 @@ public class EventManagementPropertyTests : IDisposable
     [Fact]
     public async Task TicketAvailabilityCalculation_EqualsQuantityMinusSoldTickets()
     {
-        // Test various scenarios with different ticket quantities and sales
+        // Test various scenarios with different quantities and reserved counts.
+        // Availability = Quantity - CurrentlyReserved (Batch 3 formula)
         var testScenarios = new[]
         {
-            new { InitialQuantity = 100, TicketsSold = 0, ExpectedAvailable = 100 },
-            new { InitialQuantity = 50, TicketsSold = 25, ExpectedAvailable = 25 },
-            new { InitialQuantity = 200, TicketsSold = 199, ExpectedAvailable = 1 },
-            new { InitialQuantity = 75, TicketsSold = 75, ExpectedAvailable = 0 },
-            new { InitialQuantity = 10, TicketsSold = 3, ExpectedAvailable = 7 }
+            new { InitialQuantity = 100, CurrentlyReserved = 0, ExpectedAvailable = 100 },
+            new { InitialQuantity = 50, CurrentlyReserved = 25, ExpectedAvailable = 25 },
+            new { InitialQuantity = 200, CurrentlyReserved = 199, ExpectedAvailable = 1 },
+            new { InitialQuantity = 75, CurrentlyReserved = 75, ExpectedAvailable = 0 },
+            new { InitialQuantity = 10, CurrentlyReserved = 3, ExpectedAvailable = 7 }
         };
 
         foreach (var scenario in testScenarios)
@@ -191,7 +192,7 @@ public class EventManagementPropertyTests : IDisposable
             var organizerId = Guid.NewGuid();
             var organizer = new User
             {
-                Id = organizerId,
+                Id = organizerId, Name = "Org",
                 Email = $"organizer-{Guid.NewGuid()}@example.com",
                 PasswordHash = "dummy-hash",
                 Role = UserRole.Organizador,
@@ -218,40 +219,24 @@ public class EventManagementPropertyTests : IDisposable
             };
 
             var createdEvent = await _eventService.CreateEventAsync(createRequest, organizerId);
-            var ticketTypeId = createdEvent.TicketTypes.First().Id;
-
-            // Create sold tickets
-            for (int i = 0; i < scenario.TicketsSold; i++)
-            {
-                var ticket = new Ticket
-                {
-                    Id = Guid.NewGuid(),
-                    EventId = createdEvent.Id,
-                    TicketTypeId = ticketTypeId,
-                    PurchaserEmail = $"buyer{i}@example.com",
-                    PurchaserDNI = $"DNI{i}",
-                    QRCodeData = $"QR-{Guid.NewGuid()}",
-                    IsUsed = false,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.Tickets.Add(ticket);
-            }
+            var ticketType = createdEvent.TicketTypes.First();
+            ticketType.CurrentlyReserved = scenario.CurrentlyReserved;
             await _context.SaveChangesAsync();
 
             // Act - Retrieve event with availability
             var eventWithAvailability = await _eventService.GetEventByIdAsync(createdEvent.Id);
 
-            // Assert - Verify availability calculation: Quantity - Sold = Available
+            // Assert - Verify availability calculation: Quantity - CurrentlyReserved = Available
             Assert.NotNull(eventWithAvailability);
             Assert.NotEmpty(eventWithAvailability.TicketTypes);
             
-            var ticketType = eventWithAvailability.TicketTypes.First();
-            Assert.Equal(scenario.InitialQuantity, ticketType.Quantity);
-            Assert.Equal(scenario.ExpectedAvailable, ticketType.Available);
+            var retrievedType = eventWithAvailability.TicketTypes.First();
+            Assert.Equal(scenario.InitialQuantity, retrievedType.Quantity);
+            Assert.Equal(scenario.ExpectedAvailable, retrievedType.Available);
             
-            // Verify the property: Available = Quantity - SoldTickets
-            var calculatedAvailable = scenario.InitialQuantity - scenario.TicketsSold;
-            Assert.Equal(calculatedAvailable, ticketType.Available);
+            // Verify the property: Available = Quantity - CurrentlyReserved
+            var calculatedAvailable = scenario.InitialQuantity - scenario.CurrentlyReserved;
+            Assert.Equal(calculatedAvailable, retrievedType.Available);
         }
     }
 
@@ -290,44 +275,14 @@ public class EventManagementPropertyTests : IDisposable
 
         var createdEvent = await _eventService.CreateEventAsync(createRequest, organizerId);
         
-        // Sell different numbers of each ticket type
         var vipTicketType = createdEvent.TicketTypes.First(tt => tt.Name == "VIP");
         var generalTicketType = createdEvent.TicketTypes.First(tt => tt.Name == "General");
         var studentTicketType = createdEvent.TicketTypes.First(tt => tt.Name == "Student");
 
-        // Sell 5 VIP tickets
-        for (int i = 0; i < 5; i++)
-        {
-            _context.Tickets.Add(new Ticket
-            {
-                Id = Guid.NewGuid(),
-                EventId = createdEvent.Id,
-                TicketTypeId = vipTicketType.Id,
-                PurchaserEmail = $"vip{i}@example.com",
-                PurchaserDNI = $"VIP{i}",
-                QRCodeData = $"QR-VIP-{Guid.NewGuid()}",
-                IsUsed = false,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        // Sell 75 General tickets
-        for (int i = 0; i < 75; i++)
-        {
-            _context.Tickets.Add(new Ticket
-            {
-                Id = Guid.NewGuid(),
-                EventId = createdEvent.Id,
-                TicketTypeId = generalTicketType.Id,
-                PurchaserEmail = $"general{i}@example.com",
-                PurchaserDNI = $"GEN{i}",
-                QRCodeData = $"QR-GEN-{Guid.NewGuid()}",
-                IsUsed = false,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        // Sell 0 Student tickets (all available)
+        // Set CurrentlyReserved to simulate active reservations (Batch 3 formula)
+        vipTicketType.CurrentlyReserved = 5;
+        generalTicketType.CurrentlyReserved = 75;
+        studentTicketType.CurrentlyReserved = 0;
         await _context.SaveChangesAsync();
 
         // Act

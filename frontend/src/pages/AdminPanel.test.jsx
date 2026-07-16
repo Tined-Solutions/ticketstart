@@ -6,6 +6,7 @@ import AdminPanel from './AdminPanel.jsx'
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 const mockDelete = vi.fn()
+const mockPost = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -15,6 +16,7 @@ vi.mock('../api/client.js', () => ({
   default: {
     get: (...args) => mockGet(...args),
     delete: (...args) => mockDelete(...args),
+    post: (...args) => mockPost(...args),
   },
 }))
 
@@ -71,6 +73,7 @@ describe('AdminPanel', () => {
     vi.clearAllMocks()
     mockGet.mockReset()
     mockDelete.mockReset()
+    mockPost.mockReset()
     mockNavigate.mockReset()
 
     // Default: resolve both endpoints
@@ -521,5 +524,197 @@ describe('AdminPanel', () => {
     const eventRow = rows.find((r) => r.textContent.includes('Evento Sin Organizador'))
     const organizerCell = within(eventRow).getByText('—', { selector: '[data-label="Organizador"]' })
     expect(organizerCell).toBeInTheDocument()
+  })
+
+  // ── User Creation ────────────────────────────────────────────
+
+  describe('User Creation', () => {
+    it('renders the user creation form with all fields', async () => {
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      expect(screen.getByLabelText('Nombre')).toBeInTheDocument()
+      expect(screen.getByLabelText('Email')).toBeInTheDocument()
+      expect(screen.getByLabelText('Contrasena')).toBeInTheDocument()
+      expect(screen.getByLabelText('Rol')).toBeInTheDocument()
+
+      const roleSelect = screen.getByLabelText('Rol')
+      const options = within(roleSelect).getAllByRole('option')
+      const optionTexts = options.map((o) => o.textContent)
+      expect(optionTexts).toContain('Organizador')
+      expect(optionTexts).toContain('Staff')
+      expect(optionTexts).not.toContain('Admin')
+
+      expect(
+        screen.getByRole('button', { name: /crear usuario/i })
+      ).toBeInTheDocument()
+    })
+
+    it('shows validation errors for empty fields', async () => {
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(screen.getByText(/el nombre es obligatorio/i)).toBeInTheDocument()
+      expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
+      expect(screen.getByText(/la contrasena es obligatoria/i)).toBeInTheDocument()
+      expect(screen.getByText(/debes seleccionar un rol/i)).toBeInTheDocument()
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('shows validation error for invalid email', async () => {
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      const emailInput = screen.getByLabelText('Email')
+      await userEvent.type(emailInput, 'not-an-email')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(screen.getByText(/email no es valido/i)).toBeInTheDocument()
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('shows validation error for short password', async () => {
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      const passwordInput = screen.getByLabelText('Contrasena')
+      await userEvent.type(passwordInput, '1234567')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(screen.getByText(/al menos 8 caracteres/i)).toBeInTheDocument()
+      expect(mockPost).not.toHaveBeenCalled()
+    })
+
+    it('creates a user successfully and shows feedback', async () => {
+      mockPost.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'user-4', name: 'Nuevo Usuario', email: 'nuevo@example.com', role: 'Staff' },
+      })
+
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Nuevo Usuario')
+      await userEvent.type(screen.getByLabelText('Email'), 'nuevo@example.com')
+      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      await waitFor(() => {
+        expect(mockPost).toHaveBeenCalledWith('/admin/users', {
+          name: 'Nuevo Usuario',
+          email: 'nuevo@example.com',
+          password: 'password123',
+          role: 'Staff',
+        })
+      })
+
+      expect(
+        screen.getByText(/usuario creado correctamente/i)
+      ).toBeInTheDocument()
+    })
+
+    it('shows error when email is already registered (409)', async () => {
+      mockPost.mockRejectedValueOnce({
+        response: { status: 409, data: { error: { message: 'El email ya esta registrado' } } },
+      })
+
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Duplicado')
+      await userEvent.type(screen.getByLabelText('Email'), 'existe@example.com')
+      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(
+        await screen.findByText(/el email ya esta registrado/i)
+      ).toBeInTheDocument()
+    })
+
+    it('shows error feedback on server error', async () => {
+      mockPost.mockRejectedValueOnce({
+        response: { status: 500, data: { error: { message: 'Error interno del servidor' } } },
+      })
+
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Test')
+      await userEvent.type(screen.getByLabelText('Email'), 'test@example.com')
+      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(
+        await screen.findByText(/error interno del servidor/i)
+      ).toBeInTheDocument()
+    })
+
+    it('shows loading state during submission', async () => {
+      let resolvePost
+      mockPost.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePost = resolve
+          })
+      )
+
+      render(<AdminPanel />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
+      })
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Test')
+      await userEvent.type(screen.getByLabelText('Email'), 'test@example.com')
+      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
+
+      await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
+
+      expect(screen.getByRole('button', { name: /creando/i })).toBeDisabled()
+      expect(screen.getByLabelText('Nombre')).toBeDisabled()
+      expect(screen.getByLabelText('Email')).toBeDisabled()
+      expect(screen.getByLabelText('Contrasena')).toBeDisabled()
+      expect(screen.getByLabelText('Rol')).toBeDisabled()
+
+      resolvePost({ status: 201, data: {} })
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /crear usuario/i })
+        ).toBeInTheDocument()
+      })
+    })
   })
 })

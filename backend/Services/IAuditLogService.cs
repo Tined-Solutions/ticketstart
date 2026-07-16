@@ -28,11 +28,14 @@ public interface IAuditLogService
 /// Parameter object describing an admin action to be recorded in the audit log.
 /// </summary>
 public record AuditLogContext(
-    Guid UserId,
+    Guid? UserId,
     AuditActionType Action,
     AuditResourceType Resource,
     Guid? ResourceId = null,
-    string? Details = null);
+    string? Details = null,
+    string? UserIdentifier = null,
+    string? IpAddress = null,
+    string? UserAgent = null);
 
 /// <summary>
 /// Data transfer object representing an audit log entry.
@@ -40,10 +43,13 @@ public record AuditLogContext(
 public class AuditLogEntry
 {
     public Guid Id { get; set; }
-    public Guid UserId { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserIdentifier { get; set; }
     public AuditActionType ActionType { get; set; }
     public AuditResourceType ResourceType { get; set; }
     public Guid? ResourceId { get; set; }
     public string? Details { get; set; }
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
     public DateTime Timestamp { get; set; }
 }

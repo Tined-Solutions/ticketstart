@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -29,20 +30,25 @@ public class TicketController : TicketeraControllerBase
     }
 
     /// <summary>
-    /// Looks up tickets by email and DNI.
-    /// Validates: Requirements 8.1, 8.2, 8.3, 8.5
+    /// Looks up tickets by email and optionally DNI.
+    /// When DNI is provided, returns full details with QR codes (authenticated flow).
+    /// When only email is provided, returns info-only response without QR fields (public flow).
+    /// Validates: Requirements 8.1, 8.2, 8.3, 8.5, Batch 5 — B5.1
     /// </summary>
     /// <param name="email">Purchaser email address</param>
-    /// <param name="dni">Purchaser DNI number</param>
-    /// <returns>List of matching tickets with QR codes</returns>
+    /// <param name="dni">Purchaser DNI number (optional — for authenticated lookup with QR codes)</param>
+    /// <returns>List of matching tickets (with or without QR codes depending on DNI)</returns>
     [HttpGet("lookup")]
     [ProducesResponseType(typeof(IEnumerable<TicketLookupResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IEnumerable<TicketLookupInfoResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<IEnumerable<TicketLookupResponse>>> LookupTickets(
+    public async Task<ActionResult> LookupTickets(
         [FromQuery] string email,
-        [FromQuery] string dni)
+        [FromQuery] string? dni = null)
     {
-        _logger.LogInformation("Ticket lookup request for email {EmailHash} and DNI {DniHash}", LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
+        _logger.LogInformation("Ticket lookup request for email {EmailHash} and DNI {DniHash}",
+            LogRedactor.HashIdentifier(email),
+            dni != null ? LogRedactor.HashIdentifier(dni) : "not-provided");
 
         // Validate input
         if (string.IsNullOrWhiteSpace(email))
@@ -51,15 +57,16 @@ public class TicketController : TicketeraControllerBase
             return BadRequest(new { error = "Email is required" });
         }
 
-        if (string.IsNullOrWhiteSpace(dni))
-        {
-            _logger.LogWarning("Ticket lookup failed: DNI is required");
-            return BadRequest(new { error = "DNI is required" });
-        }
-
         try
         {
-            // Look up tickets
+            // Email-only lookup: return info-only response without QR codes (B5.1)
+            if (string.IsNullOrWhiteSpace(dni))
+            {
+                var infoTickets = await _ticketService.LookupTicketsByEmailAsync(email);
+                return Ok(infoTickets);
+            }
+
+            // Email + DNI lookup: return full response with QR codes (existing behavior)
             var tickets = await _ticketService.LookupTicketsAsync(email, dni);
 
             // Map to response DTOs with QR code images
@@ -85,7 +92,9 @@ public class TicketController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ticket lookup for email {EmailHash} and DNI {DniHash}", LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
+            _logger.LogError(ex, "Error during ticket lookup for email {EmailHash} and DNI {DniHash}",
+                LogRedactor.HashIdentifier(email),
+                dni != null ? LogRedactor.HashIdentifier(dni) : "not-provided");
             return StatusCode(500, new { error = "An error occurred while looking up tickets" });
         }
     }
@@ -170,6 +179,51 @@ public class TicketController : TicketeraControllerBase
         {
             _logger.LogError(ex, "Error during QR code validation for event {EventId}", request.EventId);
             return StatusCode(500, new { error = "An error occurred while validating the QR code" });
+        }
+    }
+
+    /// <summary>
+    /// Resends ticket emails to the provided email address.
+    /// Returns generic success regardless of whether tickets exist (no info leak).
+    /// Rate limited to 3 requests per hour per email.
+    /// Validates: Batch 5 — B5.2
+    /// </summary>
+    /// <param name="request">Resend request with email and captcha token</param>
+    // TODO: Integrate Cloudflare Turnstile verification — validate captchaToken server-side
+    // before processing the resend. Currently accepts any non-empty token as placeholder.
+    /// <returns>Generic success message</returns>
+    [HttpPost("resend")]
+    [EnableRateLimiting("Resend")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> ResendTickets([FromBody] ResendTicketsRequest? request)
+    {
+        if (request == null)
+        {
+            _logger.LogWarning("Resend tickets failed: request body is required");
+            return BadRequest(new { error = "Request body is required" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            _logger.LogWarning("Resend tickets failed: Email is required");
+            return BadRequest(new { error = "Email is required" });
+        }
+
+        _logger.LogInformation("Resend tickets requested for {EmailHash}", LogRedactor.HashIdentifier(request.Email));
+
+        try
+        {
+            await _ticketService.ResendTicketsByEmailAsync(request.Email, request.CaptchaToken);
+
+            // Generic message — always the same regardless of whether tickets exist
+            return Ok(new { message = "If the email is registered, tickets will be resent." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during ticket resend for {EmailHash}", LogRedactor.HashIdentifier(request.Email));
+            return StatusCode(500, new { error = "An error occurred while processing the resend request" });
         }
     }
 

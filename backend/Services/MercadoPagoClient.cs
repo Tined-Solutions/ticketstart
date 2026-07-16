@@ -24,7 +24,6 @@ public class MercadoPagoClient : IMercadoPagoClient
             _logger.LogWarning("Mercado Pago access token is not configured");
         }
 
-        _httpClient.BaseAddress = new Uri("https://api.mercadopago.com/");
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
     }
 

@@ -34,6 +34,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(u => u.Id);
             entity.HasIndex(u => u.Email).IsUnique();
             entity.Property(u => u.Email).IsRequired().HasMaxLength(255);
+            entity.Property(u => u.Name).HasMaxLength(200).IsRequired(false);
             entity.Property(u => u.PasswordHash).IsRequired();
             entity.Property(u => u.Role).IsRequired();
             entity.Property(u => u.CreatedAt).IsRequired();
@@ -66,6 +67,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(t => t.Name).IsRequired().HasMaxLength(100);
             entity.Property(t => t.Price).IsRequired().HasColumnType("decimal(18,2)");
             entity.Property(t => t.Quantity).IsRequired();
+            entity.Property(t => t.CurrentlyReserved).IsRequired().HasDefaultValue(0);
             entity.Property(t => t.CreatedAt).IsRequired();
             entity.Property(t => t.RowVersion).IsRowVersion();
 
@@ -84,6 +86,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(r => r.UserId);
             entity.Property(r => r.Quantity).IsRequired();
             entity.Property(r => r.PurchaserDNI).IsRequired().HasMaxLength(50);
+            entity.Property(r => r.PurchaserEmail).HasMaxLength(255);
             entity.Property(r => r.ExpiresAt).IsRequired();
             entity.Property(r => r.Status).IsRequired();
             entity.Property(r => r.CreatedAt).IsRequired();
@@ -132,7 +135,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(t => t.Id);
             entity.HasIndex(t => t.ReservationId);
-            entity.HasIndex(t => t.MercadoPagoId);
+            entity.HasIndex(t => t.MercadoPagoId).IsUnique();
             entity.Property(t => t.MercadoPagoId).IsRequired().HasMaxLength(255);
             entity.Property(t => t.Amount).IsRequired().HasColumnType("decimal(18,2)");
             entity.Property(t => t.Status).IsRequired();
@@ -162,6 +165,15 @@ public class ApplicationDbContext : DbContext
                 .HasConversion<string>();
             entity.Property(a => a.Details).HasMaxLength(1000);
             entity.Property(a => a.Timestamp).IsRequired();
+            entity.Property(a => a.IpAddress).HasMaxLength(45);
+            entity.Property(a => a.UserAgent).HasMaxLength(500);
+            entity.Property(a => a.UserIdentifier).HasMaxLength(200);
+
+            entity.HasOne(a => a.User)
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
         });
     }
 }

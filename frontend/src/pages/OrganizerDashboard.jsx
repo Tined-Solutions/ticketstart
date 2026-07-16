@@ -1,29 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import apiClient from '../api/client.js'
-
-function getErrorMessage(error) {
-  if (!error) return 'Ocurrio un error inesperado'
-  if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
-  }
-  if (error.response?.data?.error) {
-    const backendError = error.response.data.error
-    return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
-  }
-  if (error.response?.data?.message) {
-    return error.response.data.message
-  }
-  if (error.response?.data?.detail) {
-    return error.response.data.detail
-  }
-  if (error.message) {
-    return error.message
-  }
-  return 'Ocurrio un error inesperado'
-}
+import { formatCurrency } from '../lib/format.js'
+import { getErrorMessage } from '../lib/apiError.js'
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -33,14 +12,6 @@ function formatDate(dateString) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  })
-}
-
-function formatCurrency(amount) {
-  return Number(amount).toLocaleString('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    minimumFractionDigits: 2,
   })
 }
 

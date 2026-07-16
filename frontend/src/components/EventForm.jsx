@@ -1,34 +1,12 @@
 import { useState } from 'react'
 import apiClient from '../api/client.js'
+import { getErrorMessage } from '../lib/apiError.js'
 
 function formatDateForInput(dateString) {
   if (!dateString) return ''
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return ''
   return date.toISOString().slice(0, 16)
-}
-
-function getErrorMessage(error) {
-  if (!error) return 'Ocurrio un error inesperado'
-  if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
-  }
-  if (error.response?.data?.error) {
-    const backendError = error.response.data.error
-    return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
-  }
-  if (error.response?.data?.message) {
-    return error.response.data.message
-  }
-  if (error.response?.data?.detail) {
-    return error.response.data.detail
-  }
-  if (error.message) {
-    return error.message
-  }
-  return 'Ocurrio un error inesperado'
 }
 
 let ticketTypeCounter = 0
@@ -161,6 +139,11 @@ export default function EventForm({
         eventId = response.data.id
         setFeedback({ type: 'success', message: 'Evento creado correctamente' })
       } else {
+        if (!eventId) {
+          setFeedback({ type: 'error', message: 'No se pudo identificar el evento para actualizar' })
+          setSubmitting(false)
+          return
+        }
         await apiClient.put(`/events/${eventId}`, {
           name: payload.name,
           date: payload.date,

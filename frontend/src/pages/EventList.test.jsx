@@ -139,4 +139,23 @@ describe('EventList', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/events/event-2')
     })
   })
+
+  it('event cards are native <button> elements', async () => {
+    mockGet.mockResolvedValue({ data: mockEvents })
+
+    render(<EventList />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const cards = screen.getAllByRole('button')
+    // At least one card is a button
+    const eventCard = cards.find((btn) =>
+      btn.getAttribute('aria-label')?.includes('Ver detalle de')
+    )
+    expect(eventCard).toBeTruthy()
+    // It must be a native <button>, not an article with role=button
+    expect(eventCard.tagName).toBe('BUTTON')
+  })
 })
