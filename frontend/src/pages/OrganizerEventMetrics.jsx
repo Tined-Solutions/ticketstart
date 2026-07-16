@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Button from '../components/Button.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
+import { fadeIn } from '../lib/motion.js'
 
 function getErrorMessage(error) {
   if (!error) return 'Ocurrio un error inesperado'
@@ -83,93 +88,91 @@ export default function OrganizerEventMetrics() {
 
   if (loading) {
     return (
-      <div className="metrics-page">
-        <div className="metrics-loading">
-          <p>Cargando metricas...</p>
-        </div>
-      </div>
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+        <GlassCard className="p-8 space-y-4">
+          <Skeleton width="60%" height="36px" variant="text" className="mx-auto" />
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <Skeleton width="60%" height="14px" variant="text" />
+                <Skeleton width="40%" height="28px" variant="text" />
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </motion.div>
     )
   }
 
   if (error === '404') {
     return (
-      <div className="metrics-page">
-        <div className="empty-state">
-          <p>Evento no encontrado</p>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={() => navigate('/organizer/dashboard')}
-          >
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+        <GlassCard className="text-center py-12">
+          <p className="text-text-2 mb-4">Evento no encontrado</p>
+          <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
             Volver al dashboard
-          </button>
-        </div>
-      </div>
+          </Button>
+        </GlassCard>
+      </motion.div>
     )
   }
 
   if (error) {
     return (
-      <div className="metrics-page">
-        <div className="error-container" role="alert">
-          <p>{error}</p>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={() => navigate('/organizer/dashboard')}
-          >
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+        <GlassCard className="text-center py-12" role="alert">
+          <p className="text-text-1 mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
             Volver al dashboard
-          </button>
-        </div>
-      </div>
+          </Button>
+        </GlassCard>
+      </motion.div>
     )
   }
 
   return (
-    <div className="metrics-page">
-      <header className="page-header">
-        <h1>{metrics.eventName}</h1>
-        <p>Metricas del evento</p>
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <header className="mb-8">
+        <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-2">
+          {metrics.eventName}
+        </h1>
+        <p className="text-text-2 text-center">Metricas del evento</p>
       </header>
 
-      <div className="metrics-card">
-        <dl className="metrics-grid">
-          <div className="metrics-item">
-            <dt>Fecha del evento</dt>
-            <dd>{formatDate(metrics.eventDate)}</dd>
+      <GlassCard className="p-8 mb-6">
+        <dl className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-6 m-0">
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-text-2">Fecha del evento</dt>
+            <dd className="text-text-1 m-0">{formatDate(metrics.eventDate)}</dd>
           </div>
 
-          <div className="metrics-item">
-            <dt>Entradas vendidas</dt>
-            <dd className="metrics-value">{metrics.ticketsSold}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-text-2">Entradas vendidas</dt>
+            <dd className="text-2xl font-semibold text-text-1 font-mono m-0">{metrics.ticketsSold}</dd>
           </div>
 
-          <div className="metrics-item">
-            <dt>Ingresos totales</dt>
-            <dd className="metrics-value">{formatCurrency(metrics.totalRevenue)}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-text-2">Ingresos totales</dt>
+            <dd className="text-2xl font-semibold text-text-1 font-mono m-0">{formatCurrency(metrics.totalRevenue)}</dd>
           </div>
 
-          <div className="metrics-item">
-            <dt>Inventario restante</dt>
-            <dd className="metrics-value">{metrics.remainingInventory}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-text-2">Inventario restante</dt>
+            <dd className="text-2xl font-semibold text-text-1 font-mono m-0">{metrics.remainingInventory}</dd>
           </div>
 
-          <div className="metrics-item">
-            <dt>Tickets escaneados</dt>
-            <dd className="metrics-value">{metrics.ticketsScanned}</dd>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-text-2">Tickets escaneados</dt>
+            <dd className="text-2xl font-semibold text-text-1 font-mono m-0">{metrics.ticketsScanned}</dd>
           </div>
         </dl>
-      </div>
+      </GlassCard>
 
-      <div className="metrics-actions">
-        <button
-          type="button"
-          className="button-secondary"
-          onClick={() => navigate('/organizer/dashboard')}
-        >
+      <div className="flex justify-center">
+        <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
           Volver al dashboard
-        </button>
+        </Button>
       </div>
-    </div>
+    </motion.div>
   )
 }

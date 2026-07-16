@@ -40,7 +40,9 @@ describe('OrganizerEventMetrics', () => {
 
     render(<OrganizerEventMetrics />)
 
-    expect(screen.getByText(/cargando metricas/i)).toBeInTheDocument()
+    // Skeleton placeholders should be visible during loading
+    const skeletons = document.querySelectorAll('[role="status"]')
+    expect(skeletons.length).toBeGreaterThan(0)
   })
 
   it('fetches and displays metrics data correctly', async () => {
@@ -174,5 +176,52 @@ describe('OrganizerEventMetrics', () => {
     await waitFor(() => {
       expect(screen.getByText(/network error/i)).toBeInTheDocument()
     })
+  })
+})
+
+// ── Visual Regression: Glass & Theme ──────────────────────────────────
+
+describe('OrganizerEventMetrics — Visual Regression', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockNavigate.mockReset()
+  })
+
+  it('renders GlassCard for metrics display', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerEventMetrics />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in loading state', () => {
+    mockGet.mockImplementation(() => new Promise(() => {}))
+
+    render(<OrganizerEventMetrics />)
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in error state', async () => {
+    mockGet.mockRejectedValue({
+      response: { data: { error: { message: 'Server error' } } },
+    })
+
+    render(<OrganizerEventMetrics />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/server error/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
   })
 })

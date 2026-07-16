@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import Layout from './components/layout/Layout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -20,81 +21,83 @@ import NotFound from './pages/NotFound.jsx'
 function App() {
   return (
     <ErrorBoundary>
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/events" element={<EventList />} />
-      <Route path="/events/:id" element={<EventDetail />} />
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/events" element={<EventList />} />
+          <Route path="/events/:id" element={<EventDetail />} />
 
-      <Route path="/checkout" element={<Checkout />} />
-      <Route path="/checkout/return" element={<CheckoutReturn />} />
-      <Route path="/tickets/lookup" element={<TicketLookup />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout/return" element={<CheckoutReturn />} />
+          <Route path="/tickets/lookup" element={<TicketLookup />} />
 
-      <Route
-        path="/staff/scan"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Staff', 'Admin']}>
-              <StaffScan />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
+          <Route
+            path="/staff/scan"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Staff', 'Admin']}>
+                  <StaffScan />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
 
-      <Route
-        path="/organizer/dashboard"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Organizador', 'Admin']}>
-              <OrganizerDashboard />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/organizer/events/new"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Organizador', 'Admin']}>
-              <OrganizerEventNew />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/organizer/events/:id/metrics"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Organizador', 'Admin']}>
-              <OrganizerEventMetrics />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/organizer/events/:id"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Organizador', 'Admin']}>
-              <OrganizerEventDetail />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
+          <Route
+            path="/organizer/dashboard"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                  <OrganizerDashboard />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizer/events/new"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                  <OrganizerEventNew />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizer/events/:id/metrics"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                  <OrganizerEventMetrics />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizer/events/:id"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                  <OrganizerEventDetail />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
 
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute>
-            <RoleGuard allowedRoles={['Admin']}>
-              <AdminPanel />
-            </RoleGuard>
-          </ProtectedRoute>
-        }
-      />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Admin']}>
+                  <AdminPanel />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
 
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Layout>
     </ErrorBoundary>
   )
 }

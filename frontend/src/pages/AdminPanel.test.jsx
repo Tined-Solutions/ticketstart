@@ -718,3 +718,77 @@ describe('AdminPanel', () => {
     })
   })
 })
+
+// ── Visual Regression: Glass & Theme ──────────────────────────────────
+
+describe('AdminPanel — Visual Regression', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockDelete.mockReset()
+    mockPost.mockReset()
+    mockNavigate.mockReset()
+
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+  })
+
+  it('renders GlassCard wrappers for admin sections', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(3) // events, users, create-user sections
+  })
+
+  it('renders Badge components for user roles', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Badge renders as <span> with role labels; getAllByText finds the text
+    const adminBadges = screen.getAllByText('Admin')
+    const orgBadges = screen.getAllByText('Organizador')
+    const staffBadges = screen.getAllByText('Staff')
+
+    expect(adminBadges.length).toBeGreaterThanOrEqual(1)
+    expect(orgBadges.length).toBeGreaterThanOrEqual(1)
+    expect(staffBadges.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in the loading state', () => {
+    mockGet.mockImplementation(() => new Promise(() => {}))
+
+    render(<AdminPanel />)
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in the error state', async () => {
+    mockGet.mockRejectedValue({
+      response: { data: { error: { message: 'Server error' } } },
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/server error/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+})

@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Badge from '../components/ui/Badge.jsx'
+import Button from '../components/Button.jsx'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,29 +27,39 @@ function validateEmail(email) {
 
 function TicketCard({ ticket }) {
   return (
-    <article className="ticket-card">
-      <div className="ticket-card-body">
-        <div className={`ticket-usage-badge ${ticket.isUsed ? 'used' : 'valid'}`}>
-          {ticket.isUsed ? 'Usada' : 'Valida'}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+    >
+      <GlassCard className="relative">
+        <div className="absolute top-3 right-3">
+          <Badge variant={ticket.isUsed ? 'error' : 'success'}>
+            {ticket.isUsed ? 'Usada' : 'Valida'}
+          </Badge>
         </div>
 
-        <h3>{ticket.eventName}</h3>
-        <p className="ticket-event-date">{formatEventDate(ticket.eventDate)}</p>
-        <p className="ticket-event-location">{ticket.eventLocation}</p>
+        <h3 className="font-display font-semibold text-lg text-text-1 mb-2 pr-20">
+          {ticket.eventName}
+        </h3>
+        <p className="text-text-2 text-sm">{formatEventDate(ticket.eventDate)}</p>
+        <p className="text-text-2 text-sm mb-3">{ticket.eventLocation}</p>
 
-        <div className="ticket-type-info">
-          <span className="ticket-type-name">{ticket.ticketTypeName}</span>
-          <span className="ticket-type-price">{formatCurrency(ticket.price)}</span>
+        <hr className="border-white/10 my-3" />
+
+        <div className="flex justify-between items-center">
+          <span className="text-text-2 text-sm">{ticket.ticketTypeName}</span>
+          <span className="font-semibold text-brand-1">{formatCurrency(ticket.price)}</span>
         </div>
 
         {ticket.quantity !== undefined && ticket.quantity !== null && (
-          <p className="ticket-quantity">
+          <p className="text-text-muted text-xs mt-2">
             Cantidad: {ticket.quantity}
           </p>
         )}
 
         {ticket.isUsed && ticket.usedAt && (
-          <p className="ticket-used-at">
+          <p className="text-text-muted text-xs mt-1 ticket-used-at">
             Usada el{' '}
             {new Date(ticket.usedAt).toLocaleDateString('es-AR', {
               day: 'numeric',
@@ -54,8 +70,28 @@ function TicketCard({ ticket }) {
             })}
           </p>
         )}
+      </GlassCard>
+    </motion.div>
+  )
+}
+
+function TicketCardSkeleton() {
+  return (
+    <GlassCard>
+      <div className="space-y-3">
+        <div className="flex justify-between">
+          <Skeleton width="60%" height="20px" variant="text" />
+          <Skeleton width="60px" height="20px" variant="rectangular" className="rounded-full" />
+        </div>
+        <Skeleton width="40%" height="14px" variant="text" />
+        <Skeleton width="30%" height="14px" variant="text" />
+        <Skeleton width="100%" height="1px" variant="text" />
+        <div className="flex justify-between pt-2">
+          <Skeleton width="30%" height="14px" variant="text" />
+          <Skeleton width="50px" height="14px" variant="text" />
+        </div>
       </div>
-    </article>
+    </GlassCard>
   )
 }
 
@@ -158,146 +194,225 @@ export default function TicketLookup() {
   // -- Render -----------------------------------------------------------
 
   return (
-    <div className="ticket-lookup-page">
-      {/* ── Lookup section ───────────────────────────────────────────── */}
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+      className="max-w-2xl mx-auto px-4 py-8 space-y-10"
+    >
+      {/* ── Lookup section ──────────────────────────────────────────── */}
 
-      <header className="page-header">
-        <h1>Buscar mis entradas</h1>
-        <p>Ingresa tu email para recuperar tus entradas</p>
-      </header>
-
-      <form onSubmit={handleLookupSubmit} className="lookup-form" noValidate>
-        <div className="form-group">
-          <label htmlFor="lookup-email">Email</label>
-          <input
-            id="lookup-email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value)
-              if (errors.email) setErrors((prev) => ({ ...prev, email: '' }))
-            }}
-            placeholder="tu@email.com"
-            disabled={loading}
-            aria-invalid={errors.email ? 'true' : undefined}
-          />
-          {errors.email && (
-            <span className="form-error" role="alert">
-              {errors.email}
-            </span>
-          )}
-        </div>
-
-        <button type="submit" className="button-primary" disabled={loading}>
-          {loading ? 'Buscando...' : 'Buscar entradas'}
-        </button>
-      </form>
-
-      {error && (
-        <div className="error-container" role="alert">
-          <p>{error}</p>
-          <button type="button" onClick={handleClearLookupError}>
-            Reintentar
-          </button>
-        </div>
-      )}
-
-      {tickets !== null && !error && tickets.length === 0 && (
-        <div className="empty-state">
-          <p>No se encontraron entradas con ese email.</p>
-          <p>Verifica que el email sea correcto.</p>
-          <Link to="/events" className="button-link">
-            Ver eventos
-          </Link>
-        </div>
-      )}
-
-      {tickets && tickets.length > 0 && (
-        <div className="tickets-result">
-          <h2>
-            {tickets.length === 1
-              ? '1 entrada encontrada'
-              : `${tickets.length} entradas encontradas`}
-          </h2>
-          <div className="tickets-grid">
-            {tickets.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Resend section ───────────────────────────────────────────── */}
-
-      <section className="resend-section">
-        <header className="page-header">
-          <h2>Reenviar entradas</h2>
-          <p>Si no encuentras tus entradas, podemos reenviartelas por email</p>
+      <section>
+        <header className="text-center mb-6">
+          <h1 className="text-3xl font-display font-bold text-text-1 mb-2">
+            Buscar mis entradas
+          </h1>
+          <p className="text-text-2">
+            Ingresa tu email para recuperar tus entradas
+          </p>
         </header>
 
-        <form onSubmit={handleResendSubmit} className="lookup-form" noValidate>
-          <div className="form-group">
-            <label htmlFor="resend-email">Email</label>
-            <input
-              id="resend-email"
-              type="email"
-              value={resendEmail}
-              onChange={(e) => {
-                setResendEmail(e.target.value)
-                if (resendErrors.email)
-                  setResendErrors((prev) => ({ ...prev, email: '' }))
-              }}
-              placeholder="tu@email.com"
-              disabled={resendLoading}
-              aria-invalid={resendErrors.email ? 'true' : undefined}
-            />
-            {resendErrors.email && (
-              <span className="form-error" role="alert">
-                {resendErrors.email}
-              </span>
-            )}
-          </div>
-
-          <div className="form-group captcha-group">
-            <label className="captcha-label">
+        <GlassCard>
+          <form onSubmit={handleLookupSubmit} noValidate className="space-y-4">
+            <div>
+              <label htmlFor="lookup-email" className="sr-only">
+                Email
+              </label>
               <input
-                type="checkbox"
-                checked={captchaChecked}
-                onChange={(e) => setCaptchaChecked(e.target.checked)}
-                disabled={resendLoading}
-                aria-label="No soy un robot"
+                id="lookup-email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (errors.email) setErrors((prev) => ({ ...prev, email: '' }))
+                }}
+                placeholder="tu@email.com"
+                disabled={loading}
+                aria-invalid={errors.email ? 'true' : undefined}
+                className={`w-full px-4 py-2.5 bg-surface-elevated border rounded-lg
+                  text-text-1 placeholder:text-text-muted
+                  focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                  transition-all duration-200
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                  ${errors.email ? 'border-rose-400' : 'border-white/10'}`}
               />
-              <span className="captcha-text">No soy un robot</span>
-            </label>
-            {/* TODO: Replace checkbox CAPTCHA with Cloudflare Turnstile widget.
-               Load turnstile script, use Turnstile's onSuccess callback to set captchaChecked,
-               and pass the real Turnstile token as captchaToken in the API request. */}
-            <p className="captcha-placeholder-note">
-              CAPTCHA placeholder — reemplazar por Turnstile
-            </p>
-          </div>
+              {errors.email && (
+                <p
+                  className="text-rose-400 text-xs mt-1"
+                  role="alert"
+                >
+                  {errors.email}
+                </p>
+              )}
+            </div>
 
-          <button
-            type="submit"
-            className="button-primary"
-            disabled={resendLoading || !captchaChecked}
-          >
-            {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
-          </button>
-        </form>
+            <Button
+              type="submit"
+              variant="gradient"
+              size="lg"
+              loading={loading}
+              className="w-full"
+            >
+              {loading ? 'Buscando...' : 'Buscar entradas'}
+            </Button>
+          </form>
+        </GlassCard>
 
-        {resendMessage && (
-          <div className="resend-message" role="status">
-            <p>{resendMessage}</p>
+        {/* Lookup error */}
+        {error && (
+          <div className="mt-4">
+            <GlassCard className="text-center py-6">
+              <p className="text-text-1 mb-3">{error}</p>
+              <Button variant="secondary" onClick={handleClearLookupError}>
+                Reintentar
+              </Button>
+            </GlassCard>
           </div>
         )}
 
-        {resendError && (
-          <div className="error-container" role="alert">
-            <p>{resendError}</p>
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="mt-6 space-y-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <TicketCardSkeleton key={i} />
+            ))}
+          </div>
+        )}
+
+        {/* Empty results */}
+        {tickets !== null && !error && tickets.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6"
+          >
+            <EmptyState
+              icon="🎫"
+              title="No se encontraron entradas"
+              description="No se encontraron entradas con ese email. Verifica que el email sea correcto."
+              action={
+                <Link to="/events">
+                  <Button variant="secondary">Ver eventos</Button>
+                </Link>
+              }
+            />
+          </motion.div>
+        )}
+
+        {/* Ticket results */}
+        {tickets && tickets.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
+              {tickets.length === 1
+                ? '1 entrada encontrada'
+                : `${tickets.length} entradas encontradas`}
+            </h2>
+            <div className="space-y-4">
+              {tickets.map((ticket) => (
+                <TicketCard key={ticket.id} ticket={ticket} />
+              ))}
+            </div>
           </div>
         )}
       </section>
-    </div>
+
+      {/* ── Resend section ──────────────────────────────────────────── */}
+
+      <section>
+        <GlassCard>
+          <header className="mb-4">
+            <h2 className="text-xl font-heading font-semibold text-text-1 mb-1">
+              Reenviar entradas
+            </h2>
+            <p className="text-text-2 text-sm">
+              Si no encuentras tus entradas, podemos reenviartelas por email
+            </p>
+          </header>
+
+          <form onSubmit={handleResendSubmit} noValidate className="space-y-4">
+            <div>
+              <label htmlFor="resend-email" className="sr-only">
+                Email
+              </label>
+              <input
+                id="resend-email"
+                type="email"
+                value={resendEmail}
+                onChange={(e) => {
+                  setResendEmail(e.target.value)
+                  if (resendErrors.email)
+                    setResendErrors((prev) => ({ ...prev, email: '' }))
+                }}
+                placeholder="tu@email.com"
+                disabled={resendLoading}
+                aria-invalid={resendErrors.email ? 'true' : undefined}
+                className={`w-full px-4 py-2.5 bg-surface-elevated border rounded-lg
+                  text-text-1 placeholder:text-text-muted
+                  focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                  transition-all duration-200
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                  ${resendErrors.email ? 'border-rose-400' : 'border-white/10'}`}
+              />
+              {resendErrors.email && (
+                <p
+                  className="text-rose-400 text-xs mt-1"
+                  role="alert"
+                >
+                  {resendErrors.email}
+                </p>
+              )}
+            </div>
+
+            {/* CAPTCHA */}
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={captchaChecked}
+                  onChange={(e) => setCaptchaChecked(e.target.checked)}
+                  disabled={resendLoading}
+                  aria-label="No soy un robot"
+                  className="w-4 h-4 rounded border-white/30 bg-surface-elevated
+                    text-brand-1 focus:ring-brand-1 focus:ring-2 focus:ring-offset-0"
+                />
+                <span className="text-text-2 text-sm">No soy un robot</span>
+              </label>
+              {/* TODO: Replace checkbox CAPTCHA with Cloudflare Turnstile widget. */}
+              <p className="text-text-muted text-xs mt-2">
+                CAPTCHA — sera reemplazado por Turnstile
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              variant="secondary"
+              size="lg"
+              loading={resendLoading}
+              disabled={resendLoading || !captchaChecked}
+              className="w-full"
+            >
+              {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
+            </Button>
+          </form>
+
+          {/* Resend feedback */}
+          {resendMessage && (
+            <div className="mt-4">
+              <Badge variant="success" className="w-full justify-center px-4 py-2">
+                {resendMessage}
+              </Badge>
+            </div>
+          )}
+
+          {resendError && (
+            <div className="mt-4">
+              <Badge variant="error" className="w-full justify-center px-4 py-2">
+                {resendError}
+              </Badge>
+            </div>
+          )}
+        </GlassCard>
+      </section>
+    </motion.div>
   )
 }

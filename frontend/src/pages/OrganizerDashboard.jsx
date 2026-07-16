@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Button from '../components/Button.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
+import { fadeIn } from '../lib/motion.js'
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -17,30 +22,27 @@ function formatDate(dateString) {
 
 function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) {
   return (
-    <div className="delete-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-      <div className="delete-dialog">
-        <h2 id="delete-dialog-title">Confirmar eliminacion</h2>
-        <p>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+    >
+      <div className="glass-surface p-8 max-w-md w-full shadow-xl text-left rounded-[--radius-glass]">
+        <h2 id="delete-dialog-title" className="text-xl font-display font-semibold text-text-1 mb-3">
+          Confirmar eliminacion
+        </h2>
+        <p className="text-text-2 mb-6 leading-relaxed">
           Estas seguro que deseas eliminar el evento <strong>{eventName}</strong>?
           Esta accion no se puede deshacer.
         </p>
-        <div className="delete-dialog-actions">
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={onCancel}
-            disabled={deleting}
-          >
+        <div className="flex gap-3 justify-end">
+          <Button variant="secondary" onClick={onCancel} disabled={deleting}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            className="button-danger"
-            onClick={onConfirm}
-            disabled={deleting}
-          >
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={deleting}>
             {deleting ? 'Eliminando...' : 'Eliminar'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -122,109 +124,128 @@ export default function OrganizerDashboard() {
   }
 
   return (
-    <div className="organizer-dashboard-page">
-      <header className="page-header">
-        <h1>Dashboard</h1>
-        <p>Gestiona tus eventos y consulta las metricas</p>
+    <motion.div
+      variants={fadeIn}
+      initial="initial"
+      animate="animate"
+      className="max-w-[1100px] mx-auto px-5 py-10"
+    >
+      <header className="mb-8">
+        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
+          Dashboard
+        </h1>
+        <p className="text-text-2 text-center">Gestiona tus eventos y consulta las metricas</p>
       </header>
 
       {feedback.message && (
         <div
-          className={`feedback-message feedback-message--${feedback.type}`}
+          className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+          }`}
           role={feedback.type === 'error' ? 'alert' : 'status'}
         >
           {feedback.message}
         </div>
       )}
 
-      <div className="dashboard-toolbar">
-        <button
-          type="button"
-          className="button-primary"
-          onClick={() => navigate('/organizer/events/new')}
-        >
+      <div className="flex justify-end mb-6">
+        <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
           + Crear evento
-        </button>
+        </Button>
       </div>
 
       {loading ? (
-        <div className="dashboard-loading">
-          <p>Cargando metricas...</p>
-        </div>
+        <GlassCard className="p-6 space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex gap-4 items-center">
+              <Skeleton width="30%" height="18px" variant="text" />
+              <Skeleton width="20%" height="18px" variant="text" />
+              <Skeleton width="15%" height="18px" variant="text" />
+              <Skeleton width="15%" height="18px" variant="text" />
+              <div className="flex gap-2 ml-auto">
+                <Skeleton width="64px" height="32px" variant="rectangular" />
+                <Skeleton width="64px" height="32px" variant="rectangular" />
+              </div>
+            </div>
+          ))}
+        </GlassCard>
       ) : error ? (
-        <div className="error-container" role="alert">
-          <p>{error}</p>
-          <button type="button" className="button-secondary" onClick={handleRetry}>
+        <GlassCard className="text-center py-12" role="alert">
+          <p className="text-text-1 mb-3">{error}</p>
+          <Button variant="secondary" onClick={handleRetry}>
             Reintentar
-          </button>
-        </div>
+          </Button>
+        </GlassCard>
       ) : metrics.length === 0 ? (
-        <div className="empty-state">
-          <p>No tenes eventos creados todavia.</p>
-          <button
-            type="button"
-            className="button-primary"
-            onClick={() => navigate('/organizer/events/new')}
-          >
+        <GlassCard className="text-center py-12">
+          <p className="text-text-2 mb-4">No tenes eventos creados todavia.</p>
+          <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
             Crear tu primer evento
-          </button>
-        </div>
+          </Button>
+        </GlassCard>
       ) : (
-        <div className="dashboard-table-container">
-          <table className="dashboard-table">
-            <thead>
-              <tr>
-                <th>Evento</th>
-                <th>Fecha</th>
-                <th>Entradas vendidas</th>
-                <th>Ingresos</th>
-                <th>Inventario</th>
-                <th>Escaneados</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.map((m) => (
-                <tr key={m.eventId}>
-                  <td data-label="Evento">{m.eventName}</td>
-                  <td data-label="Fecha">{formatDate(m.eventDate)}</td>
-                  <td data-label="Entradas vendidas">{m.ticketsSold}</td>
-                  <td data-label="Ingresos">{formatCurrency(m.totalRevenue)}</td>
-                  <td data-label="Inventario">{m.remainingInventory}</td>
-                  <td data-label="Escaneados">{m.ticketsScanned}</td>
-                  <td data-label="Acciones">
-                    <div className="dashboard-actions">
-                      <button
-                        type="button"
-                        className="button-secondary dashboard-action-btn"
-                        onClick={() => navigate(`/organizer/events/${m.eventId}`)}
-                        aria-label={`Editar ${m.eventName}`}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="button-secondary dashboard-action-btn"
-                        onClick={() => navigate(`/organizer/events/${m.eventId}/metrics`)}
-                        aria-label={`Ver metricas de ${m.eventName}`}
-                      >
-                        Metricas
-                      </button>
-                      <button
-                        type="button"
-                        className="button-danger dashboard-action-btn"
-                        onClick={() => handleDeleteClick(m)}
-                        aria-label={`Eliminar ${m.eventName}`}
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </td>
+        <GlassCard className="p-0 sm:p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b-2 border-border">
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Entradas vendidas</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ingresos</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Inventario</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Escaneados</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {metrics.map((m) => (
+                  <tr
+                    key={m.eventId}
+                    className="border-b border-border hover:bg-surface-elevated transition-colors"
+                  >
+                    <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{m.eventName}</td>
+                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(m.eventDate)}</td>
+                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Entradas vendidas">{m.ticketsSold}</td>
+                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ingresos">{formatCurrency(m.totalRevenue)}</td>
+                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Inventario">{m.remainingInventory}</td>
+                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Escaneados">{m.ticketsScanned}</td>
+                    <td className="py-3.5 px-4 align-middle" data-label="Acciones">
+                      <div className="flex gap-2 flex-nowrap">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/organizer/events/${m.eventId}`)}
+                          aria-label={`Editar ${m.eventName}`}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/organizer/events/${m.eventId}/metrics`)}
+                          aria-label={`Ver metricas de ${m.eventName}`}
+                        >
+                          Metricas
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteClick(m)}
+                          aria-label={`Eliminar ${m.eventName}`}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
       )}
 
       {deleteTarget && (
@@ -235,6 +256,6 @@ export default function OrganizerDashboard() {
           deleting={deleting}
         />
       )}
-    </div>
+    </motion.div>
   )
 }

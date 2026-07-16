@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import EventForm from '../components/EventForm.jsx'
 import { getErrorMessage } from '../lib/apiError.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Button from '../components/Button.jsx'
+import { fadeIn } from '../lib/motion.js'
 
 export default function OrganizerEventDetail() {
   const { id } = useParams()
@@ -45,32 +49,32 @@ export default function OrganizerEventDetail() {
 
   if (loading) {
     return (
-      <div className="organizer-event-page">
-        <p>Cargando evento...</p>
-      </div>
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+        <GlassCard className="text-center py-12">
+          <p className="text-text-muted">Cargando evento...</p>
+        </GlassCard>
+      </motion.div>
     )
   }
 
   if (error) {
     return (
-      <div className="organizer-event-page">
-        <div className="error-container" role="alert">
-          <p>{error}</p>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={() => navigate('/organizer/dashboard')}
-          >
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+        <GlassCard className="text-center py-12" role="alert">
+          <p className="text-text-1 mb-3">{error}</p>
+          <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
             Volver al dashboard
-          </button>
-        </div>
-      </div>
+          </Button>
+        </GlassCard>
+      </motion.div>
     )
   }
 
   return (
-    <div className="organizer-event-page">
-      <h1>Editar evento</h1>
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-8">
+        Editar evento
+      </h1>
       {eventData && (
         <EventForm
           mode="edit"
@@ -78,6 +82,6 @@ export default function OrganizerEventDetail() {
           onSuccess={handleSuccess}
         />
       )}
-    </div>
+    </motion.div>
   )
 }

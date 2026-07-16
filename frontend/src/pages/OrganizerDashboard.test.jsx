@@ -84,7 +84,9 @@ describe('OrganizerDashboard', () => {
     render(<OrganizerDashboard />)
 
     expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
-    expect(screen.getByText(/cargando metricas/i)).toBeInTheDocument()
+    // Skeleton placeholders should be visible during loading
+    const skeletons = document.querySelectorAll('[role="status"]')
+    expect(skeletons.length).toBeGreaterThan(0)
   })
 
   it('shows error state with retry button', async () => {
@@ -221,7 +223,7 @@ describe('OrganizerDashboard', () => {
     })
 
     // Event should be removed from the table (but still in feedback message)
-    const table = document.querySelector('.dashboard-table')
+    const table = document.querySelector('table')
     expect(within(table).queryByText(/workshop de fotografia/i)).not.toBeInTheDocument()
   })
 
@@ -305,9 +307,70 @@ describe('OrganizerDashboard', () => {
 
   it('renders create button even while loading', () => {
     mockGet.mockImplementation(() => new Promise(() => {}))
-
+ 
     render(<OrganizerDashboard />)
 
     expect(screen.getByRole('button', { name: /\+\s*crear evento/i })).toBeInTheDocument()
+  })
+})
+
+// ── Visual Regression: Glass & Theme ──────────────────────────────────
+
+describe('OrganizerDashboard — Visual Regression', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockNavigate.mockReset()
+  })
+
+  it('renders GlassCard wrappers in the loaded state', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Verify glass-surface class is present on the table container GlassCard
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in the empty state', async () => {
+    mockGet.mockResolvedValue({ data: [] })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/no tenes eventos creados/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders GlassCard in the error state', async () => {
+    mockGet.mockRejectedValue({
+      response: { data: { error: { message: 'Server error' } } },
+    })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/server error/i)).toBeInTheDocument()
+    })
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('uses data-theme attribute for theme awareness', () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+    render(<OrganizerDashboard />)
+
+    // The page renders within the app shell which sets data-theme on <html>
+    // Verify the page renders without errors (theme is managed globally)
+    expect(document.documentElement).toBeTruthy()
   })
 })

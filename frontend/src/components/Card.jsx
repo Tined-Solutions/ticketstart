@@ -2,6 +2,7 @@ export default function Card({
   children,
   header,
   footer,
+  glass = false,
   padding = 'md',
   className = '',
   ...rest
@@ -16,9 +17,13 @@ export default function Card({
     lg: 'p-8',
   }
 
+  const baseClasses = glass
+    ? 'glass-surface'
+    : 'border border-border rounded-xl bg-surface'
+
   return (
     <div
-      className={`border border-border rounded-xl bg-white overflow-hidden ${className}`}
+      className={`${baseClasses} overflow-hidden ${className}`}
       style={style}
       id={id}
       title={title}
@@ -27,7 +32,7 @@ export default function Card({
       hidden={hidden}
     >
       {header && (
-        <div className="px-6 py-4 border-b border-border font-semibold text-gray-900">
+        <div className="px-6 py-4 border-b border-border font-semibold text-text-1 font-heading">
           {header}
         </div>
       )}
@@ -37,7 +42,7 @@ export default function Card({
       </div>
 
       {footer && (
-        <div className="px-6 py-4 border-t border-border bg-neutral-50">
+        <div className="px-6 py-4 border-t border-border bg-canvas">
           {footer}
         </div>
       )}

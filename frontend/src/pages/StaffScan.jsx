@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Html5Qrcode } from 'html5-qrcode'
 import apiClient from '../api/client.js'
+import Badge from '../components/ui/Badge.jsx'
+import { fadeInScale } from '../lib/motion.js'
 
 // ---------------------------------------------------------------------------
 // Audio helpers
@@ -237,15 +240,22 @@ export default function StaffScan() {
   // -----------------------------------------------------------------------
 
   return (
-    <div className="staff-scan-page">
+    <motion.div
+      variants={fadeInScale}
+      initial="initial"
+      animate="animate"
+      className="max-w-[720px] mx-auto px-5 py-10"
+    >
       {/* Page header */}
-      <header className="page-header">
-        <h1>Escanear QR</h1>
-        <p>Escanee los códigos QR de los tickets para validar su entrada al evento.</p>
+      <header className="mb-8 text-center">
+        <h1 className="text-4xl font-display font-bold text-text-1 mb-2">
+          Escanear QR
+        </h1>
+        <p className="text-text-2">Escanee los codigos QR de los tickets para validar su entrada al evento.</p>
       </header>
 
       {/* Event ID input & controls */}
-      <div className="scanner-controls">
+      <div className="glass-surface p-6 mb-6">
         <div className="form-group">
           <label htmlFor="event-id">ID del Evento</label>
           <input
@@ -260,10 +270,19 @@ export default function StaffScan() {
             placeholder="00000000-0000-0000-0000-000000000000"
             disabled={scanning}
           />
-          {error && <p className="form-error" role="alert">{error}</p>}
+          {error && (
+            <motion.p
+              className="form-error"
+              role="alert"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {error}
+            </motion.p>
+          )}
         </div>
 
-        <div className="scanner-buttons">
+        <div className="flex gap-3 justify-center flex-wrap mt-4">
           {!scanning && !result && (
             <button onClick={startScanning} className="button-primary">
               Iniciar Escaneo
@@ -286,47 +305,69 @@ export default function StaffScan() {
       <div
         id="qr-reader"
         className={`qr-reader-container${scanning ? ' active' : ''}`}
-        aria-label={scanning ? 'Cámara activa — escaneando' : undefined}
+        aria-label={scanning ? 'Camara activa — escaneando' : undefined}
       />
 
       {/* Result overlay */}
-      {result && (
-        <div className={`scan-result scan-result--${result.type}`} role="alert">
-          <span className="scan-result__icon">
-            {result.type === 'success' ? '✓' : '✗'}
-          </span>
-          <p className="scan-result__message">{result.message}</p>
-          {result.ticket && (
-            <dl className="scan-result__details">
-              <dt>Evento</dt>
-              <dd>{result.ticket.eventName}</dd>
-              <dt>Tipo</dt>
-              <dd>{result.ticket.ticketTypeName}</dd>
-              <dt>Comprador</dt>
-              <dd>{result.ticket.purchaserEmail}</dd>
-            </dl>
-          )}
-        </div>
-      )}
+      <AnimatePresence>
+        {result && (
+          <motion.div
+            variants={fadeInScale}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`text-center p-6 rounded-xl mb-6 ${
+              result.type === 'success'
+                ? 'bg-emerald-500/10 border-2 border-emerald-500'
+                : 'bg-rose-500/10 border-2 border-rose-500'
+            }`}
+            role="alert"
+          >
+            <span
+              className={`inline-flex items-center justify-center w-14 h-14 rounded-full text-2xl font-bold mb-3 ${
+                result.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+              }`}
+              aria-hidden="true"
+            >
+              {result.type === 'success' ? '\u2713' : '\u2717'}
+            </span>
+            <p className="text-lg font-semibold text-text-1 mb-4">{result.message}</p>
+            {result.ticket && (
+              <dl className="grid grid-cols-[auto_1fr] gap-1 gap-x-3 text-left max-w-sm mx-auto p-3 bg-surface-elevated rounded-lg">
+                <dt className="font-medium text-text-1">Evento</dt>
+                <dd className="text-text-2 m-0">{result.ticket.eventName}</dd>
+                <dt className="font-medium text-text-1">Tipo</dt>
+                <dd className="text-text-2 m-0">{result.ticket.ticketTypeName}</dd>
+                <dt className="font-medium text-text-1">Comprador</dt>
+                <dd className="text-text-2 m-0">{result.ticket.purchaserEmail}</dd>
+              </dl>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Scan history */}
       {history.length > 0 && (
-        <section className="scan-history">
-          <h2>Historial de Escaneos ({history.length})</h2>
-          <div className="history-list" role="list">
+        <section className="mt-8">
+          <h2 className="text-xl font-display font-semibold text-text-1 mb-4">
+            Historial de Escaneos ({history.length})
+          </h2>
+          <div className="flex flex-col gap-2" role="list">
             {history.map((entry, i) => (
               <div
                 key={`${entry.timestamp}-${i}`}
-                className={`history-item history-item--${entry.isValid ? 'valid' : 'invalid'}`}
+                className={`flex items-center gap-2 py-2.5 px-3.5 rounded-lg text-sm border ${
+                  entry.isValid ? 'border-l-4 border-l-emerald-500 border-border' : 'border-l-4 border-l-rose-500 border-border'
+                }`}
                 role="listitem"
               >
-                <span className="history-item__time">
+                <span className="font-mono text-text-2 whitespace-nowrap min-w-[4.5rem]">
                   {new Date(entry.timestamp).toLocaleTimeString('es-AR')}
                 </span>
-                <span className={`history-item__status badge badge--${entry.isValid ? 'success' : 'danger'}`}>
-                  {entry.isValid ? 'Válido' : 'Inválido'}
-                </span>
-                <span className="history-item__detail">
+                <Badge variant={entry.isValid ? 'success' : 'error'}>
+                  {entry.isValid ? 'Valido' : 'Invalido'}
+                </Badge>
+                <span className="flex-1 text-text-2 overflow-hidden text-ellipsis whitespace-nowrap">
                   {entry.ticket
                     ? `${entry.ticket.eventName} — ${entry.ticket.ticketTypeName}`
                     : entry.error}
@@ -336,6 +377,6 @@ export default function StaffScan() {
           </div>
         </section>
       )}
-    </div>
+    </motion.div>
   )
 }

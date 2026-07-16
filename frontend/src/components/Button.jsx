@@ -8,6 +8,10 @@ const variantClasses = {
     'bg-danger text-white hover:opacity-90 focus-visible:ring-danger',
   ghost:
     'bg-transparent text-neutral-700 hover:bg-neutral-100 focus-visible:ring-primary',
+  glass:
+    'backdrop-blur-md bg-white/10 border border-white/20 hover:bg-white/20 text-text-1 focus-visible:ring-brand-1',
+  gradient:
+    'bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white focus-visible:ring-brand-1',
 }
 
 const sizeClasses = {

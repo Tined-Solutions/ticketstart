@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Badge from '../components/ui/Badge.jsx'
+import Button from '../components/Button.jsx'
+import { fadeIn } from '../lib/motion.js'
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -24,32 +29,42 @@ function roleLabel(role) {
   return labels[role] || role
 }
 
+function roleBadgeVariant(role) {
+  switch (role) {
+    case 'Admin':
+      return 'error'
+    case 'Staff':
+      return 'success'
+    case 'Organizador':
+      return 'info'
+    default:
+      return 'info'
+  }
+}
+
 function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) {
   return (
-    <div className="delete-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-      <div className="delete-dialog">
-        <h2 id="delete-dialog-title">Confirmar eliminacion</h2>
-        <p>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+    >
+      <div className="glass-surface p-8 max-w-md w-full shadow-xl text-left rounded-[--radius-glass]">
+        <h2 id="delete-dialog-title" className="text-xl font-display font-semibold text-text-1 mb-3">
+          Confirmar eliminacion
+        </h2>
+        <p className="text-text-2 mb-6 leading-relaxed">
           Estas seguro que deseas eliminar el evento <strong>{eventName}</strong>?
           Esta accion no se puede deshacer.
         </p>
-        <div className="delete-dialog-actions">
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={onCancel}
-            disabled={deleting}
-          >
+        <div className="flex gap-3 justify-end">
+          <Button variant="secondary" onClick={onCancel} disabled={deleting}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            className="button-danger"
-            onClick={onConfirm}
-            disabled={deleting}
-          >
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={deleting}>
             {deleting ? 'Eliminando...' : 'Eliminar'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -230,15 +245,21 @@ export default function AdminPanel() {
   }
 
   return (
-    <div className="admin-panel-page">
-      <header className="page-header">
-        <h1>Panel de administracion</h1>
-        <p>Gestiona todos los eventos y usuarios del sistema</p>
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[1100px] mx-auto px-5 py-10">
+      <header className="mb-8">
+        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
+          Panel de administracion
+        </h1>
+        <p className="text-text-2 text-center">Gestiona todos los eventos y usuarios del sistema</p>
       </header>
 
       {feedback.message && (
         <div
-          className={`feedback-message feedback-message--${feedback.type}`}
+          className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+          }`}
           role={feedback.type === 'error' ? 'alert' : 'status'}
         >
           {feedback.message}
@@ -246,65 +267,65 @@ export default function AdminPanel() {
       )}
 
       {loading ? (
-        <div className="dashboard-loading">
-          <p>Cargando panel de administracion...</p>
-        </div>
+        <GlassCard className="text-center py-12">
+          <p className="text-text-muted">Cargando panel de administracion...</p>
+        </GlassCard>
       ) : error ? (
-        <div className="error-container" role="alert">
-          <p>{error}</p>
-          <button type="button" className="button-secondary" onClick={handleRetry}>
+        <GlassCard className="text-center py-12" role="alert">
+          <p className="text-text-1 mb-3">{error}</p>
+          <Button variant="secondary" onClick={handleRetry}>
             Reintentar
-          </button>
-        </div>
+          </Button>
+        </GlassCard>
       ) : (
         <>
           {/* ── Events section ─────────────────────────────── */}
-          <section className="admin-section">
-            <h2>Eventos ({events.length})</h2>
+          <GlassCard className="p-6 mb-12">
+            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
+              Eventos ({events.length})
+            </h2>
 
             {events.length === 0 ? (
-              <div className="empty-state">
-                <p>No hay eventos en el sistema.</p>
-              </div>
+              <p className="text-text-2 text-center py-8">No hay eventos en el sistema.</p>
             ) : (
-              <div className="dashboard-table-container">
-                <table className="dashboard-table">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr>
-                      <th>Evento</th>
-                      <th>Fecha</th>
-                      <th>Ubicacion</th>
-                      <th>Organizador</th>
-                      <th>Acciones</th>
+                    <tr className="border-b-2 border-border">
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ubicacion</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Organizador</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {events.map((event) => (
-                      <tr key={event.id}>
-                        <td data-label="Evento">{event.name}</td>
-                        <td data-label="Fecha">{formatDate(event.date)}</td>
-                        <td data-label="Ubicacion">{event.location || '—'}</td>
-                        <td data-label="Organizador">
+                      <tr key={event.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
+                        <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{event.name}</td>
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(event.date)}</td>
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ubicacion">{event.location || '\u2014'}</td>
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Organizador">
                           {getOrganizerEmail(event.organizerId)}
                         </td>
-                        <td data-label="Acciones">
-                          <div className="dashboard-actions">
-                            <button
-                              type="button"
-                              className="button-secondary dashboard-action-btn"
+                        <td className="py-3.5 px-4 align-middle" data-label="Acciones">
+                          <div className="flex gap-2 flex-nowrap">
+                            <Button
+                              variant="secondary"
+                              size="sm"
                               onClick={() => navigate(`/organizer/events/${event.id}`)}
                               aria-label={`Editar ${event.name}`}
                             >
                               Editar
-                            </button>
-                            <button
-                              type="button"
-                              className="button-danger dashboard-action-btn"
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
                               onClick={() => handleDeleteClick(event)}
                               aria-label={`Eliminar ${event.name}`}
                             >
                               Eliminar
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -313,129 +334,135 @@ export default function AdminPanel() {
                 </table>
               </div>
             )}
-          </section>
+          </GlassCard>
 
           {/* ── Users section ──────────────────────────────── */}
-          <section className="admin-section">
-            <h2>Usuarios ({users.length})</h2>
+          <GlassCard className="p-6 mb-12">
+            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
+              Usuarios ({users.length})
+            </h2>
 
             {users.length === 0 ? (
-              <div className="empty-state">
-                <p>No hay usuarios registrados.</p>
-              </div>
+              <p className="text-text-2 text-center py-8">No hay usuarios registrados.</p>
             ) : (
-              <div className="dashboard-table-container">
-                <table className="dashboard-table">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr>
-                      <th>Email</th>
-                      <th>Rol</th>
-                      <th>Fecha de registro</th>
+                    <tr className="border-b-2 border-border">
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Email</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Rol</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((user) => (
-                      <tr key={user.id}>
-                        <td data-label="Email">{user.email}</td>
-                        <td data-label="Rol">
-                          <span className={`badge ${roleBadgeClass(user.role)}`}>
+                      <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
+                        <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Email">{user.email}</td>
+                        <td className="py-3.5 px-4 align-middle" data-label="Rol">
+                          <Badge variant={roleBadgeVariant(user.role)}>
                             {roleLabel(user.role)}
-                          </span>
+                          </Badge>
                         </td>
-                        <td data-label="Fecha de registro">
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha de registro">
                           {formatDate(user.createdAt)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-            </div>
-          )}
-        </section>
+              </div>
+            )}
+          </GlassCard>
 
-        {/* ── User Creation section ─────────────────────── */}
-        <section className="admin-section">
-          <h2>Crear usuario</h2>
+          {/* ── User Creation section ─────────────────────── */}
+          <GlassCard className="p-6">
+            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
+              Crear usuario
+            </h2>
 
-          {createFeedback.message && (
-            <div
-              className={`feedback-message feedback-message--${createFeedback.type}`}
-              role={createFeedback.type === 'error' ? 'alert' : 'status'}
-            >
-              {createFeedback.message}
-            </div>
-          )}
-
-          <form onSubmit={handleCreateUser} noValidate>
-            <div className="form-group">
-              <label htmlFor="new-user-name">Nombre</label>
-              <input
-                id="new-user-name"
-                type="text"
-                value={formData.name}
-                onChange={(e) => updateFormField('name', e.target.value)}
-                disabled={creating}
-                autoComplete="name"
-              />
-              {formErrors.name && (
-                <span className="form-error">{formErrors.name}</span>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="new-user-email">Email</label>
-              <input
-                id="new-user-email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => updateFormField('email', e.target.value)}
-                disabled={creating}
-                autoComplete="email"
-              />
-              {formErrors.email && (
-                <span className="form-error">{formErrors.email}</span>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="new-user-password">Contrasena</label>
-              <input
-                id="new-user-password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => updateFormField('password', e.target.value)}
-                disabled={creating}
-                autoComplete="new-password"
-              />
-              {formErrors.password && (
-                <span className="form-error">{formErrors.password}</span>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="new-user-role">Rol</label>
-              <select
-                id="new-user-role"
-                value={formData.role}
-                onChange={(e) => updateFormField('role', e.target.value)}
-                disabled={creating}
+            {createFeedback.message && (
+              <div
+                className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+                  createFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                }`}
+                role={createFeedback.type === 'error' ? 'alert' : 'status'}
               >
-                <option value="">Seleccionar rol</option>
-                <option value="Organizador">Organizador</option>
-                <option value="Staff">Staff</option>
-              </select>
-              {formErrors.role && (
-                <span className="form-error">{formErrors.role}</span>
-              )}
-            </div>
+                {createFeedback.message}
+              </div>
+            )}
 
-            <button type="submit" className="button-primary" disabled={creating}>
-              {creating ? 'Creando...' : 'Crear usuario'}
-            </button>
-          </form>
-        </section>
-      </>
-    )}
+            <form onSubmit={handleCreateUser} noValidate>
+              <div className="form-group">
+                <label htmlFor="new-user-name">Nombre</label>
+                <input
+                  id="new-user-name"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => updateFormField('name', e.target.value)}
+                  disabled={creating}
+                  autoComplete="name"
+                />
+                {formErrors.name && (
+                  <span className="form-error">{formErrors.name}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="new-user-email">Email</label>
+                <input
+                  id="new-user-email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => updateFormField('email', e.target.value)}
+                  disabled={creating}
+                  autoComplete="email"
+                />
+                {formErrors.email && (
+                  <span className="form-error">{formErrors.email}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="new-user-password">Contrasena</label>
+                <input
+                  id="new-user-password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => updateFormField('password', e.target.value)}
+                  disabled={creating}
+                  autoComplete="new-password"
+                />
+                {formErrors.password && (
+                  <span className="form-error">{formErrors.password}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="new-user-role">Rol</label>
+                <select
+                  id="new-user-role"
+                  value={formData.role}
+                  onChange={(e) => updateFormField('role', e.target.value)}
+                  disabled={creating}
+                >
+                  <option value="">Seleccionar rol</option>
+                  <option value="Organizador">Organizador</option>
+                  <option value="Staff">Staff</option>
+                </select>
+                {formErrors.role && (
+                  <span className="form-error">{formErrors.role}</span>
+                )}
+              </div>
+
+              <Button type="submit" variant="primary" disabled={creating}>
+                {creating ? 'Creando...' : 'Crear usuario'}
+              </Button>
+            </form>
+          </GlassCard>
+        </>
+      )}
 
       {deleteTarget && (
         <DeleteConfirmationDialog
@@ -445,19 +472,6 @@ export default function AdminPanel() {
           deleting={deleting}
         />
       )}
-    </div>
+    </motion.div>
   )
-}
-
-function roleBadgeClass(role) {
-  switch (role) {
-    case 'Admin':
-      return 'badge--danger'
-    case 'Staff':
-      return 'badge--success'
-    case 'Organizador':
-      return 'badge--info'
-    default:
-      return ''
-  }
 }

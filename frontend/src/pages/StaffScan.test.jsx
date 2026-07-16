@@ -500,9 +500,9 @@ describe('StaffScan', () => {
     expect(historyItems).toHaveLength(3)
 
     // Most recent is first
-    expect(historyItems[0].textContent).toMatch(/inválido/i)
-    expect(historyItems[1].textContent).toMatch(/inválido/i)
-    expect(historyItems[2].textContent).toMatch(/válido/i)
+    expect(historyItems[0].textContent).toMatch(/invalido/i)
+    expect(historyItems[1].textContent).toMatch(/invalido/i)
+    expect(historyItems[2].textContent).toMatch(/valido/i)
   })
 
   // -- Resetting after scan -----------------------------------------------
@@ -597,5 +597,83 @@ describe('StaffScan', () => {
     expect(parsed.length).toBeGreaterThan(0)
     expect(parsed[0].eventId).toBe(eventId)
     expect(parsed[0].isValid).toBe(true)
+  })
+})
+
+// ── Visual Regression: Glass & Theme ──────────────────────────────────
+
+describe('StaffScan — Visual Regression', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPost.mockReset()
+    capturedSuccessCallback = null
+    fakeIsScanning = false
+    shouldFailCamera = false
+    Object.keys(sessionStore).forEach((k) => delete sessionStore[k])
+  })
+
+  it('renders glass-surface on the controls panel', () => {
+    render(<StaffScan />)
+
+    const glassElements = document.querySelectorAll('.glass-surface')
+    expect(glassElements.length).toBeGreaterThanOrEqual(1) // controls container
+  })
+
+  it('renders Badge components in scan history after a scan', async () => {
+    mockPost.mockResolvedValueOnce(successResponse)
+
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await startScanning(user)
+    await act(async () => {
+      simulateQrScan()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+    })
+
+    // History should show Badge with "Valido" text
+    expect(screen.getByText(/historial de escaneos/i)).toBeInTheDocument()
+    expect(screen.getByText('Valido')).toBeInTheDocument()
+  })
+
+  it('result overlay appears after scan with animated entry', async () => {
+    mockPost.mockResolvedValueOnce(successResponse)
+
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await startScanning(user)
+    await act(async () => {
+      simulateQrScan()
+    })
+
+    const resultAlert = await screen.findByRole('alert')
+    expect(resultAlert).toBeInTheDocument()
+    expect(resultAlert.textContent).toMatch(/ticket válido/i)
+  })
+
+  it('result overlay clears when rescanning', async () => {
+    mockPost.mockResolvedValueOnce(successResponse)
+
+    render(<StaffScan />)
+    const user = userEvent.setup()
+
+    await startScanning(user)
+    await act(async () => {
+      simulateQrScan()
+    })
+
+    await screen.findByText(/ticket válido/i)
+
+    // Click "Escanear Otro" to reset
+    await user.click(screen.getByRole('button', { name: /escanear otro/i }))
+
+    // Start button should reappear (result was cleared)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /iniciar escaneo/i })).toBeInTheDocument()
+    })
   })
 })

@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { useAuth } from '../context/auth.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import GlassCard from '../components/ui/GlassCard.jsx'
+import Button from '../components/Button.jsx'
+import Badge from '../components/ui/Badge.jsx'
 
 function formatCountdown(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+const shakeAnim = {
+  x: [0, -6, 6, -6, 6, 0],
+  transition: { duration: 0.35 },
 }
 
 export default function Checkout() {
@@ -32,6 +41,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [error, setError] = useState('')
+  const [shakeError, setShakeError] = useState(false)
 
   const [now, setNow] = useState(() => Date.now())
   const timerRef = useRef(null)
@@ -66,11 +76,13 @@ export default function Checkout() {
   const handleCreateReservation = async (event) => {
     event.preventDefault()
     setError('')
+    setShakeError(false)
     setLoading(true)
 
     try {
       if (purchaserEmail.trim() !== confirmEmail.trim()) {
         setError('Los emails no coinciden')
+        setShakeError(true)
         setLoading(false)
         return
       }
@@ -78,6 +90,7 @@ export default function Checkout() {
       const dni = purchaserDNI.trim()
       if (!dni) {
         setError('El DNI es obligatorio')
+        setShakeError(true)
         setLoading(false)
         return
       }
@@ -93,6 +106,7 @@ export default function Checkout() {
       setReservation(response.data)
     } catch (error) {
       setError(getErrorMessage(error))
+      setShakeError(true)
     } finally {
       setLoading(false)
     }
@@ -120,161 +134,278 @@ export default function Checkout() {
     navigate('/events', { replace: true })
   }
 
+  // ─── Expired state ──────────────────────────────────────────────────────
+
   if (isExpired) {
     return (
-      <div className="checkout-page">
-        <h1>Reserva expirada</h1>
-        <p>Tu reserva ya no es valida. Las entradas fueron liberadas.</p>
-        <button type="button" onClick={handleRestart}>
-          Volver al catalogo
-        </button>
+      <div className="max-w-lg mx-auto px-4 py-20 text-center">
+        <GlassCard className="py-12">
+          <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
+            Reserva expirada
+          </h1>
+          <p className="text-text-2 mb-6">
+            Tu reserva ya no es valida. Las entradas fueron liberadas.
+          </p>
+          <Button variant="gradient" onClick={handleRestart}>
+            Volver al catalogo
+          </Button>
+        </GlassCard>
       </div>
     )
   }
+
+  // ─── Phase 1 — Reservation form ─────────────────────────────────────────
 
   if (!reservation) {
     return (
-      <div className="checkout-page">
-        <Link to="/events" className="back-link">
-          ← Volver al catalogo
-        </Link>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="phase1"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -16 }}
+          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+          className="max-w-2xl mx-auto px-4 py-8"
+        >
+          <Link
+            to="/events"
+            className="inline-flex items-center gap-1 text-text-2 hover:text-text-1 mb-6 transition-colors"
+          >
+            ← Volver al catalogo
+          </Link>
 
-        <h1>Reserva tus entradas</h1>
+          <h1 className="text-3xl font-display font-bold text-text-1 mb-6">
+            Reserva tus entradas
+          </h1>
 
-        <section className="checkout-event-summary">
-          {cart.eventImageUrl ? (
-            <img
-              src={cart.eventImageUrl}
-              alt={cart.eventName}
-              className="checkout-event-image"
-            />
-          ) : (
-            <div className="checkout-event-image checkout-event-image-placeholder">
-              Sin imagen
+          {/* Event summary */}
+          <GlassCard className="mb-6">
+            <div className="flex gap-4">
+              {cart.eventImageUrl ? (
+                <img
+                  src={cart.eventImageUrl}
+                  alt={cart.eventName}
+                  className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-lg bg-surface-elevated flex items-center justify-center flex-shrink-0">
+                  <span className="text-text-muted text-xs">Sin imagen</span>
+                </div>
+              )}
+              <div className="min-w-0">
+                <h2 className="font-heading font-semibold text-text-1 text-lg">
+                  {cart.eventName}
+                </h2>
+                <p className="text-text-2 text-sm">{formatEventDate(cart.eventDate)}</p>
+                <p className="text-text-2 text-sm">{cart.eventLocation}</p>
+              </div>
             </div>
-          )}
-          <div>
-            <h2>{cart.eventName}</h2>
-            <p>{formatEventDate(cart.eventDate)}</p>
-            <p>{cart.eventLocation}</p>
-          </div>
-        </section>
 
-        <section className="checkout-selections">
-          <h2>Entradas seleccionadas</h2>
-          <div className="checkout-selection-row">
-            <span>{selection.name}</span>
-            <span>x {selection.quantity}</span>
-            <span>{formatCurrency(selection.price * selection.quantity)}</span>
-          </div>
-          <div className="checkout-total">
-            <strong>Total: {formatCurrency(cart.totalPrice)}</strong>
-          </div>
-        </section>
+            <hr className="my-4 border-white/10" />
 
-        <form onSubmit={handleCreateReservation} className="checkout-form">
-          <h2>Datos del comprador</h2>
-
-          <div className="form-group">
-            <label htmlFor="purchaserName">Nombre completo</label>
-            <input
-              id="purchaserName"
-              type="text"
-              value={purchaserName}
-              onChange={(e) => setPurchaserName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="purchaserEmail">Email</label>
-            <input
-              id="purchaserEmail"
-              type="email"
-              value={purchaserEmail}
-              onChange={(e) => { setPurchaserEmail(e.target.value); setError(''); }}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="confirmEmail">Confirmar email</label>
-            <input
-              id="confirmEmail"
-              type="email"
-              value={confirmEmail}
-              onChange={(e) => { setConfirmEmail(e.target.value); setError(''); }}
-              onPaste={(e) => e.preventDefault()}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="purchaserDNI">DNI</label>
-            <input
-              id="purchaserDNI"
-              type="text"
-              value={purchaserDNI}
-              onChange={(e) => setPurchaserDNI(e.target.value)}
-              required
-              maxLength={50}
-            />
-          </div>
-
-          {error && (
-            <div className="error-container" role="alert">
-              <p>{error}</p>
+            <div className="flex justify-between items-center">
+              <span className="text-text-2 text-sm">
+                {selection.name} x {selection.quantity}
+              </span>
+              <span className="font-display font-bold text-brand-1 text-lg">
+                Total: {formatCurrency(cart.totalPrice)}
+              </span>
             </div>
-          )}
+          </GlassCard>
 
-          <button type="submit" className="reserve-button" disabled={loading}>
-            {loading ? 'Reservando...' : 'Reservar entradas'}
-          </button>
-        </form>
-      </div>
+          {/* Purchaser form */}
+          <motion.div
+            animate={shakeError ? shakeAnim : {}}
+            onAnimationComplete={() => setShakeError(false)}
+          >
+            <GlassCard>
+              <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
+                Datos del comprador
+              </h2>
+
+              <form onSubmit={handleCreateReservation} className="space-y-4" noValidate>
+                <div>
+                  <label
+                    htmlFor="purchaserName"
+                    className="block text-sm font-medium text-text-2 mb-1"
+                  >
+                    Nombre completo
+                  </label>
+                  <input
+                    id="purchaserName"
+                    type="text"
+                    value={purchaserName}
+                    onChange={(e) => setPurchaserName(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
+                      text-text-1 placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                      transition-all duration-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="purchaserEmail"
+                    className="block text-sm font-medium text-text-2 mb-1"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="purchaserEmail"
+                    type="email"
+                    value={purchaserEmail}
+                    onChange={(e) => {
+                      setPurchaserEmail(e.target.value)
+                      setError('')
+                    }}
+                    required
+                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
+                      text-text-1 placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                      transition-all duration-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="confirmEmail"
+                    className="block text-sm font-medium text-text-2 mb-1"
+                  >
+                    Confirmar email
+                  </label>
+                  <input
+                    id="confirmEmail"
+                    type="email"
+                    value={confirmEmail}
+                    onChange={(e) => {
+                      setConfirmEmail(e.target.value)
+                      setError('')
+                    }}
+                    onPaste={(e) => e.preventDefault()}
+                    required
+                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
+                      text-text-1 placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                      transition-all duration-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="purchaserDNI"
+                    className="block text-sm font-medium text-text-2 mb-1"
+                  >
+                    DNI
+                  </label>
+                  <input
+                    id="purchaserDNI"
+                    type="text"
+                    value={purchaserDNI}
+                    onChange={(e) => setPurchaserDNI(e.target.value)}
+                    required
+                    maxLength={50}
+                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
+                      text-text-1 placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                      transition-all duration-200"
+                  />
+                </div>
+
+                {error && (
+                  <div>
+                    <Badge variant="error" className="px-4 py-2">
+                      {error}
+                    </Badge>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  variant="gradient"
+                  size="lg"
+                  loading={loading}
+                  className="w-full"
+                >
+                  {loading ? 'Reservando...' : 'Reservar entradas'}
+                </Button>
+              </form>
+            </GlassCard>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
     )
   }
 
+  // ─── Phase 2 — Confirmation ─────────────────────────────────────────────
+
   return (
-    <div className="checkout-page">
-      <h1>Confirma tu reserva</h1>
+    <div className="max-w-lg mx-auto px-4 py-12">
+      <GlassCard className="text-center">
+        <h1 className="text-2xl font-display font-bold text-text-1 mb-2">
+          Confirma tu reserva
+        </h1>
 
-      <div className="reservation-timer" role="timer" aria-live="polite">
-        Tiempo restante: {formatCountdown(remainingSeconds)}
-      </div>
-
-      <section className="checkout-event-summary">
-        <h2>{cart.eventName}</h2>
-        <p>{formatEventDate(cart.eventDate)}</p>
-        <p>{cart.eventLocation}</p>
-      </section>
-
-      <section className="checkout-selections">
-        <h2>Resumen</h2>
-        <div className="checkout-selection-row">
-          <span>{selection.name}</span>
-          <span>x {reservation.quantity}</span>
-          <span>{formatCurrency(selection.price * reservation.quantity)}</span>
+        {/* Countdown timer */}
+        <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass-surface mb-6">
+          <span className="text-text-2 text-sm">Tiempo restante:</span>
+          <span
+            className={`font-mono text-lg font-bold tabular-nums ${
+              remainingSeconds <= 30 ? 'text-rose-400' : 'text-brand-1'
+            }`}
+            role="timer"
+            aria-live="polite"
+          >
+            {formatCountdown(remainingSeconds)}
+          </span>
         </div>
-        <div className="checkout-total">
-          <strong>Total: {formatCurrency(cart.totalPrice)}</strong>
-        </div>
-      </section>
 
-      {error && (
-        <div className="error-container" role="alert">
-          <p>{error}</p>
+        {/* Order summary */}
+        <div className="text-left space-y-2 mb-6">
+          <div className="flex justify-between text-text-2 text-sm">
+            <span>Evento</span>
+            <span className="text-text-1 text-right">{cart.eventName}</span>
+          </div>
+          <div className="flex justify-between text-text-2 text-sm">
+            <span>Fecha</span>
+            <span className="text-text-1">{formatEventDate(cart.eventDate)}</span>
+          </div>
+          <div className="flex justify-between text-text-2 text-sm">
+            <span>Ubicacion</span>
+            <span className="text-text-1">{cart.eventLocation}</span>
+          </div>
+          <hr className="my-3 border-white/10" />
+          <div className="flex justify-between text-text-2 text-sm">
+            <span>{selection.name} x {reservation.quantity}</span>
+            <span className="text-text-1">
+              {formatCurrency(selection.price * reservation.quantity)}
+            </span>
+          </div>
+          <div className="flex justify-between font-display font-bold text-text-1 text-lg pt-2 border-t border-white/10">
+            <span>Total:</span>
+            <span className="text-brand-1">{formatCurrency(cart.totalPrice)}</span>
+          </div>
         </div>
-      )}
 
-      <button
-        type="button"
-        className="pay-button"
-        onClick={handlePay}
-        disabled={payLoading}
-      >
-        {payLoading ? 'Preparando pago...' : 'Pagar con Mercado Pago'}
-      </button>
+        {error && (
+          <div className="mb-4">
+            <Badge variant="error" className="px-4 py-2">
+              {error}
+            </Badge>
+          </div>
+        )}
+
+        <Button
+          variant="gradient"
+          size="lg"
+          loading={payLoading}
+          onClick={handlePay}
+          disabled={isExpired}
+          className="w-full"
+        >
+          {payLoading ? 'Preparando pago...' : 'Pagar con Mercado Pago'}
+        </Button>
+      </GlassCard>
     </div>
   )
 }
