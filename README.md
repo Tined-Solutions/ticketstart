@@ -89,6 +89,12 @@ dotnet ef database update --connection "Host=...;Port=5432;..."
 
 The `MigrationConnection` in `appsettings.json` targets Supabase port 5432 (direct, no pooler). The `DefaultConnection` targets port 6543 (pooler) and is used at runtime.
 
+Recent migrations added in JD Round 1:
+- `AddCurrentlyReserved` — track concurrent reservation state
+- `AddReservationPurchaserEmail` — email-based reservations instead of DNI
+- `UniqueTransactionMercadoPagoId` — enforce unique Mercado Pago transaction IDs
+- `AddAuditLogUserFkAndTracking` — audit log foreign key and tracking metadata
+
 ## Running Locally
 
 Two terminals:
@@ -108,23 +114,24 @@ npm run dev
 ## Testing
 
 ```bash
-# Backend (333+ unit + property tests)
+# Backend (438+ unit + property tests)
 cd backend && dotnet test
 
-# Frontend (208+ unit tests)
+# Frontend (262+ unit tests)
 cd frontend && npm test
 ```
 
 ## API Reference
 
-All endpoints are prefixed with `/api`. Authenticated endpoints require `Authorization: Bearer <jwt>`.
+All endpoints are prefixed with `/api`. Authenticated endpoints use httpOnly session cookies; mutating requests also require an `X-CSRF-PROTECT` header.
 
 ### Auth
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/auth/register` | — | Register a new user |
-| `POST` | `/api/auth/login` | — | Login, returns JWT |
+| `POST` | `/api/auth/login` | — | Login, sets httpOnly auth cookie |
+| `GET` | `/api/auth/me` | — | Get current user (cookie auth) |
+| `POST` | `/api/auth/logout` | — | Logout, clears auth cookie |
 
 ### Events
 
@@ -141,8 +148,7 @@ All endpoints are prefixed with `/api`. Authenticated endpoints require `Authori
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/reservations` | — | Create 10-min reservation (requires `purchaserDNI`, returns token) |
-| `GET` | `/api/reservations/{id}` | — | Get reservation status |
+| `POST` | `/api/reservations` | — | Create 10-min reservation (requires `purchaserEmail` + `confirmEmail`, returns token) |
 
 ### Payments
 
@@ -155,7 +161,8 @@ All endpoints are prefixed with `/api`. Authenticated endpoints require `Authori
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/tickets/lookup?email=&dni=` | — | Lookup tickets by email + DNI (returns QR images) |
+| `GET` | `/api/tickets/lookup?email=` | — | Lookup tickets by email (info-only, no QR data) |
+| `POST` | `/api/tickets/resend` | — | Resend tickets by email (rate limited, requires captchaToken) |
 | `POST` | `/api/tickets/validate` | Staff / Admin | Validate QR code at event entrance |
 
 ### Metrics
@@ -170,18 +177,17 @@ All endpoints are prefixed with `/api`. Authenticated endpoints require `Authori
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/api/admin/users?page=&pageSize=` | Admin | List all users (paginated, max 200) |
+| `POST` | `/api/admin/users` | Admin | Create a new user (admin-only registration) |
 | `GET` | `/api/admin/events?page=&pageSize=` | Admin | List all events (paginated, max 200) |
-| `GET` | `/api/admin/audit-logs?userId=` | Admin | View audit log (optional user filter) |
+| `GET` | `/api/admin/audit-logs?page=&pageSize=` | Admin | View audit log (paginated) |
 
 ### Authentication
 
-All protected endpoints use JWT Bearer tokens. Register or login to obtain a token, then include it in requests:
+Authentication is session-based via httpOnly cookies (HttpOnly, Secure, SameSite=Lax). Login sets the cookie; logout clears it. Protected endpoints read the cookie automatically — no manual header needed.
 
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-```
+For mutating requests (POST, PUT, DELETE), the frontend sends an `X-CSRF-PROTECT` header for CSRF protection.
 
-Roles: `Organizador`, `Staff`, `Admin`. Role claims are embedded in the JWT and enforced via ASP.NET Core authorization policies.
+Roles: `Organizador`, `Staff`, `Admin`. Role claims are embedded in the auth cookie and enforced via ASP.NET Core authorization policies.
 
 Interactive API docs (Swagger UI) are available at `/swagger` when running in Development mode.
 
@@ -210,15 +216,16 @@ ticketera-online/
 
 ## Features
 
-- **JWT authentication** with role-based access (Guest / Organizador / Staff / Admin)
+- **httpOnly cookie authentication** with role-based access (Guest / Organizador / Staff / Admin) and CSRF protection
 - **Event CRUD** with image upload to Cloudflare R2
 - **10-minute ticket reservations** with automatic expiration and concurrency control
 - **Mercado Pago Checkout Pro** integration with webhook processing
 - **HMAC-signed QR codes** for ticket validation with double-scan prevention
-- **Ticket lookup** by email + DNI with downloadable QR images
+- **Ticket lookup** by email (info-only DTO, no QR data)
 - **QR scanner** (Staff) with camera integration, visual + audio feedback, and scan history
 - **Organizer dashboard** with real-time metrics (sales, revenue, inventory, scans)
 - **Admin panel** with system-wide event/user management and audit logging
+- **Ticket resend** via Resend (rate limited: 3/hr per email, with Turnstile CAPTCHA placeholder)
 - **Email delivery** via Resend (confirmation + refund notifications)
 - **Structured logging** with sensitive-data redaction
 - **Global exception handling** with ProblemDetails (RFC 7807)
@@ -236,10 +243,12 @@ cd frontend && npm run build   # output in dist/
 ## Security
 
 - Passwords hashed with BCrypt
-- JWT with configurable expiration
+- httpOnly, Secure, SameSite=Lax authentication cookies
+- CSRF protection via `X-CSRF-PROTECT` header on mutating requests
 - HMAC-SHA256 signatures for QR codes and reservation tokens
 - Webhook signature validation for Mercado Pago
 - Role-based authorization on all protected endpoints
+- Rate limiting: 10 login attempts/min/IP, 5 reservation creates/min/IP, 3 ticket resends/hour/email
 - PII (email, DNI) hashed in logs; query-string redaction
 - Global `IExceptionHandler` with self-protection
 

@@ -189,6 +189,8 @@ public class TicketController : TicketeraControllerBase
     /// Validates: Batch 5 — B5.2
     /// </summary>
     /// <param name="request">Resend request with email and captcha token</param>
+    // TODO: Integrate Cloudflare Turnstile verification — validate captchaToken server-side
+    // before processing the resend. Currently accepts any non-empty token as placeholder.
     /// <returns>Generic success message</returns>
     [HttpPost("resend")]
     [EnableRateLimiting("Resend")]

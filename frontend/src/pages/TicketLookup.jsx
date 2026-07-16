@@ -269,8 +269,11 @@ export default function TicketLookup() {
               />
               <span className="captcha-text">No soy un robot</span>
             </label>
+            {/* TODO: Replace checkbox CAPTCHA with Cloudflare Turnstile widget.
+               Load turnstile script, use Turnstile's onSuccess callback to set captchaChecked,
+               and pass the real Turnstile token as captchaToken in the API request. */}
             <p className="captcha-placeholder-note">
-              CAPTCHA — sera reemplazado por Turnstile en el futuro
+              CAPTCHA placeholder — reemplazar por Turnstile
             </p>
           </div>
 
