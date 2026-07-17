@@ -7,6 +7,11 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Environment-specific config (contains local overrides like VITE_API_TARGET)
+.env
+.env.local
+.env.*.local
+
 node_modules
 dist
 dist-ssr

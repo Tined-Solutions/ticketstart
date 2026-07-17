@@ -12,6 +12,7 @@ frontend/build/
 .vs/
 .vscode/
 *.log
+.logs/
 
 # Environment-specific config (contains local secrets)
 **/appsettings.Development.json
