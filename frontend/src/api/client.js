@@ -23,7 +23,16 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Don't redirect for /auth/me and /auth/logout — these are expected
+    // to return 401 for unauthenticated users (the AuthProvider handles it)
+    // and redirecting here would create an infinite reload loop.
+    const isAuthEndpoint =
+      error.config?.url && (
+        error.config.url.endsWith('/auth/me') ||
+        error.config.url.endsWith('/auth/logout')
+      )
+
+    if (error.response?.status === 401 && !isAuthEndpoint) {
       window.location.href = '/login'
     }
     return Promise.reject(error)

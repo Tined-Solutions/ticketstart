@@ -244,7 +244,7 @@ export default function StaffScan() {
       variants={fadeInScale}
       initial="initial"
       animate="animate"
-      className="max-w-[720px] mx-auto px-5 py-10"
+      className="max-w-3xl mx-auto px-4 sm:px-6 py-10"
     >
       {/* Page header */}
       <header className="mb-8 text-center">

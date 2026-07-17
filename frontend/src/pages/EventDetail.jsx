@@ -234,7 +234,7 @@ export default function EventDetail() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
         <p className="px-4 py-8 text-text-2">Cargando evento...</p>
         <DetailSkeleton />
       </div>
@@ -275,7 +275,7 @@ export default function EventDetail() {
   // ─── Event loaded ───────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
       {/* Back link */}
       <Link
         to="/events"

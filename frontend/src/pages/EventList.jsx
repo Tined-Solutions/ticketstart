@@ -114,7 +114,7 @@ export default function EventList() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
       {/* Page header */}
       <motion.header
         initial={{ opacity: 0, y: 16 }}

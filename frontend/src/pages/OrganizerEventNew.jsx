@@ -11,7 +11,7 @@ export default function OrganizerEventNew() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
       <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-8">
         Nuevo evento
       </h1>

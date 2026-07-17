@@ -161,7 +161,7 @@ public class AuthService : IAuthService
                 Success = true,
                 Token = token,
                 UserId = user.Id,
-                Name = user.Name,
+                Name = user.Name ?? string.Empty,
                 Role = user.Role
             };
         }
@@ -238,7 +238,7 @@ public class AuthService : IAuthService
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim(ClaimTypes.Name, user.Name),
+            new Claim(ClaimTypes.Name, user.Name ?? string.Empty),
             new Claim(ClaimTypes.Role, user.Role.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };

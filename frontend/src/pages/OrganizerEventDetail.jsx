@@ -49,7 +49,7 @@ export default function OrganizerEventDetail() {
 
   if (loading) {
     return (
-      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12">
           <p className="text-text-muted">Cargando evento...</p>
         </GlassCard>
@@ -59,7 +59,7 @@ export default function OrganizerEventDetail() {
 
   if (error) {
     return (
-      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12" role="alert">
           <p className="text-text-1 mb-3">{error}</p>
           <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
@@ -71,7 +71,7 @@ export default function OrganizerEventDetail() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
       <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-8">
         Editar evento
       </h1>

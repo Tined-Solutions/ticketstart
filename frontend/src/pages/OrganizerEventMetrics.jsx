@@ -88,7 +88,7 @@ export default function OrganizerEventMetrics() {
 
   if (loading) {
     return (
-      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="p-8 space-y-4">
           <Skeleton width="60%" height="36px" variant="text" className="mx-auto" />
           <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-6">
@@ -106,7 +106,7 @@ export default function OrganizerEventMetrics() {
 
   if (error === '404') {
     return (
-      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12">
           <p className="text-text-2 mb-4">Evento no encontrado</p>
           <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
@@ -119,7 +119,7 @@ export default function OrganizerEventMetrics() {
 
   if (error) {
     return (
-      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12" role="alert">
           <p className="text-text-1 mb-3">{error}</p>
           <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
@@ -131,7 +131,7 @@ export default function OrganizerEventMetrics() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-[800px] mx-auto px-5 py-10">
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
       <header className="mb-8">
         <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-2">
           {metrics.eventName}

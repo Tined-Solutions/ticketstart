@@ -198,7 +198,7 @@ export default function TicketLookup() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="max-w-2xl mx-auto px-4 py-8 space-y-10"
+      className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-10"
     >
       {/* ── Lookup section ──────────────────────────────────────────── */}
 

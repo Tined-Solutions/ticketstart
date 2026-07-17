@@ -128,7 +128,7 @@ export default function OrganizerDashboard() {
       variants={fadeIn}
       initial="initial"
       animate="animate"
-      className="max-w-[1100px] mx-auto px-5 py-10"
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10"
     >
       <header className="mb-8">
         <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
