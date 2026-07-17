@@ -4,7 +4,17 @@ Esta política es **obligatoria** para todos los integrantes del equipo que trab
 
 ---
 
+## 🔑 Regla primordial: nombres de archivo
+
+**El nombre en el archivo MD es de la persona que LO ELABORA, no a quién va dirigido.**
+
+Ejemplo: `2026-07-17-martin.md` significa que Martín escribió ese summary. `2026-07-17-edgardo.md` significa que Edgar (o Edgardo) lo escribió. No importa si el contenido está dirigido al otro — el nombre refleja autoría.
+
+---
+
 ## ⚠️ Antes de empezar a trabajar (cada sesión)
+
+**El agente DEBE leer este archivo (`POLITICA.md`) al inicio de cada sesión donde se toca código.** Esto asegura que tenga contexto del equipo completo y no se olvide de redactar el session summary al terminar.
 
 ```bash
 git pull origin dev
@@ -22,6 +32,8 @@ Tu agente (Gentle AI) guarda observaciones en **tu Engram local** (`mem_save`) a
 ---
 
 ## 📝 Al terminar la sesión (OBLIGATORIO)
+
+**Toda sesión en la que se toca código debe terminar con un session summary.** No importa si fue un fix chico, un feature grande, o solo diagnóstico — si se modificaron archivos o se tomaron decisiones técnicas, el summary es innegociable.
 
 Antes de cerrar la sesión, escribir un summary en:
 
@@ -81,6 +93,7 @@ Recomendación: agregar esto como un recordatorio en el `AGENTS.md` o en la conf
 
 | Momento | Acción |
 |---------|--------|
-| Inicio de sesión | `git pull` → leer summaries nuevos del compañero |
+| Inicio de sesión | Leer `POLITICA.md` → `git pull` → leer summaries nuevos del compañero |
 | Durante la sesión | `mem_save` local normal (no se comparte) |
 | Fin de sesión | Escribir `.engram/sessions/YYYY-MM-DD-nombre.md` → commit → push |
+| ⚠️ Sesión con código | **Session summary obligatorio.** Sin excepciones. |
