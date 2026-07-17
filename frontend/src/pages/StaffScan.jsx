@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Html5Qrcode } from 'html5-qrcode'
 import apiClient from '../api/client.js'
 import Badge from '../components/ui/Badge.jsx'
+import Spinner from '../components/Spinner.jsx'
 import { fadeInScale } from '../lib/motion.js'
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,6 @@ function playErrorBeep() {
 // Component
 // ---------------------------------------------------------------------------
 
-const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SESSION_STORAGE_KEY = 'staff_scan_history'
 
 function loadHistoryFromStorage() {
@@ -101,7 +101,38 @@ export default function StaffScan() {
   const [result, setResult] = useState(null) // { type: 'success'|'error', message, ticket }
   const [history, setHistory] = useState(() => loadHistoryFromStorage()) // Initialize from sessionStorage
   const [error, setError] = useState('')
+  const [events, setEvents] = useState([])
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState('')
   const scannerRef = useRef(null)
+
+  // -----------------------------------------------------------------------
+  // Fetch events on mount
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchEvents() {
+      try {
+        setEventsLoading(true)
+        setEventsError('')
+        const response = await apiClient.get('/events')
+        if (!cancelled) {
+          setEvents(response.data)
+        }
+      } catch {
+        if (!cancelled) {
+          setEventsError('No se pudieron cargar los eventos. Intente recargar la pagina.')
+        }
+      } finally {
+        if (!cancelled) {
+          setEventsLoading(false)
+        }
+      }
+    }
+    fetchEvents()
+    return () => { cancelled = true }
+  }, [])
 
   // -----------------------------------------------------------------------
   // Scanner lifecycle
@@ -185,13 +216,8 @@ export default function StaffScan() {
   )
 
   const startScanning = useCallback(async () => {
-    if (!eventId.trim()) {
-      setError('Debe ingresar el ID del evento')
-      return
-    }
-
-    if (!GUID_REGEX.test(eventId.trim())) {
-      setError('Formato de ID invalido. Use un UUID valido (ej: 00000000-0000-0000-0000-000000000000)')
+    if (!eventId) {
+      setError('Debe seleccionar un evento')
       return
     }
 
@@ -254,22 +280,45 @@ export default function StaffScan() {
         <p className="text-text-2">Escanee los codigos QR de los tickets para validar su entrada al evento.</p>
       </header>
 
-      {/* Event ID input & controls */}
+      {/* Event selector & controls */}
       <div className="glass-surface p-6 mb-6">
         <div className="form-group">
-          <label htmlFor="event-id">ID del Evento</label>
-          <input
-            id="event-id"
-            type="text"
-            value={eventId}
-            onChange={(e) => {
-              setEventId(e.target.value)
-              setError('')
-              setResult(null)
-            }}
-            placeholder="00000000-0000-0000-0000-000000000000"
-            disabled={scanning}
-          />
+          <label htmlFor="event-select">Evento</label>
+          {eventsLoading && (
+            <div className="flex items-center gap-2 py-2">
+              <Spinner size="sm" label="Cargando eventos..." />
+              <span className="text-text-2 text-sm">Cargando eventos...</span>
+            </div>
+          )}
+          {eventsError && (
+            <motion.p
+              className="form-error"
+              role="alert"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {eventsError}
+            </motion.p>
+          )}
+          {!eventsLoading && !eventsError && (
+            <select
+              id="event-select"
+              value={eventId}
+              onChange={(e) => {
+                setEventId(e.target.value)
+                setError('')
+                setResult(null)
+              }}
+              disabled={scanning}
+            >
+              <option value="" disabled>Seleccionar evento...</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} — {new Date(event.date).toLocaleDateString('es-AR')} — {event.location}
+                </option>
+              ))}
+            </select>
+          )}
           {error && (
             <motion.p
               className="form-error"
