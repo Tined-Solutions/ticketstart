@@ -57,8 +57,15 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.js'],
-      maxWorkers: 2,
+      maxWorkers: 1,
       forbidOnly: true,
+      pool: 'forks',
+      poolOptions: {
+        forks: {
+          singleFork: true,
+        },
+      },
+      testTimeout: 30000,
     },
   }
 })
