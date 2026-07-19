@@ -259,6 +259,7 @@ export default function Checkout() {
                       setPurchaserEmail(e.target.value)
                       setError('')
                     }}
+                    onPaste={(e) => e.preventDefault()}
                     required
                     className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
                       text-text-1 placeholder:text-text-muted

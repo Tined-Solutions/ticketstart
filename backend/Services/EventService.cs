@@ -284,12 +284,19 @@ public class EventService : IEventService
 
         try
         {
+            // Buffer the stream to a known length so the SDK uses regular
+            // AWS4-HMAC-SHA256 signing instead of streaming signatures
+            // (R2 does not support STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER).
+            using var memoryStream = new MemoryStream();
+            await imageStream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+
             // Upload to R2 using AWS S3 SDK
             var putRequest = new PutObjectRequest
             {
                 BucketName = bucketName,
                 Key = objectKey,
-                InputStream = imageStream,
+                InputStream = memoryStream,
                 ContentType = contentType,
                 AutoCloseStream = false
             };
