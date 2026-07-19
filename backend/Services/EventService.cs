@@ -291,14 +291,18 @@ public class EventService : IEventService
             await imageStream.CopyToAsync(memoryStream);
             memoryStream.Position = 0;
 
-            // Upload to R2 using AWS S3 SDK
+            // Upload to R2 using AWS S3 SDK.
+            // DisablePayloadSigning=true forces UNSIGNED-PAYLOAD signing, which
+            // Cloudflare R2 accepts. The AWSSDK.S3 v4 default of STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER
+            // is NOT implemented by R2 and returns 501 NotImplemented.
             var putRequest = new PutObjectRequest
             {
                 BucketName = bucketName,
                 Key = objectKey,
                 InputStream = memoryStream,
                 ContentType = contentType,
-                AutoCloseStream = false
+                AutoCloseStream = false,
+                DisablePayloadSigning = true
             };
 
             var response = await _s3Client.PutObjectAsync(putRequest);
