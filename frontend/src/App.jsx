@@ -9,6 +9,7 @@ import EventList from './pages/EventList.jsx'
 import EventDetail from './pages/EventDetail.jsx'
 import Checkout from './pages/Checkout.jsx'
 import CheckoutReturn from './pages/CheckoutReturn.jsx'
+import CheckoutSuccess from './pages/CheckoutSuccess.jsx'
 import TicketLookup from './pages/TicketLookup.jsx'
 import StaffScan from './pages/StaffScan.jsx'
 import OrganizerDashboard from './pages/OrganizerDashboard.jsx'
@@ -30,6 +31,7 @@ function App() {
 
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/checkout/return" element={<CheckoutReturn />} />
+          <Route path="/checkout/success" element={<CheckoutSuccess />} />
           <Route path="/tickets/lookup" element={<TicketLookup />} />
 
           <Route

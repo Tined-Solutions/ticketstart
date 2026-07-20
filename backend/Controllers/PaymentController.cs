@@ -164,6 +164,37 @@ public class PaymentController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Confirms a payment after the user returns from the Mercado Pago checkout flow.
+    /// Public endpoint; called by the frontend with the preference_id from the URL.
+    /// </summary>
+    [HttpPost("confirm")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ConfirmPayment([FromBody] ConfirmPaymentRequest request)
+    {
+        if (request == null || string.IsNullOrEmpty(request.PreferenceId))
+        {
+            return BadRequest(new { error = "PreferenceId is required" });
+        }
+
+        try
+        {
+            var result = await _paymentService.ConfirmPaymentAsync(request.PreferenceId);
+
+            if (!result.Success)
+            {
+                return Ok(new { status = "pending", error = result.Error });
+            }
+
+            return Ok(new { status = "confirmed", paymentId = result.PaymentId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error confirming payment for preference {PreferenceId}", request.PreferenceId);
+            return StatusCode(500, new { error = "An error occurred while confirming the payment" });
+        }
+    }
+
     private async Task TryLogAuditAsync(AuditLogContext context)
     {
         try
@@ -184,4 +215,9 @@ public class PaymentController : TicketeraControllerBase
             }
         }
     }
+}
+
+public class ConfirmPaymentRequest
+{
+    public string PreferenceId { get; set; } = string.Empty;
 }

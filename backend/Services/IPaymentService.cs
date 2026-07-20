@@ -38,6 +38,12 @@ public interface IPaymentService
     /// <param name="reservationId">Reservation associated with the payment</param>
     /// <returns>Refund result</returns>
     Task<RefundResult> InitiateRefundAsync(string mercadoPagoId, decimal amount, Guid reservationId);
+
+    /// <summary>
+    /// Confirms a payment by preference ID. Called by the frontend after the user
+    /// returns from the Mercado Pago checkout flow.
+    /// </summary>
+    Task<WebhookResult> ConfirmPaymentAsync(string preferenceId);
 }
 
 /// <summary>

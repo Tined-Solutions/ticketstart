@@ -116,7 +116,14 @@ public class PaymentService : IPaymentService
                     Quantity = reservation.Quantity,
                     UnitPrice = reservation.TicketType.Price
                 }
-            ]
+            ],
+            NotificationUrl = string.IsNullOrEmpty(_options.WebhookBaseUrl) ? null : $"{_options.WebhookBaseUrl}/api/payments/webhook",
+            BackUrls = new MercadoPagoBackUrls
+            {
+                Success = $"{_options.FrontendUrl}/checkout/success?preference_id={{preference_id}}",
+                Failure = $"{_options.FrontendUrl}/checkout/return?status=failure",
+                Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
+            }
         };
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);
@@ -363,6 +370,62 @@ public class PaymentService : IPaymentService
             Success = true,
             RefundId = response.Id
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<WebhookResult> ConfirmPaymentAsync(string preferenceId)
+    {
+        _logger.LogInformation("Confirming payment for preference {PreferenceId}", preferenceId);
+
+        try
+        {
+            var preference = await _mercadoPagoClient.GetPreferenceAsync(preferenceId);
+            if (preference == null || !Guid.TryParse(preference.ExternalReference, out var reservationId))
+            {
+                return new WebhookResult { Success = false, Error = "Invalid preference or external reference" };
+            }
+
+            var payments = await _mercadoPagoClient.SearchPaymentsByExternalReferenceAsync(preference.ExternalReference);
+            var approvedPayment = payments.FirstOrDefault(p =>
+                p.Status.Equals("approved", StringComparison.OrdinalIgnoreCase));
+
+            if (approvedPayment == null)
+            {
+                _logger.LogWarning("No approved payment found for reservation {ReservationId}", reservationId);
+                return new WebhookResult { Success = false, Error = "No approved payment found" };
+            }
+
+            var existingTransaction = await _context.Transactions
+                .FirstOrDefaultAsync(t => t.MercadoPagoId == approvedPayment.Id);
+            if (existingTransaction != null)
+            {
+                _logger.LogInformation("Payment {PaymentId} already processed", approvedPayment.Id);
+                return new WebhookResult { Success = true, PaymentId = approvedPayment.Id };
+            }
+
+            var reservation = await _context.Reservations
+                .Include(r => r.TicketType)
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.Id == reservationId);
+
+            if (reservation == null)
+            {
+                return new WebhookResult
+                {
+                    Success = false,
+                    Error = "Reservation not found",
+                    PaymentId = approvedPayment.Id
+                };
+            }
+
+            var amount = reservation.Quantity * reservation.TicketType.Price;
+            return await ProcessApprovedPaymentAsync(reservation, approvedPayment.Id, amount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error confirming payment for preference {PreferenceId}", preferenceId);
+            return new WebhookResult { Success = false, Error = ex.Message };
+        }
     }
 
     /// <summary>

@@ -41,7 +41,15 @@ public class MercadoPagoClient : IMercadoPagoClient
                 unit_price = i.UnitPrice,
                 currency_id = "ARS"
             }),
-            external_reference = request.ExternalReference
+            external_reference = request.ExternalReference,
+            back_urls = request.BackUrls != null ? new
+            {
+                success = request.BackUrls.Success,
+                failure = request.BackUrls.Failure,
+                pending = request.BackUrls.Pending
+            } : null,
+            notification_url = request.NotificationUrl,
+            auto_return = "approved"
         };
 
         var json = JsonSerializer.Serialize(body);
@@ -87,5 +95,48 @@ public class MercadoPagoClient : IMercadoPagoClient
             Amount = amount,
             Status = document.RootElement.TryGetProperty("status", out var status) ? status.GetString() ?? "approved" : "approved"
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<MercadoPagoPreferenceDetail?> GetPreferenceAsync(
+        string preferenceId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"checkout/preferences/{preferenceId}", cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(json);
+
+        return new MercadoPagoPreferenceDetail
+        {
+            Id = doc.RootElement.GetProperty("id").GetString() ?? "",
+            ExternalReference = doc.RootElement.TryGetProperty("external_reference", out var er) ? er.GetString() ?? "" : ""
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<List<MercadoPagoPaymentInfo>> SearchPaymentsByExternalReferenceAsync(
+        string externalReference,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"v1/payments/search?external_reference={Uri.EscapeDataString(externalReference)}&sort=date_created&criteria=desc";
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var doc = JsonDocument.Parse(json);
+        var results = doc.RootElement.GetProperty("results");
+
+        var payments = new List<MercadoPagoPaymentInfo>();
+        foreach (var r in results.EnumerateArray())
+        {
+            payments.Add(new MercadoPagoPaymentInfo
+            {
+                Id = r.GetProperty("id").GetString() ?? "",
+                Status = r.GetProperty("status").GetString() ?? ""
+            });
+        }
+        return payments;
     }
 }
