@@ -366,10 +366,14 @@ public class ErrorHandlingPropertyTests
                     .Setup(s => s.ValidateQRCodeAsync(scenario.Request.QRCodeData, scenario.Request.EventId))
                     .ReturnsAsync(scenario.Result);
 
+                var turnstile = new Mock<ITurnstileService>();
+                var env = new Mock<IWebHostEnvironment>();
                 var controller = new TicketController(
                     ticketService.Object,
                     logger,
-                    audit)
+                    audit,
+                    turnstile.Object,
+                    env.Object)
                 {
                     ControllerContext = CreateStaffControllerContext(scenario.UserId)
                 };
@@ -411,7 +415,9 @@ public class ErrorHandlingPropertyTests
                 }
             });
 
-        var controller = new TicketController(ticketService.Object, logger, audit)
+        var turnstile = new Mock<ITurnstileService>();
+        var env = new Mock<IWebHostEnvironment>();
+        var controller = new TicketController(ticketService.Object, logger, audit, turnstile.Object, env.Object)
         {
             ControllerContext = CreateStaffControllerContext(Guid.NewGuid())
         };

@@ -3,6 +3,7 @@ using System.Text;
 using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -55,7 +56,8 @@ public class PaymentPropertyTests : IDisposable
             .Build();
 
         var ticketLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<TicketService>();
-        _ticketService = new TicketService(_context, ticketConfig, ticketLogger);
+        _ticketService = new TicketService(_context, ticketConfig, ticketLogger,
+            new ServiceCollection().BuildServiceProvider());
 
         _paymentService = new PaymentService(
             _context,

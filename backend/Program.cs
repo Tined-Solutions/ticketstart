@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Services;
+using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Authorization;
 using TicketeraOnline.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -48,6 +49,10 @@ builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.AddHttpClient<IResendClient, ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Configure Cloudflare Turnstile
+builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.SectionName));
+builder.Services.AddHttpClient<ITurnstileService, TurnstileService>();
 
 // Configure reservation HMAC token for guest checkout IDOR protection
 builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));

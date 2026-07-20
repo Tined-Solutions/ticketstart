@@ -3,6 +3,7 @@ using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TicketeraOnline.Api.Data;
@@ -47,7 +48,8 @@ public class TicketLookupPropertyTests : IDisposable
         _mockLogger = new Mock<ILogger<TicketService>>();
 
         // Create service
-        _ticketService = new TicketService(_context, _configuration, _mockLogger.Object);
+        _ticketService = new TicketService(_context, _configuration, _mockLogger.Object,
+            new ServiceCollection().BuildServiceProvider());
     }
 
     public void Dispose()

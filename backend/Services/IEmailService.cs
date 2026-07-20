@@ -19,6 +19,16 @@ public interface IEmailService
     Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails);
 
     /// <summary>
+    /// Sends a ticket resend email with embedded QR codes. Identical to
+    /// SendTicketEmailAsync except the subject uses Spanish copy.
+    /// </summary>
+    /// <param name="recipientEmail">Purchaser email address</param>
+    /// <param name="tickets">Tickets to include in the email</param>
+    /// <param name="eventDetails">Event associated with the tickets</param>
+    /// <returns>Email delivery result</returns>
+    Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails);
+
+    /// <summary>
     /// Sends a refund notification email explaining the refund reason and amount.
     /// Validates: Requirement 12.4
     /// </summary>

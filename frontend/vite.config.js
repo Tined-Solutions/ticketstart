@@ -60,11 +60,7 @@ export default defineConfig(({ mode }) => {
       maxWorkers: 1,
       forbidOnly: true,
       pool: 'forks',
-      poolOptions: {
-        forks: {
-          singleFork: true,
-        },
-      },
+      singleFork: true,
       testTimeout: 30000,
     },
   }

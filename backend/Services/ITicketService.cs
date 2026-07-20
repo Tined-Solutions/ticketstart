@@ -78,14 +78,13 @@ public interface ITicketService
     Task<IEnumerable<TicketLookupInfoResponse>> LookupTicketsByEmailAsync(string email);
 
     /// <summary>
-    /// Resends tickets by email. Returns generic success regardless of whether
-    /// tickets exist for the given email (no info leak).
+    /// Resends tickets by email grouped by event. Returns generic success
+    /// regardless of whether tickets exist for the given email (no info leak).
     /// Validates: Batch 5 — B5.2
     /// </summary>
     /// <param name="email">Purchaser email</param>
-    /// <param name="captchaToken">Captcha verification token</param>
     /// <returns>True (always returns success to prevent info leak)</returns>
-    Task<bool> ResendTicketsByEmailAsync(string email, string captchaToken);
+    Task<bool> ResendTicketsByEmailAsync(string email);
 }
 
 /// <summary>
@@ -136,7 +135,7 @@ public class TicketLookupInfoResponse
 public class ResendTicketsRequest
 {
     public string Email { get; set; } = string.Empty;
-    public string CaptchaToken { get; set; } = string.Empty;
+    public string TurnstileToken { get; set; } = string.Empty;
 }
 
 /// <summary>
