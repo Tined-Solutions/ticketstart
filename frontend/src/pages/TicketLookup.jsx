@@ -32,7 +32,7 @@ function TicketCard({ ticket }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
     >
-      <GlassCard className="relative">
+      <GlassCard className="relative p-4 md:p-6">
         <div className="absolute top-3 right-3">
           <Badge variant={ticket.isUsed ? 'error' : 'success'}>
             {ticket.isUsed ? 'Usada' : 'Valida'}
@@ -77,7 +77,7 @@ function TicketCard({ ticket }) {
 
 function TicketCardSkeleton() {
   return (
-    <GlassCard>
+    <GlassCard className="p-4 md:p-6">
       <div className="space-y-3">
         <div className="flex justify-between">
           <Skeleton width="60%" height="20px" variant="text" />
@@ -212,7 +212,7 @@ export default function TicketLookup() {
           </p>
         </header>
 
-        <GlassCard>
+        <GlassCard className="p-4 md:p-6">
           <form onSubmit={handleLookupSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="lookup-email" className="sr-only">
@@ -261,7 +261,7 @@ export default function TicketLookup() {
         {/* Lookup error */}
         {error && (
           <div className="mt-4">
-            <GlassCard className="text-center py-6">
+            <GlassCard className="text-center px-4 py-6 md:px-6">
               <p className="text-text-1 mb-3">{error}</p>
               <Button variant="secondary" onClick={handleClearLookupError}>
                 Reintentar
@@ -319,7 +319,7 @@ export default function TicketLookup() {
       {/* ── Resend section ──────────────────────────────────────────── */}
 
       <section>
-        <GlassCard>
+        <GlassCard className="p-4 md:p-6">
           <header className="mb-4">
             <h2 className="text-xl font-heading font-semibold text-text-1 mb-1">
               Reenviar entradas

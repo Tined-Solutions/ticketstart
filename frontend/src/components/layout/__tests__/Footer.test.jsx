@@ -7,13 +7,13 @@ describe('Footer', () => {
     render(<Footer />)
     const year = new Date().getFullYear()
     expect(
-      screen.getByText(new RegExp(`${year} Ticketera`, 'i'))
+      screen.getByText(new RegExp(`${year} TicketStar`, 'i'))
     ).toBeInTheDocument()
   })
 
-  it('renders the "Powered by Ticketera" link', () => {
+  it('renders the "Powered by TicketStar" link', () => {
     render(<Footer />)
-    const link = screen.getByRole('link', { name: /powered by ticketera/i })
+    const link = screen.getByRole('link', { name: /powered by ticketstar/i })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('href', '/')
   })
