@@ -88,65 +88,59 @@ public class PaymentController : TicketeraControllerBase
 
     /// <summary>
     /// Receives Mercado Pago webhook notifications.
-    /// Public endpoint; validates signature.
-    /// Validates: Requirements 5.5, 5.8, 16.5
+    /// Public endpoint; validates signature when present (dashboard webhooks).
+    /// notification_url webhooks from preferences may not include a signature.
+    /// ALWAYS returns 200 OK to MP — non-200 causes MP to retry indefinitely.
     /// </summary>
     [HttpPost("webhook")]
     [AllowAnonymous]
     public async Task<IActionResult> Webhook(
         [FromHeader(Name = "x-signature")] string? signature = null)
     {
-        if (string.IsNullOrEmpty(signature))
-        {
-            _logger.LogWarning("Webhook received without signature");
-            return Unauthorized(new { error = "Missing webhook signature" });
-        }
-
-        WebhookPayload payload;
+        MercadoPagoWebhookEnvelope envelope;
         byte[] rawBody;
 
         try
         {
-            // Read raw bytes for HMAC validation (Batch 4 B4.4)
+            // Read raw bytes for HMAC validation
             Request.EnableBuffering();
             using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
             var bodyString = await reader.ReadToEndAsync();
             rawBody = Encoding.UTF8.GetBytes(bodyString);
             Request.Body.Position = 0;
 
-            payload = JsonSerializer.Deserialize<WebhookPayload>(bodyString)
-                ?? new WebhookPayload();
+            envelope = JsonSerializer.Deserialize<MercadoPagoWebhookEnvelope>(bodyString)
+                ?? new MercadoPagoWebhookEnvelope();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to read webhook body");
-            return BadRequest(new { error = "Invalid webhook payload" });
-        }
-
-        if (payload == null || string.IsNullOrEmpty(payload.PaymentId))
-        {
-            _logger.LogWarning("Webhook received without valid payload");
-            return BadRequest(new { error = "Missing webhook payload" });
+            // Cannot even parse the body — ACK to stop MP retries
+            _logger.LogWarning(ex, "Failed to parse webhook body — returning 200 ACK");
+            return Ok(new { status = "acknowledged" });
         }
 
         try
         {
-            var result = await _paymentService.ProcessWebhookAsync(payload, signature, rawBody);
+            var result = await _paymentService.ProcessWebhookAsync(envelope, signature ?? string.Empty, rawBody);
+
+            var dataId = envelope.Data?.Id ?? result.PaymentId;
 
             await TryLogAuditAsync(new AuditLogContext(
                 UserId: null,
                 Action: AuditActionType.ProcessWebhook,
                 Resource: AuditResourceType.Payment,
                 ResourceId: null,
-                Details: $"Webhook processed for payment {result.PaymentId} with status {payload.Status}; success={result.Success}",
+                Details: $"Webhook processed for payment {dataId} with action {envelope.Action}; success={result.Success}",
                 UserIdentifier: "System"));
 
             if (!result.Success)
             {
                 if (result.FailureType == WebhookFailureType.Authentication)
                 {
-                    _logger.LogWarning("Webhook authentication failed for payment {PaymentId}", result.PaymentId);
-                    return Unauthorized(new { error = "Invalid webhook signature" });
+                    // Return 200 ACK even on auth failure — non-200 makes MP retry indefinitely.
+                    // The warning is logged above; MP considers the notification delivered.
+                    _logger.LogWarning("Webhook authentication failed for payment {PaymentId} — returning 200 ACK", result.PaymentId);
+                    return Ok(new { paymentId = result.PaymentId, status = "acknowledged", reason = "signature_validation_failed" });
                 }
 
                 _logger.LogWarning("Webhook processing failed for payment {PaymentId}", result.PaymentId);
@@ -158,9 +152,40 @@ public class PaymentController : TicketeraControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error processing webhook for payment {PaymentId}", payload.PaymentId);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { error = "An unexpected error occurred while processing the webhook" });
+            // Catch-all: log the error but ALWAYS return 200 to MP
+            _logger.LogError(ex, "Unexpected error processing webhook for payment {PaymentId}", envelope.Data?.Id);
+            return Ok(new { status = "acknowledged" });
+        }
+    }
+
+    /// <summary>
+    /// Retries sending emails for any pending email send rows.
+    /// Admin-gated: requires RequireAdminRole policy.
+    /// The X-CSRF-PROTECT header is required (this endpoint is NOT in the CSRF exemption list —
+    /// admin frontend must send it).
+    /// </summary>
+    [HttpPost("emails/retry-pending")]
+    [Authorize(Policy = "RequireAdminRole")]
+    public async Task<IActionResult> RetryPendingEmails()
+    {
+        try
+        {
+            var result = await _paymentService.RetryPendingEmailsAsync();
+            _logger.LogInformation(
+                "Admin retried pending emails: {Attempted} attempted, {Sent} sent, {Failed} failed, {Exhausted} exhausted",
+                result.Attempted, result.Sent, result.Failed, result.Exhausted);
+            return Ok(new
+            {
+                attempted = result.Attempted,
+                sent = result.Sent,
+                failed = result.Failed,
+                exhausted = result.Exhausted
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrying pending emails");
+            return StatusCode(500, new { error = "An error occurred while retrying pending emails" });
         }
     }
 

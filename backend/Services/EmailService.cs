@@ -16,6 +16,11 @@ public class EmailService : IEmailService
     private readonly ILogger<EmailService> _logger;
     private readonly ResendOptions _options;
 
+    private string ResolvedFrom =>
+        string.IsNullOrEmpty(_options.FromName)
+            ? _options.FromEmail
+            : $"\"{_options.FromName}\" <{_options.FromEmail}>";
+
     public EmailService(
         IResendClient resendClient,
         ITicketService ticketService,
@@ -53,7 +58,7 @@ public class EmailService : IEmailService
 
         var request = new ResendEmailRequest
         {
-            From = _options.FromEmail,
+            From = ResolvedFrom,
             To = recipientEmail,
             Subject = $"Your tickets for {eventDetails.Name}",
             Html = html
@@ -102,7 +107,7 @@ public class EmailService : IEmailService
 
         var request = new ResendEmailRequest
         {
-            From = _options.FromEmail,
+            From = ResolvedFrom,
             To = recipientEmail,
             Subject = $"Reenvío de tus entradas para {eventDetails.Name}",
             Html = html
@@ -137,7 +142,7 @@ public class EmailService : IEmailService
 
         var request = new ResendEmailRequest
         {
-            From = _options.FromEmail,
+            From = ResolvedFrom,
             To = recipientEmail,
             Subject = "Refund notification",
             Html = html

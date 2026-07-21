@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TicketeraOnline.Api.Services;
 
 /// <summary>
@@ -29,11 +31,38 @@ public interface IMercadoPagoClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets a payment by its Mercado Pago ID.
+    /// Returns null on 404, throws on other non-2xx responses.
+    /// </summary>
+    Task<MercadoPagoPaymentDetail?> GetPaymentByIdAsync(
+        string paymentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Searches payments by external reference.
     /// </summary>
     Task<List<MercadoPagoPaymentInfo>> SearchPaymentsByExternalReferenceAsync(
         string externalReference,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Payment detail returned by GET /v1/payments/{id}.
+/// Minimum fields needed for webhook processing: Id, Status, ExternalReference, TransactionAmount.
+/// </summary>
+public class MercadoPagoPaymentDetail
+{
+    [System.Text.Json.Serialization.JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("external_reference")]
+    public string? ExternalReference { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("transaction_amount")]
+    public decimal TransactionAmount { get; set; }
 }
 
 /// <summary>

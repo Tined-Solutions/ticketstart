@@ -61,6 +61,13 @@ var resendSettings = builder.Configuration.GetSection("Resend");
 var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
 var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
 
+// PROD GATE: fail-fast if Production environment is configured with a Resend sandbox address.
+// resend.dev addresses cannot deliver in production — this prevents silent email loss.
+if (builder.Environment.IsProduction() &&
+    resendFromEmail.EndsWith("@resend.dev", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException(
+        "Resend:FromEmail '@resend.dev' is not allowed in Production. Use a verified production email address.");
+
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
 

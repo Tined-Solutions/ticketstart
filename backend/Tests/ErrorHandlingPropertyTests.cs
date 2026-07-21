@@ -282,7 +282,7 @@ public class ErrorHandlingPropertyTests
                 var audit = new FakeAuditLogService();
                 var paymentService = new Mock<IPaymentService>();
                 paymentService
-                    .Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), scenario.Signature, It.IsAny<byte[]>()))
+                    .Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), scenario.Signature, It.IsAny<byte[]>()))
                     .ReturnsAsync(scenario.Result);
 
                 var controller = new PaymentController(
@@ -308,7 +308,7 @@ public class ErrorHandlingPropertyTests
                     && auditEntry?.Action == AuditActionType.ProcessWebhook
                     && auditEntry?.Resource == AuditResourceType.Payment
                     && auditEntry?.Details != null
-                    && auditEntry.Details.Contains(scenario.Payload.PaymentId)
+                    && auditEntry.Details.Contains(scenario.Payload.Data!.Id!)
                     && auditEntry.Details.Contains(scenario.Result.Success.ToString());
             });
 
@@ -321,10 +321,10 @@ public class ErrorHandlingPropertyTests
         var logger = new CollectingLogger<PaymentController>();
         var audit = new FailingAuditLogService();
         var paymentService = new Mock<IPaymentService>();
-        var payload = new WebhookPayload { PaymentId = "pay-123", ExternalReference = Guid.NewGuid().ToString(), Status = "approved" };
+        var payload = new MercadoPagoWebhookEnvelope { Action = "payment.updated", Type = "payment", Data = new MercadoPagoWebhookData { Id = "pay-123" } };
         var signature = "valid-signature";
-        paymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+        paymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.Data.Id });
 
         var controller = new PaymentController(paymentService.Object, logger, audit)
         {
@@ -621,7 +621,7 @@ public class ErrorHandlingPropertyTests
             from signature in GenSafeString()
             from success in GenStatic.Frequency((1, GenStatic.Constant(true)), (1, GenStatic.Constant(false)))
             select new WebhookScenario(
-                new WebhookPayload { PaymentId = paymentId, ExternalReference = externalRef, Status = status },
+                new MercadoPagoWebhookEnvelope { Action = "payment.updated", Type = "payment", Data = new MercadoPagoWebhookData { Id = paymentId } },
                 signature,
                 new WebhookResult { Success = success, PaymentId = paymentId, Error = success ? null : "Invalid", FailureType = success ? WebhookFailureType.None : WebhookFailureType.Processing });
     }
@@ -688,7 +688,7 @@ public class ErrorHandlingPropertyTests
     private record ExceptionScenario(Exception Exception);
     private record StatusCodeScenario(Exception Exception, int ExpectedStatusCode);
     private record SensitiveMessageScenario(string SensitiveMessage);
-    private record WebhookScenario(WebhookPayload Payload, string Signature, WebhookResult Result);
+    private record WebhookScenario(MercadoPagoWebhookEnvelope Payload, string Signature, WebhookResult Result);
     private record QrValidationScenario(Guid UserId, ValidateQRCodeRequest Request, QRCodeValidationResult Result);
     private record SensitiveQueryScenario(string QueryString, string SecretValue);
 

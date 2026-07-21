@@ -114,17 +114,17 @@ public class PaymentControllerTests
     [Fact]
     public async Task Webhook_ValidSignature_ReturnsOk()
     {
-        var payload = new WebhookPayload
+        var envelope = new MercadoPagoWebhookEnvelope
         {
-            PaymentId = "pay-123",
-            ExternalReference = Guid.NewGuid().ToString(),
-            Status = "approved"
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = "pay-123" }
         };
         var signature = "valid-signature";
-        var rawBody = SetupRequestBody(payload);
+        var rawBody = SetupRequestBody(envelope);
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = "pay-123" });
 
         var result = await _controller.Webhook(signature);
 
@@ -135,17 +135,17 @@ public class PaymentControllerTests
     [Fact]
     public async Task Webhook_InvalidSignature_ReturnsUnauthorized()
     {
-        var payload = new WebhookPayload
+        var envelope = new MercadoPagoWebhookEnvelope
         {
-            PaymentId = "pay-123",
-            ExternalReference = Guid.NewGuid().ToString(),
-            Status = "approved"
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = "pay-123" }
         };
         var signature = "invalid-signature";
-        SetupRequestBody(payload);
+        SetupRequestBody(envelope);
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = false, Error = "Invalid webhook signature", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Authentication });
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = false, Error = "Invalid webhook signature", PaymentId = "pay-123", FailureType = WebhookFailureType.Authentication });
 
         var result = await _controller.Webhook(signature);
 
@@ -156,17 +156,17 @@ public class PaymentControllerTests
     [Fact]
     public async Task Webhook_ProcessingFailure_ReturnsOkWithFailedStatus()
     {
-        var payload = new WebhookPayload
+        var envelope = new MercadoPagoWebhookEnvelope
         {
-            PaymentId = "pay-123",
-            ExternalReference = Guid.NewGuid().ToString(),
-            Status = "approved"
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = "pay-123" }
         };
         var signature = "valid-signature";
-        SetupRequestBody(payload);
+        SetupRequestBody(envelope);
 
-        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = false, Error = "Internal processing error", PaymentId = payload.PaymentId, FailureType = WebhookFailureType.Processing });
+        _mockPaymentService.Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = false, Error = "Internal processing error", PaymentId = "pay-123", FailureType = WebhookFailureType.Processing });
 
         var result = await _controller.Webhook(signature);
 
@@ -174,9 +174,22 @@ public class PaymentControllerTests
         Assert.Equal(200, okResult.StatusCode);
         dynamic? value = okResult.Value as dynamic;
         Assert.NotNull(value);
-        Assert.Equal(payload.PaymentId, value!.paymentId);
+        Assert.Equal("pay-123", value!.paymentId);
         Assert.Equal("failed", value.status);
         Assert.Equal("PROCESSING_FAILED", value.error);
+    }
+
+    [Fact]
+    public async Task Webhook_EmptyBody_Returns200Ack()
+    {
+        // Malformed/unreadable body — controller returns 200 ACK
+        _controller.ControllerContext.HttpContext!.Request.Body = new MemoryStream([]);
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        var result = await _controller.Webhook(null);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
     }
 
     #region Batch 4: Payment Pipeline Tests
@@ -184,18 +197,18 @@ public class PaymentControllerTests
     [Fact]
     public async Task Batch4_Webhook_DuplicateMercadoPagoId_Returns200()
     {
-        var payload = new WebhookPayload
+        var envelope = new MercadoPagoWebhookEnvelope
         {
-            PaymentId = "pay-dup",
-            ExternalReference = Guid.NewGuid().ToString(),
-            Status = "approved"
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = "pay-dup" }
         };
         var signature = "valid-signature";
-        SetupRequestBody(payload);
+        SetupRequestBody(envelope);
 
         _mockPaymentService
-            .Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+            .Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = "pay-dup" });
 
         var result = await _controller.Webhook(signature);
 
@@ -206,38 +219,34 @@ public class PaymentControllerTests
     [Fact]
     public async Task Batch4_Webhook_RawBytesPassedToService()
     {
-        var payload = new WebhookPayload
+        var envelope = new MercadoPagoWebhookEnvelope
         {
-            PaymentId = "pay-raw",
-            ExternalReference = Guid.NewGuid().ToString(),
-            Status = "approved"
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = "pay-raw" }
         };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var rawBody = Encoding.UTF8.GetBytes(payloadJson);
+        var rawBody = SetupRequestBody(envelope);
         var signature = "valid-signature";
 
-        _controller.ControllerContext.HttpContext!.Request.Body = new System.IO.MemoryStream(rawBody);
-        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
-
         _mockPaymentService
-            .Setup(s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.IsAny<byte[]>()))
-            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = payload.PaymentId });
+            .Setup(s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.IsAny<byte[]>()))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = "pay-raw" });
 
         var result = await _controller.Webhook(signature);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         _mockPaymentService.Verify(
-            s => s.ProcessWebhookAsync(It.IsAny<WebhookPayload>(), signature, It.Is<byte[]>(b => b.SequenceEqual(rawBody))),
+            s => s.ProcessWebhookAsync(It.IsAny<MercadoPagoWebhookEnvelope>(), signature, It.Is<byte[]>(b => b.SequenceEqual(rawBody))),
             Times.Once);
     }
 
     #endregion
 
-    private byte[] SetupRequestBody(WebhookPayload payload)
+    private byte[] SetupRequestBody(MercadoPagoWebhookEnvelope envelope)
     {
-        var json = JsonSerializer.Serialize(payload);
+        var json = JsonSerializer.Serialize(envelope);
         var bytes = Encoding.UTF8.GetBytes(json);
-        _controller.ControllerContext.HttpContext!.Request.Body = new System.IO.MemoryStream(bytes);
+        _controller.ControllerContext.HttpContext!.Request.Body = new MemoryStream(bytes);
         _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
         return bytes;
     }

@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Ticket> Tickets { get; set; }
     public DbSet<Transaction> Transactions { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
+    public DbSet<PendingEmailSend> PendingEmailSends { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -176,6 +177,28 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(a => a.UserId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .IsRequired(false);
+        });
+
+        // PendingEmailSend entity configuration
+        modelBuilder.Entity<PendingEmailSend>(entity =>
+        {
+            entity.ToTable("pending_email_send");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReservationId);
+            entity.Property(e => e.PaymentId).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.RecipientEmail).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.TicketIds).HasColumnType("uuid[]");
+            entity.Property(e => e.LastError).HasMaxLength(1000);
+            entity.Property(e => e.Attempts).IsRequired().HasDefaultValue(0);
+            entity.Property(e => e.MaxAttempts).IsRequired().HasDefaultValue(5);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasDefaultValue("pending");
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+
+            entity.HasOne(e => e.Reservation)
+                .WithMany()
+                .HasForeignKey(e => e.ReservationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
