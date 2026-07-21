@@ -41,18 +41,30 @@ public class EmailService : IEmailService
             recipientEmail, eventDetails.Id);
 
         var ticketList = tickets.ToList();
-        var ticketImages = new List<(Ticket Ticket, string ImageBase64)>();
+        var attachments = new List<ResendAttachment>();
+        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
 
-        foreach (var ticket in ticketList)
+        for (int i = 0; i < ticketList.Count; i++)
         {
+            var ticket = ticketList[i];
             var imageBase64 = _ticketService.GenerateQRCodeImage(ticket.QRCodeData);
-            ticketImages.Add((ticket, imageBase64));
+            var contentId = $"qr-ticket-{ticket.Id}";
+
+            attachments.Add(new ResendAttachment
+            {
+                Filename = $"qr-ticket-{i + 1}.png",
+                Content = imageBase64,
+                ContentType = "image/png",
+                ContentId = contentId
+            });
+
+            ticketContentIds.Add((ticket, contentId));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketImages,
+            ticketContentIds,
             totalAmount,
             recipientEmail);
 
@@ -61,7 +73,8 @@ public class EmailService : IEmailService
             From = ResolvedFrom,
             To = recipientEmail,
             Subject = $"Your tickets for {eventDetails.Name}",
-            Html = html
+            Html = html,
+            Attachments = attachments
         };
 
         var result = await SendWithRetryAsync(request);
@@ -90,18 +103,30 @@ public class EmailService : IEmailService
             recipientEmail, eventDetails.Id);
 
         var ticketList = tickets.ToList();
-        var ticketImages = new List<(Ticket Ticket, string ImageBase64)>();
+        var attachments = new List<ResendAttachment>();
+        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
 
-        foreach (var ticket in ticketList)
+        for (int i = 0; i < ticketList.Count; i++)
         {
+            var ticket = ticketList[i];
             var imageBase64 = _ticketService.GenerateQRCodeImage(ticket.QRCodeData);
-            ticketImages.Add((ticket, imageBase64));
+            var contentId = $"qr-ticket-{ticket.Id}";
+
+            attachments.Add(new ResendAttachment
+            {
+                Filename = $"qr-ticket-{i + 1}.png",
+                Content = imageBase64,
+                ContentType = "image/png",
+                ContentId = contentId
+            });
+
+            ticketContentIds.Add((ticket, contentId));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketImages,
+            ticketContentIds,
             totalAmount,
             recipientEmail);
 
@@ -110,7 +135,8 @@ public class EmailService : IEmailService
             From = ResolvedFrom,
             To = recipientEmail,
             Subject = $"Reenvío de tus entradas para {eventDetails.Name}",
-            Html = html
+            Html = html,
+            Attachments = attachments
         };
 
         var result = await SendWithRetryAsync(request);

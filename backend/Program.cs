@@ -15,6 +15,7 @@ using System.Threading.RateLimiting;
 using Amazon.S3;
 using Amazon.Runtime;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -177,6 +178,20 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 // Add controllers
 builder.Services.AddControllers();
 
+// Trust forwarded headers from reverse proxies (ngrok in dev).
+// Required so UseHttpsRedirection respects X-Forwarded-Proto: https
+// and does NOT redirect ngrok-forwarded HTTPS requests back to HTTP → 502.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+    if (builder.Environment.IsDevelopment())
+    {
+        // Trust any proxy in development (ngrok IPs change).
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
+
 // Configure rate limiting
 builder.Services.AddRateLimiter(options =>
 {
@@ -261,7 +276,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// In development behind ngrok, HTTPS is handled at the edge by ngrok.
+// Skip HTTP→HTTPS redirect to avoid 502 from ngrok forwarding.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // Rate limiter must be after CORS/HTTPS but before auth/endpoints
 app.UseRateLimiter();
