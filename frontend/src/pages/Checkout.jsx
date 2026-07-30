@@ -37,6 +37,7 @@ export default function Checkout() {
   const [purchaserEmail, setPurchaserEmail] = useState(user?.email || '')
   const [confirmEmail, setConfirmEmail] = useState('')
   const [purchaserDNI, setPurchaserDNI] = useState('')
+  const [confirmDNI, setConfirmDNI] = useState('')
   const [reservation, setReservation] = useState(null)
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
@@ -90,6 +91,13 @@ export default function Checkout() {
       const dni = purchaserDNI.trim()
       if (!dni) {
         setError('El DNI es obligatorio')
+        setShakeError(true)
+        setLoading(false)
+        return
+      }
+
+      if (dni !== confirmDNI.trim()) {
+        setError('Los DNIs no coinciden')
         setShakeError(true)
         setLoading(false)
         return
@@ -303,7 +311,35 @@ export default function Checkout() {
                     id="purchaserDNI"
                     type="text"
                     value={purchaserDNI}
-                    onChange={(e) => setPurchaserDNI(e.target.value)}
+                    onChange={(e) => {
+                      setPurchaserDNI(e.target.value)
+                      setError('')
+                    }}
+                    required
+                    maxLength={50}
+                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
+                      text-text-1 placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
+                      transition-all duration-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="confirmDNI"
+                    className="block text-sm font-medium text-text-2 mb-1"
+                  >
+                    Confirmar DNI
+                  </label>
+                  <input
+                    id="confirmDNI"
+                    type="text"
+                    value={confirmDNI}
+                    onChange={(e) => {
+                      setConfirmDNI(e.target.value)
+                      setError('')
+                    }}
+                    onPaste={(e) => e.preventDefault()}
                     required
                     maxLength={50}
                     className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg

@@ -51,7 +51,7 @@ function buildReservation(overrides = {}) {
 
 async function fillPurchaserForm(
   user,
-  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678' } = {}
+  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678', confirmDNI = dni } = {}
 ) {
   await user.clear(screen.getByLabelText(/nombre completo/i))
   if (name) {
@@ -72,10 +72,15 @@ async function fillPurchaserForm(
   if (dni) {
     await user.type(screen.getByLabelText(/^dni$/i), dni)
   }
+
+  await user.clear(screen.getByLabelText('Confirmar DNI'))
+  if (confirmDNI) {
+    await user.type(screen.getByLabelText('Confirmar DNI'), confirmDNI)
+  }
 }
 
 function fillPurchaserFormFire(
-  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678' } = {}
+  { name = 'Juan Perez', email = 'juan@example.com', confirmEmail = email, dni = '12345678', confirmDNI = dni } = {}
 ) {
   fireEvent.change(screen.getByLabelText(/nombre completo/i), {
     target: { value: name },
@@ -88,6 +93,9 @@ function fillPurchaserFormFire(
   })
   fireEvent.change(screen.getByLabelText(/^dni$/i), {
     target: { value: dni },
+  })
+  fireEvent.change(screen.getByLabelText('Confirmar DNI'), {
+    target: { value: confirmDNI },
   })
 }
 
@@ -127,6 +135,7 @@ describe('Checkout', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
     expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /reservar entradas/i })
     ).toBeInTheDocument()
@@ -417,5 +426,61 @@ describe('Checkout', () => {
     await user.type(screen.getByLabelText('Email'), 'juan@example.com')
 
     expect(screen.queryByText(/los emails no coinciden/i)).not.toBeInTheDocument()
+  })
+
+  it('renders a second DNI input labeled "Confirmar DNI"', () => {
+    render(<Checkout />)
+
+    expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar DNI')).toHaveAttribute('type', 'text')
+    expect(screen.getByLabelText('Confirmar DNI')).toBeRequired()
+  })
+
+  it('blocks paste on the confirm DNI field', () => {
+    render(<Checkout />)
+
+    const confirmInput = screen.getByLabelText('Confirmar DNI')
+    const pasteEvent = new Event('paste', { bubbles: true, cancelable: true })
+    const prevented = !confirmInput.dispatchEvent(pasteEvent)
+
+    expect(prevented).toBe(true)
+  })
+
+  it('shows validation error when DNIs do not match', async () => {
+    render(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), {
+      dni: '12345678',
+      confirmDNI: '87654321',
+    })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/los dnis no coinciden/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows both DNI fields in the form with correct labels', () => {
+    render(<Checkout />)
+
+    expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
+  })
+
+  it('clears error when user types in either DNI field after a mismatch', async () => {
+    const user = userEvent.setup()
+    render(<Checkout />)
+
+    await fillPurchaserForm(user, {
+      dni: '12345678',
+      confirmDNI: '87654321',
+    })
+    await user.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/los dnis no coinciden/i)).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText(/^dni$/i))
+    await user.type(screen.getByLabelText(/^dni$/i), '12345678')
+
+    expect(screen.queryByText(/los dnis no coinciden/i)).not.toBeInTheDocument()
   })
 })
