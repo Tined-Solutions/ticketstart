@@ -46,10 +46,6 @@ describe('Login', () => {
     expect(screen.getByRole('heading', { name: /iniciar sesion/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/contrasena/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /crear cuenta/i })).toHaveAttribute(
-      'href',
-      '/register'
-    )
   })
 
   it('shows validation errors for empty fields', async () => {

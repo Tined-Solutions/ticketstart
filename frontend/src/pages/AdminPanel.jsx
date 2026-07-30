@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
+import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
 import { fadeIn } from '../lib/motion.js'
@@ -426,9 +427,8 @@ export default function AdminPanel() {
 
               <div className="form-group">
                 <label htmlFor="new-user-password">Contrasena</label>
-                <input
+                <PasswordInput
                   id="new-user-password"
-                  type="password"
                   value={formData.password}
                   onChange={(e) => updateFormField('password', e.target.value)}
                   disabled={creating}

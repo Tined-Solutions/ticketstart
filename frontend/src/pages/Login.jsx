@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/auth.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
+import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
 
@@ -146,9 +147,8 @@ export default function Login() {
               >
                 Contrasena
               </label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={formData.password}
                 onChange={updateField('password')}
                 disabled={loading}
@@ -200,16 +200,6 @@ export default function Login() {
               {loading ? 'Ingresando...' : 'Ingresar'}
             </Button>
           </form>
-
-          <p className="text-center text-text-2 text-sm mt-6">
-            No tenes cuenta?{' '}
-            <Link
-              to="/register"
-              className="text-brand-1 hover:text-brand-2 underline underline-offset-2 transition-colors"
-            >
-              Crear cuenta
-            </Link>
-          </p>
         </GlassCard>
       </motion.div>
     </motion.div>

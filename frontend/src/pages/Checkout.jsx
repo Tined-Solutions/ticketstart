@@ -139,7 +139,7 @@ export default function Checkout() {
   if (isExpired) {
     return (
       <div className="max-w-lg mx-auto px-4 py-20 text-center">
-        <GlassCard className="py-12">
+        <GlassCard className="px-6 py-12">
           <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
             Reserva expirada
           </h1>
@@ -179,7 +179,7 @@ export default function Checkout() {
           </h1>
 
           {/* Event summary */}
-          <GlassCard className="mb-6">
+          <GlassCard className="mb-6 p-6">
             <div className="flex gap-4">
               {cart.eventImageUrl ? (
                 <img
@@ -218,7 +218,7 @@ export default function Checkout() {
             animate={shakeError ? shakeAnim : {}}
             onAnimationComplete={() => setShakeError(false)}
           >
-            <GlassCard>
+            <GlassCard className="p-6">
               <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
                 Datos del comprador
               </h2>
@@ -342,7 +342,7 @@ export default function Checkout() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-12">
-      <GlassCard className="text-center">
+      <GlassCard className="text-center p-6">
         <h1 className="text-2xl font-display font-bold text-text-1 mb-2">
           Confirma tu reserva
         </h1>
