@@ -18,6 +18,7 @@ public class TicketControllerTests
     private readonly Mock<ITicketService> _mockTicketService;
     private readonly Mock<ILogger<TicketController>> _mockLogger;
     private readonly Mock<IAuditLogService> _mockAuditLogService;
+    private readonly Mock<ITurnstileService> _mockTurnstileService;
     private readonly TicketController _controller;
 
     public TicketControllerTests()
@@ -25,10 +26,18 @@ public class TicketControllerTests
         _mockTicketService = new Mock<ITicketService>();
         _mockLogger = new Mock<ILogger<TicketController>>();
         _mockAuditLogService = new Mock<IAuditLogService>();
+        _mockTurnstileService = new Mock<ITurnstileService>();
+
+        // Simulate non-Development environment so Turnstile verification runs
+        var env = new Mock<IWebHostEnvironment>();
+        env.Setup(e => e.EnvironmentName).Returns("Production");
+
         _controller = new TicketController(
             _mockTicketService.Object,
             _mockLogger.Object,
-            _mockAuditLogService.Object);
+            _mockAuditLogService.Object,
+            _mockTurnstileService.Object,
+            env.Object);
 
         _controller.ControllerContext = new ControllerContext
         {
@@ -127,12 +136,16 @@ public class TicketControllerTests
         var request = new ResendTicketsRequest
         {
             Email = "buyer@test.com",
-            CaptchaToken = "valid-captcha-token"
+            TurnstileToken = "valid-turnstile-token"
         };
 
+        _mockTurnstileService
+            .Setup(s => s.VerifyTokenAsync(request.TurnstileToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         _mockTicketService
-            .Setup(s => s.ResendTicketsByEmailAsync(request.Email, request.CaptchaToken))
-            .ReturnsAsync(true); // Always returns success
+            .Setup(s => s.ResendTicketsByEmailAsync(request.Email))
+            .ReturnsAsync(true);
 
         // Act
         var result = await _controller.ResendTickets(request);
@@ -141,7 +154,6 @@ public class TicketControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
 
-        // Verify generic message (no info leak)
         var responseObj = okResult.Value;
         var messageProp = responseObj!.GetType().GetProperty("message");
         Assert.NotNull(messageProp);
@@ -157,17 +169,21 @@ public class TicketControllerTests
         var request = new ResendTicketsRequest
         {
             Email = "nonexistent@test.com",
-            CaptchaToken = "valid-captcha-token"
+            TurnstileToken = "valid-turnstile-token"
         };
 
+        _mockTurnstileService
+            .Setup(s => s.VerifyTokenAsync(request.TurnstileToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         _mockTicketService
-            .Setup(s => s.ResendTicketsByEmailAsync(request.Email, request.CaptchaToken))
+            .Setup(s => s.ResendTicketsByEmailAsync(request.Email))
             .ReturnsAsync(true);
 
         // Act
         var result = await _controller.ResendTickets(request);
 
-        // Assert — same generic success, no info leak
+        // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
 
@@ -186,7 +202,7 @@ public class TicketControllerTests
         var request = new ResendTicketsRequest
         {
             Email = "",
-            CaptchaToken = "token"
+            TurnstileToken = "token"
         };
 
         // Act
@@ -206,6 +222,61 @@ public class TicketControllerTests
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequestResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResendTickets_TurnstileFails_Returns400()
+    {
+        // Arrange
+        var request = new ResendTicketsRequest
+        {
+            Email = "buyer@test.com",
+            TurnstileToken = "invalid-token"
+        };
+
+        _mockTurnstileService
+            .Setup(s => s.VerifyTokenAsync(request.TurnstileToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _controller.ResendTickets(request);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequestResult.StatusCode);
+
+        var responseObj = badRequestResult.Value;
+        var errorProp = responseObj!.GetType().GetProperty("error");
+        Assert.NotNull(errorProp);
+        var error = errorProp.GetValue(responseObj) as string;
+        Assert.Equal("CAPTCHA verification failed", error);
+    }
+
+    [Fact]
+    public async Task ResendTickets_TurnstilePasses_CallsResendByEmail()
+    {
+        // Arrange
+        var request = new ResendTicketsRequest
+        {
+            Email = "buyer@test.com",
+            TurnstileToken = "valid-token"
+        };
+
+        _mockTurnstileService
+            .Setup(s => s.VerifyTokenAsync(request.TurnstileToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _mockTicketService
+            .Setup(s => s.ResendTicketsByEmailAsync(request.Email))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _controller.ResendTickets(request);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        _mockTicketService.Verify(s => s.ResendTicketsByEmailAsync(request.Email), Times.Once);
+        _mockTurnstileService.Verify(s => s.VerifyTokenAsync(request.TurnstileToken, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

@@ -17,16 +17,19 @@ public class TicketService : ITicketService
     private readonly ApplicationDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TicketService> _logger;
+    private readonly IServiceProvider _serviceProvider;
     private readonly string _hmacSecretKey;
 
     public TicketService(
         ApplicationDbContext context,
         IConfiguration configuration,
-        ILogger<TicketService> logger)
+        ILogger<TicketService> logger,
+        IServiceProvider serviceProvider)
     {
         _context = context;
         _configuration = configuration;
         _logger = logger;
+        _serviceProvider = serviceProvider;
         _hmacSecretKey = _configuration["QRCode:HmacSecretKey"]
             ?? throw new InvalidOperationException("QRCode:HmacSecretKey is not configured");
     }
@@ -454,53 +457,59 @@ public class TicketService : ITicketService
     /// Resends tickets by email. Always returns success to prevent info leak.
     /// Validates: Batch 5 — B5.2
     /// </summary>
-    public async Task<bool> ResendTicketsByEmailAsync(string email, string captchaToken)
+    public async Task<bool> ResendTicketsByEmailAsync(string email)
     {
         _logger.LogInformation("Resend tickets requested for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
 
         try
         {
-            // Look up tickets — could be empty (generic response)
             var tickets = await _context.Tickets
                 .Include(t => t.Event)
                 .Include(t => t.TicketType)
                 .Where(t => t.PurchaserEmail == email)
                 .ToListAsync();
 
-            if (tickets.Count > 0)
-            {
-                _logger.LogInformation("Found {Count} tickets to resend for email hash {EmailHash}",
-                    tickets.Count, LogRedactor.HashIdentifier(email));
-
-                // Queue resend (non-blocking) — in production this would go to a background queue
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        foreach (var ticket in tickets)
-                        {
-                            _logger.LogInformation("Queued resend for ticket {TicketId}", ticket.Id);
-                            // Actual email sending would happen here via IEmailService
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error during background resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
-                    }
-                });
-            }
-            else
+            if (tickets.Count == 0)
             {
                 _logger.LogInformation("No tickets found for email hash {EmailHash} — still returning success", LogRedactor.HashIdentifier(email));
+                return true;
             }
 
-            // Always return success — prevents email enumeration
+            _logger.LogInformation("Found {Count} tickets to resend for email hash {EmailHash}",
+                tickets.Count, LogRedactor.HashIdentifier(email));
+
+            var eventGroups = tickets.GroupBy(t => t.EventId);
+
+            foreach (var eventGroup in eventGroups)
+            {
+                var eventTickets = eventGroup.ToList();
+                var eventDetails = eventTickets.First().Event;
+
+                try
+                {
+                    var emailService = _serviceProvider.GetRequiredService<IEmailService>();
+                    var result = await emailService.SendResendEmailAsync(email, eventTickets, eventDetails);
+
+                    if (!result.Success)
+                    {
+                        _logger.LogError(
+                            "Failed to resend tickets for event {EventId} to {EmailHash}: {Error}",
+                            eventDetails.Id, LogRedactor.HashIdentifier(email), result.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Error resending tickets for event {EventId} to {EmailHash}",
+                        eventDetails.Id, LogRedactor.HashIdentifier(email));
+                }
+            }
+
             return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during ticket resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
-            // Still return success to prevent info leak
             return true;
         }
     }

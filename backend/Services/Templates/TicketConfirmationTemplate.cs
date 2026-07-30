@@ -13,13 +13,13 @@ public static class TicketConfirmationTemplate
     /// Renders the ticket confirmation email body.
     /// </summary>
     /// <param name="eventDetails">Event information</param>
-    /// <param name="tickets">Tickets with their embedded QR code images</param>
+    /// <param name="tickets">Tickets with their Content-ID references for inline QR images</param>
     /// <param name="totalAmount">Total purchase amount</param>
     /// <param name="recipientEmail">Purchaser email address</param>
     /// <returns>HTML email body</returns>
     public static string Render(
         Event eventDetails,
-        IEnumerable<(Ticket Ticket, string ImageBase64)> tickets,
+        IEnumerable<(Ticket Ticket, string ContentId)> tickets,
         decimal totalAmount,
         string recipientEmail)
     {
@@ -60,7 +60,7 @@ public static class TicketConfirmationTemplate
 
         for (var i = 0; i < ticketList.Count; i++)
         {
-            var (ticket, imageBase64) = ticketList[i];
+            var (ticket, contentId) = ticketList[i];
             var ticketTypeName = ticket.TicketType?.Name ?? "Ticket";
             var ticketPrice = ticket.TicketType?.Price.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00";
 
@@ -68,7 +68,7 @@ public static class TicketConfirmationTemplate
             html.AppendLine($"<h3>Ticket {i + 1}: {HtmlEncoder.Escape(ticketTypeName)}</h3>");
             html.AppendLine($"<p><strong>Price:</strong> ${ticketPrice}</p>");
             html.AppendLine("<div class='qr-code'>");
-            html.AppendLine($"<img src=\"data:image/png;base64,{imageBase64}\" alt=\"QR Code for ticket {i + 1}\" width=\"200\" height=\"200\" />");
+            html.AppendLine($"<img src=\"cid:{HtmlEncoder.Escape(contentId)}\" alt=\"QR Code for ticket {i + 1}\" width=\"200\" height=\"200\" />");
             html.AppendLine("</div>");
             html.AppendLine("</div>");
         }

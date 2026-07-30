@@ -231,10 +231,14 @@ public class LogRedactorTests
             .ReturnsAsync(new List<Ticket>());
 
         var auditService = new Mock<IAuditLogService>();
+        var turnstile = new Mock<ITurnstileService>();
+        var env = new Mock<IWebHostEnvironment>();
         var controller = new TicketController(
             ticketService.Object,
             collectingLogger,
-            auditService.Object)
+            auditService.Object,
+            turnstile.Object,
+            env.Object)
         {
             ControllerContext = new ControllerContext
             {

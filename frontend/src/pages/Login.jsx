@@ -98,7 +98,7 @@ export default function Login() {
             <h1 className="text-3xl font-display font-bold bg-gradient-to-r from-brand-1 to-brand-2 bg-clip-text text-transparent mb-2">
               Iniciar sesion
             </h1>
-            <p className="text-text-2 text-sm">Ticketera</p>
+            <p className="text-text-2 text-sm">TicketStar</p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-4">

@@ -21,6 +21,31 @@ vi.mock('../api/client.js', () => ({
   },
 }))
 
+vi.mock('@marsidev/react-turnstile', () => ({
+  Turnstile: ({ onSuccess, onError, onExpire }) => (
+    <div data-testid="turnstile-widget">
+      <button
+        data-testid="turnstile-success-trigger"
+        onClick={() => onSuccess('mock-turnstile-token')}
+      >
+        Trigger Success
+      </button>
+      <button
+        data-testid="turnstile-error-trigger"
+        onClick={() => onError()}
+      >
+        Trigger Error
+      </button>
+      <button
+        data-testid="turnstile-expire-trigger"
+        onClick={() => onExpire()}
+      >
+        Trigger Expire
+      </button>
+    </div>
+  ),
+}))
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -56,7 +81,6 @@ const mockUsedTicket = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// The first email input in DOM is lookup, second is resend
 function getLookupEmailInput() {
   return screen.getAllByLabelText(/email/i)[0]
 }
@@ -83,6 +107,10 @@ async function fillResendForm(user, { email = 'juan@example.com' } = {}) {
     await user.clear(getResendEmailInput())
     await user.type(getResendEmailInput(), email)
   }
+}
+
+async function activateTurnstile() {
+  await userEvent.click(screen.getByTestId('turnstile-success-trigger'))
 }
 
 // ---------------------------------------------------------------------------
@@ -405,28 +433,20 @@ describe('TicketLookup', () => {
 
   // ── Resend section ──────────────────────────────────────────────────
 
-  it('renders the resend form with email input, CAPTCHA, and submit button', () => {
+  it('renders the resend form with email input, Turnstile widget, and submit button', () => {
     render(<TicketLookup />)
 
     expect(
       screen.getByRole('heading', { name: /reenviar entradas/i })
     ).toBeInTheDocument()
 
-    expect(screen.getByLabelText(/no soy un robot/i)).toBeInTheDocument()
+    expect(screen.getByTestId('turnstile-widget')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /reenviar entradas/i })
     ).toBeInTheDocument()
   })
 
-  it('shows CAPTCHA placeholder note', () => {
-    render(<TicketLookup />)
-
-    expect(
-      screen.getByText(/CAPTCHA — sera reemplazado por Turnstile/i)
-    ).toBeInTheDocument()
-  })
-
-  it('disables the resend submit button when CAPTCHA is not checked', () => {
+  it('disables the resend submit button when Turnstile token is not set', () => {
     render(<TicketLookup />)
 
     expect(
@@ -434,25 +454,22 @@ describe('TicketLookup', () => {
     ).toBeDisabled()
   })
 
-  it('enables the resend submit button when CAPTCHA is checked', async () => {
+  it('enables the resend submit button when Turnstile succeeds', async () => {
     render(<TicketLookup />)
 
-    const captchaCheckbox = screen.getByLabelText(/no soy un robot/i)
-    await userEvent.click(captchaCheckbox)
+    await activateTurnstile()
 
     expect(
       screen.getByRole('button', { name: /reenviar entradas/i })
     ).not.toBeDisabled()
   })
 
-  it('calls POST /tickets/resend and shows success message', async () => {
+  it('calls POST /tickets/resend with turnstileToken and shows success message', async () => {
     mockPost.mockResolvedValue({ data: {} })
 
     render(<TicketLookup />)
 
-    // Check the CAPTCHA box first so the button is enabled
-    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
-
+    await activateTurnstile()
     await fillResendForm(userEvent.setup())
     await userEvent.click(
       screen.getByRole('button', { name: /reenviar entradas/i })
@@ -461,7 +478,7 @@ describe('TicketLookup', () => {
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledWith('/tickets/resend', {
         email: 'juan@example.com',
-        captchaToken: 'placeholder',
+        turnstileToken: 'mock-turnstile-token',
       })
     })
 
@@ -481,9 +498,7 @@ describe('TicketLookup', () => {
 
     render(<TicketLookup />)
 
-    // Check the CAPTCHA box
-    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
-
+    await activateTurnstile()
     await fillResendForm(userEvent.setup())
     await userEvent.click(
       screen.getByRole('button', { name: /reenviar entradas/i })
@@ -499,8 +514,7 @@ describe('TicketLookup', () => {
   it('shows validation error for empty resend email', async () => {
     render(<TicketLookup />)
 
-    // Check the CAPTCHA box
-    await userEvent.click(screen.getByLabelText(/no soy un robot/i))
+    await activateTurnstile()
 
     await userEvent.click(
       screen.getByRole('button', { name: /reenviar entradas/i })
@@ -508,5 +522,13 @@ describe('TicketLookup', () => {
 
     expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows Verified text after Turnstile success', async () => {
+    render(<TicketLookup />)
+
+    await activateTurnstile()
+
+    expect(screen.getByText(/✓ Verified/)).toBeInTheDocument()
   })
 })

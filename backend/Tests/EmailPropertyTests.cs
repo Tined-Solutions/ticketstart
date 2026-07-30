@@ -116,10 +116,25 @@ public class EmailPropertyTests
 
         Assert.True(result.Success);
         Assert.NotNull(captured);
-        Assert.Contains("base64-qr-data-1", captured!.Html);
-        Assert.Contains("base64-qr-data-2", captured.Html);
-        Assert.Contains("base64-qr-data-3", captured.Html);
-        Assert.Contains("data:image/png;base64,", captured.Html);
+        Assert.NotNull(captured!.Attachments);
+        Assert.Equal(3, captured.Attachments!.Count);
+
+        // Verify each attachment has correct content type, content ID, and base64 content
+        for (int i = 0; i < tickets.Length; i++)
+        {
+            var ticket = tickets[i];
+            var expectedContentId = $"qr-ticket-{ticket.Id}";
+            var attachment = captured.Attachments[i];
+
+            Assert.Equal("image/png", attachment.ContentType);
+            Assert.Equal(expectedContentId, attachment.ContentId);
+            Assert.Contains(expectedContentId, captured.Html);
+            Assert.Contains($"base64-qr-data-{i + 1}", attachment.Content);
+        }
+
+        // HTML uses CID references, not data URIs (which email clients strip)
+        Assert.Contains("cid:", captured.Html);
+        Assert.DoesNotContain("data:image/png;base64,", captured.Html);
     }
 
     [Fact]
@@ -143,7 +158,14 @@ public class EmailPropertyTests
 
         Assert.True(result.Success);
         Assert.NotNull(captured);
-        Assert.Contains("base64-single-qr", captured!.Html);
+        Assert.NotNull(captured!.Attachments);
+        Assert.Single(captured.Attachments!);
+
+        var attachment = captured.Attachments![0];
+        Assert.Equal("image/png", attachment.ContentType);
+        Assert.Equal($"qr-ticket-{tickets[0].Id}", attachment.ContentId);
+        Assert.Contains($"qr-ticket-{tickets[0].Id}", captured.Html);
+        Assert.Contains("base64-single-qr", attachment.Content);
     }
 
     [Fact]
@@ -171,8 +193,15 @@ public class EmailPropertyTests
 
         _mockTicketService.Verify(t => t.GenerateQRCodeImage("qr-a"), Times.Once);
         _mockTicketService.Verify(t => t.GenerateQRCodeImage("qr-b"), Times.Once);
-        Assert.Contains("img-qr-a", captured!.Html);
-        Assert.Contains("img-qr-b", captured.Html);
+
+        Assert.NotNull(captured!.Attachments);
+        Assert.Equal(2, captured.Attachments!.Count);
+        Assert.Contains("img-qr-a", captured.Attachments[0].Content);
+        Assert.Contains("img-qr-b", captured.Attachments[1].Content);
+
+        // HTML uses CID references
+        Assert.Contains($"cid:qr-ticket-{tickets[0].Id}", captured.Html);
+        Assert.Contains($"cid:qr-ticket-{tickets[1].Id}", captured.Html);
     }
 
     [Fact]

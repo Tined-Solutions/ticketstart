@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Services;
+using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Authorization;
 using TicketeraOnline.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -14,6 +15,7 @@ using System.Threading.RateLimiting;
 using Amazon.S3;
 using Amazon.Runtime;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,12 +51,23 @@ builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(Resen
 builder.Services.AddHttpClient<IResendClient, ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Configure Cloudflare Turnstile
+builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.SectionName));
+builder.Services.AddHttpClient<ITurnstileService, TurnstileService>();
+
 // Configure reservation HMAC token for guest checkout IDOR protection
 builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));
 
 var resendSettings = builder.Configuration.GetSection("Resend");
 var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
 var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
+
+// PROD GATE: fail-fast if Production environment is configured with a Resend sandbox address.
+// resend.dev addresses cannot deliver in production — this prevents silent email loss.
+if (builder.Environment.IsProduction() &&
+    resendFromEmail.EndsWith("@resend.dev", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException(
+        "Resend:FromEmail '@resend.dev' is not allowed in Production. Use a verified production email address.");
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
@@ -165,6 +178,20 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 // Add controllers
 builder.Services.AddControllers();
 
+// Trust forwarded headers from reverse proxies (ngrok in dev).
+// Required so UseHttpsRedirection respects X-Forwarded-Proto: https
+// and does NOT redirect ngrok-forwarded HTTPS requests back to HTTP → 502.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+    if (builder.Environment.IsDevelopment())
+    {
+        // Trust any proxy in development (ngrok IPs change).
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
+
 // Configure rate limiting
 builder.Services.AddRateLimiter(options =>
 {
@@ -249,7 +276,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// In development behind ngrok, HTTPS is handled at the edge by ngrok.
+// Skip HTTP→HTTPS redirect to avoid 502 from ngrok forwarding.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // Rate limiter must be after CORS/HTTPS but before auth/endpoints
 app.UseRateLimiter();

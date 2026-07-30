@@ -17,16 +17,22 @@ public class TicketController : TicketeraControllerBase
 {
     private readonly ITicketService _ticketService;
     private readonly IAuditLogService _auditLogService;
+    private readonly ITurnstileService _turnstileService;
+    private readonly IWebHostEnvironment _env;
     private readonly ILogger<TicketController> _logger;
 
     public TicketController(
         ITicketService ticketService,
         ILogger<TicketController> logger,
-        IAuditLogService auditLogService)
+        IAuditLogService auditLogService,
+        ITurnstileService turnstileService,
+        IWebHostEnvironment env)
     {
         _ticketService = ticketService;
         _logger = logger;
         _auditLogService = auditLogService;
+        _turnstileService = turnstileService;
+        _env = env;
     }
 
     /// <summary>
@@ -188,9 +194,7 @@ public class TicketController : TicketeraControllerBase
     /// Rate limited to 3 requests per hour per email.
     /// Validates: Batch 5 — B5.2
     /// </summary>
-    /// <param name="request">Resend request with email and captcha token</param>
-    // TODO: Integrate Cloudflare Turnstile verification — validate captchaToken server-side
-    // before processing the resend. Currently accepts any non-empty token as placeholder.
+    /// <param name="request">Resend request with email and Turnstile token</param>
     /// <returns>Generic success message</returns>
     [HttpPost("resend")]
     [EnableRateLimiting("Resend")]
@@ -215,7 +219,32 @@ public class TicketController : TicketeraControllerBase
 
         try
         {
-            await _ticketService.ResendTicketsByEmailAsync(request.Email, request.CaptchaToken);
+            var turnstileToken = request.TurnstileToken;
+
+            if (string.IsNullOrWhiteSpace(turnstileToken) && _env.IsDevelopment())
+            {
+                turnstileToken = "XXXX.DUMMY.TOKEN.XXXX";
+                _logger.LogInformation("Using dummy Turnstile token in Development");
+            }
+
+            if (string.IsNullOrWhiteSpace(turnstileToken))
+            {
+                _logger.LogWarning("Resend tickets failed: Turnstile token is missing");
+                return BadRequest(new { error = "CAPTCHA verification failed" });
+            }
+
+            if (!_env.IsDevelopment() || turnstileToken != "XXXX.DUMMY.TOKEN.XXXX")
+            {
+                var verified = await _turnstileService.VerifyTokenAsync(turnstileToken);
+                if (!verified)
+                {
+                    _logger.LogWarning("Resend tickets failed: Turnstile verification failed for {EmailHash}",
+                        LogRedactor.HashIdentifier(request.Email));
+                    return BadRequest(new { error = "CAPTCHA verification failed" });
+                }
+            }
+
+            await _ticketService.ResendTicketsByEmailAsync(request.Email);
 
             // Generic message — always the same regardless of whether tickets exist
             return Ok(new { message = "If the email is registered, tickets will be resent." });

@@ -25,10 +25,10 @@ public class CsrfHeaderMiddleware
             return;
         }
 
-        // POST /webhook and POST /api/auth/login are exempt
+        // POST /api/payments/webhook and POST /api/auth/login are exempt
         // (MercadoPago callbacks and login — no CSRF token available yet)
         if (method == HttpMethods.Post &&
-            (path.StartsWith("/webhook", StringComparison.OrdinalIgnoreCase) ||
+            (path.StartsWith("/api/payments/webhook", StringComparison.OrdinalIgnoreCase) ||
              path.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);

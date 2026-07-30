@@ -16,6 +16,11 @@ public class EmailService : IEmailService
     private readonly ILogger<EmailService> _logger;
     private readonly ResendOptions _options;
 
+    private string ResolvedFrom =>
+        string.IsNullOrEmpty(_options.FromName)
+            ? _options.FromEmail
+            : $"\"{_options.FromName}\" <{_options.FromEmail}>";
+
     public EmailService(
         IResendClient resendClient,
         ITicketService ticketService,
@@ -36,27 +41,40 @@ public class EmailService : IEmailService
             recipientEmail, eventDetails.Id);
 
         var ticketList = tickets.ToList();
-        var ticketImages = new List<(Ticket Ticket, string ImageBase64)>();
+        var attachments = new List<ResendAttachment>();
+        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
 
-        foreach (var ticket in ticketList)
+        for (int i = 0; i < ticketList.Count; i++)
         {
+            var ticket = ticketList[i];
             var imageBase64 = _ticketService.GenerateQRCodeImage(ticket.QRCodeData);
-            ticketImages.Add((ticket, imageBase64));
+            var contentId = $"qr-ticket-{ticket.Id}";
+
+            attachments.Add(new ResendAttachment
+            {
+                Filename = $"qr-ticket-{i + 1}.png",
+                Content = imageBase64,
+                ContentType = "image/png",
+                ContentId = contentId
+            });
+
+            ticketContentIds.Add((ticket, contentId));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketImages,
+            ticketContentIds,
             totalAmount,
             recipientEmail);
 
         var request = new ResendEmailRequest
         {
-            From = _options.FromEmail,
+            From = ResolvedFrom,
             To = recipientEmail,
             Subject = $"Your tickets for {eventDetails.Name}",
-            Html = html
+            Html = html,
+            Attachments = attachments
         };
 
         var result = await SendWithRetryAsync(request);
@@ -78,6 +96,68 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
+    public async Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails)
+    {
+        _logger.LogInformation(
+            "Sending ticket resend email to {Recipient} for event {EventId}",
+            recipientEmail, eventDetails.Id);
+
+        var ticketList = tickets.ToList();
+        var attachments = new List<ResendAttachment>();
+        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
+
+        for (int i = 0; i < ticketList.Count; i++)
+        {
+            var ticket = ticketList[i];
+            var imageBase64 = _ticketService.GenerateQRCodeImage(ticket.QRCodeData);
+            var contentId = $"qr-ticket-{ticket.Id}";
+
+            attachments.Add(new ResendAttachment
+            {
+                Filename = $"qr-ticket-{i + 1}.png",
+                Content = imageBase64,
+                ContentType = "image/png",
+                ContentId = contentId
+            });
+
+            ticketContentIds.Add((ticket, contentId));
+        }
+
+        var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
+        var html = TicketConfirmationTemplate.Render(
+            eventDetails,
+            ticketContentIds,
+            totalAmount,
+            recipientEmail);
+
+        var request = new ResendEmailRequest
+        {
+            From = ResolvedFrom,
+            To = recipientEmail,
+            Subject = $"Reenvío de tus entradas para {eventDetails.Name}",
+            Html = html,
+            Attachments = attachments
+        };
+
+        var result = await SendWithRetryAsync(request);
+
+        if (result.Success)
+        {
+            _logger.LogInformation(
+                "Ticket resend email sent to {Recipient} for event {EventId}",
+                recipientEmail, eventDetails.Id);
+        }
+        else
+        {
+            _logger.LogError(
+                "Failed to send ticket resend email to {Recipient} for event {EventId}: {Error}",
+                recipientEmail, eventDetails.Id, result.Error);
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<EmailResult> SendRefundNotificationAsync(string recipientEmail, decimal amount, string reason)
     {
         _logger.LogInformation(
@@ -88,7 +168,7 @@ public class EmailService : IEmailService
 
         var request = new ResendEmailRequest
         {
-            From = _options.FromEmail,
+            From = ResolvedFrom,
             To = recipientEmail,
             Subject = "Refund notification",
             Html = html

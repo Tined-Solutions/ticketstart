@@ -58,7 +58,7 @@ export default function Navbar() {
             to="/"
             className="text-xl font-display font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent"
           >
-            Ticketera
+            TicketStar
           </Link>
 
           {/* ── Desktop nav links ── */}

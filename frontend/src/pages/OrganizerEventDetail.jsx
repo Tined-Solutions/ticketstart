@@ -21,7 +21,7 @@ export default function OrganizerEventDetail() {
 
     async function fetchEvent() {
       try {
-        const response = await apiClient.get(`/events/${id}/manage`)
+        const response = await apiClient.get(`/events/${id}`)
         if (!cancelled) {
           setEventData(response.data)
         }

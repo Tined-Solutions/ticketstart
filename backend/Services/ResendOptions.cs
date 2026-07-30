@@ -18,6 +18,11 @@ public class ResendOptions
     public string FromEmail { get; set; } = string.Empty;
 
     /// <summary>
+    /// Display name for the sender in RFC-5322 format: "Name &lt;email&gt;".
+    /// </summary>
+    public string FromName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Maximum number of delivery attempts for a single email.
     /// </summary>
     public int MaxRetryAttempts { get; set; } = 3;

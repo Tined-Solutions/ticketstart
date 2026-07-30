@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Turnstile } from '@marsidev/react-turnstile'
 import apiClient from '../api/client.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
@@ -32,7 +33,7 @@ function TicketCard({ ticket }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
     >
-      <GlassCard className="relative">
+      <GlassCard className="relative p-4 md:p-6">
         <div className="absolute top-3 right-3">
           <Badge variant={ticket.isUsed ? 'error' : 'success'}>
             {ticket.isUsed ? 'Usada' : 'Valida'}
@@ -77,7 +78,7 @@ function TicketCard({ ticket }) {
 
 function TicketCardSkeleton() {
   return (
-    <GlassCard>
+    <GlassCard className="p-4 md:p-6">
       <div className="space-y-3">
         <div className="flex justify-between">
           <Skeleton width="60%" height="20px" variant="text" />
@@ -113,7 +114,7 @@ export default function TicketLookup() {
   const [resendLoading, setResendLoading] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
   const [resendError, setResendError] = useState('')
-  const [captchaChecked, setCaptchaChecked] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState('')
 
   // -- Lookup -----------------------------------------------------------
 
@@ -173,7 +174,7 @@ export default function TicketLookup() {
     try {
       await apiClient.post('/tickets/resend', {
         email: resendEmail.trim(),
-        captchaToken: captchaChecked ? 'placeholder' : '',
+        turnstileToken: turnstileToken,
       })
       setResendMessage(
         'Si el email esta registrado, recibiras las entradas en tu casilla'
@@ -212,7 +213,7 @@ export default function TicketLookup() {
           </p>
         </header>
 
-        <GlassCard>
+        <GlassCard className="p-4 md:p-6">
           <form onSubmit={handleLookupSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="lookup-email" className="sr-only">
@@ -261,7 +262,7 @@ export default function TicketLookup() {
         {/* Lookup error */}
         {error && (
           <div className="mt-4">
-            <GlassCard className="text-center py-6">
+            <GlassCard className="text-center px-4 py-6 md:px-6">
               <p className="text-text-1 mb-3">{error}</p>
               <Button variant="secondary" onClick={handleClearLookupError}>
                 Reintentar
@@ -319,7 +320,7 @@ export default function TicketLookup() {
       {/* ── Resend section ──────────────────────────────────────────── */}
 
       <section>
-        <GlassCard>
+        <GlassCard className="p-4 md:p-6">
           <header className="mb-4">
             <h2 className="text-xl font-heading font-semibold text-text-1 mb-1">
               Reenviar entradas
@@ -363,24 +364,18 @@ export default function TicketLookup() {
               )}
             </div>
 
-            {/* CAPTCHA */}
+            {/* Turnstile CAPTCHA */}
             <div>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={captchaChecked}
-                  onChange={(e) => setCaptchaChecked(e.target.checked)}
-                  disabled={resendLoading}
-                  aria-label="No soy un robot"
-                  className="w-4 h-4 rounded border-white/30 bg-surface-elevated
-                    text-brand-1 focus:ring-brand-1 focus:ring-2 focus:ring-offset-0"
-                />
-                <span className="text-text-2 text-sm">No soy un robot</span>
-              </label>
-              {/* TODO: Replace checkbox CAPTCHA with Cloudflare Turnstile widget. */}
-              <p className="text-text-muted text-xs mt-2">
-                CAPTCHA — sera reemplazado por Turnstile
-              </p>
+              <Turnstile
+                siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'}
+                options={{ theme: 'dark', size: 'invisible' }}
+                onSuccess={(token) => setTurnstileToken(token)}
+                onError={() => setResendError('CAPTCHA verification failed. Please try again.')}
+                onExpire={() => setTurnstileToken('')}
+              />
+              {turnstileToken && (
+                <p className="text-success text-xs mt-2">✓ Verified</p>
+              )}
             </div>
 
             <Button
@@ -388,7 +383,7 @@ export default function TicketLookup() {
               variant="secondary"
               size="lg"
               loading={resendLoading}
-              disabled={resendLoading || !captchaChecked}
+              disabled={resendLoading || !turnstileToken}
               className="w-full"
             >
               {resendLoading ? 'Enviando...' : 'Reenviar entradas'}

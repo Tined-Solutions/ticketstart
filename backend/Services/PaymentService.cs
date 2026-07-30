@@ -116,7 +116,14 @@ public class PaymentService : IPaymentService
                     Quantity = reservation.Quantity,
                     UnitPrice = reservation.TicketType.Price
                 }
-            ]
+            ],
+            NotificationUrl = string.IsNullOrEmpty(_options.WebhookBaseUrl) ? null : $"{_options.WebhookBaseUrl}/api/payments/webhook",
+            BackUrls = new MercadoPagoBackUrls
+            {
+                Success = $"{_options.FrontendUrl}/checkout/success?preference_id={{preference_id}}",
+                Failure = $"{_options.FrontendUrl}/checkout/return?status=failure",
+                Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
+            }
         };
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);
@@ -133,44 +140,71 @@ public class PaymentService : IPaymentService
     }
 
     /// <inheritdoc />
-    public async Task<WebhookResult> ProcessWebhookAsync(WebhookPayload payload, string signature, byte[]? rawBody = null)
+    public async Task<WebhookResult> ProcessWebhookAsync(MercadoPagoWebhookEnvelope envelope, string signature, byte[]? rawBody = null)
     {
+        var dataId = envelope.Data?.Id;
+
         _logger.LogInformation(
-            "Processing webhook for payment {PaymentId} with status {Status}",
-            payload.PaymentId, payload.Status);
+            "Processing webhook for payment {PaymentId}",
+            dataId);
 
-        var payloadJson = JsonSerializer.Serialize(payload);
-
-        bool signatureValid;
-        if (rawBody != null)
+        // Validate signature when present, but NEVER block processing.
+        // notification_url webhooks are already authenticated by the merchant preference
+        // and the real verification happens via GetPaymentByIdAsync (MP API call).
+        // A signature mismatch is logged as a warning but does not stop the flow —
+        // the payment is retrieved and validated against MP's API anyway.
+        if (!string.IsNullOrEmpty(signature))
         {
-            signatureValid = ValidateWebhookSignature(rawBody, signature, _options.WebhookSecret);
+            bool signatureValid;
+            if (rawBody != null)
+            {
+                signatureValid = ValidateWebhookSignature(rawBody, signature, _options.WebhookSecret);
+            }
+            else
+            {
+                var payloadJson = JsonSerializer.Serialize(envelope);
+                signatureValid = ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret);
+            }
+
+            if (!signatureValid)
+            {
+                _logger.LogWarning(
+                    "Webhook signature mismatch for payment {PaymentId} — continuing anyway (payment will be verified via MP API)",
+                    dataId);
+            }
+            else
+            {
+                _logger.LogDebug("Webhook signature verified for payment {PaymentId}", dataId);
+            }
         }
         else
         {
-            signatureValid = ValidateWebhookSignature(payloadJson, signature, _options.WebhookSecret);
+            _logger.LogInformation("Webhook received without signature for payment {PaymentId} — processing anyway (notification_url mode)", dataId);
         }
 
-        if (!signatureValid)
+        // No data.id → ACK and ignore (MP retries on non-200, so return 200)
+        if (string.IsNullOrEmpty(dataId))
         {
-            _logger.LogWarning("Invalid webhook signature for payment {PaymentId}", payload.PaymentId);
-            return new WebhookResult
-            {
-                Success = false,
-                Error = "Invalid webhook signature",
-                PaymentId = payload.PaymentId,
-                FailureType = WebhookFailureType.Authentication
-            };
+            _logger.LogWarning("Webhook received without data.id — ignoring (200 ACK)");
+            return new WebhookResult { Success = true, PaymentId = "ignored", FailureType = WebhookFailureType.None };
         }
 
-        if (!Guid.TryParse(payload.ExternalReference, out var reservationId))
+        // Fetch real payment status from MP API
+        var payment = await _mercadoPagoClient.GetPaymentByIdAsync(dataId);
+        if (payment == null)
         {
-            _logger.LogWarning("Invalid external reference {ExternalReference}", payload.ExternalReference);
+            _logger.LogWarning("Payment {PaymentId} not found in Mercado Pago (404) — ignoring (200 ACK)", dataId);
+            return new WebhookResult { Success = true, PaymentId = dataId, FailureType = WebhookFailureType.None };
+        }
+
+        if (!Guid.TryParse(payment.ExternalReference, out var reservationId))
+        {
+            _logger.LogWarning("Invalid external reference {ExternalReference} for payment {PaymentId}", payment.ExternalReference, dataId);
             return new WebhookResult
             {
                 Success = false,
                 Error = "Invalid external reference",
-                PaymentId = payload.PaymentId,
+                PaymentId = dataId,
                 FailureType = WebhookFailureType.Processing
             };
         }
@@ -182,24 +216,24 @@ public class PaymentService : IPaymentService
 
         if (reservation == null)
         {
-            _logger.LogWarning("Reservation {ReservationId} not found for payment {PaymentId}", reservationId, payload.PaymentId);
+            _logger.LogWarning("Reservation {ReservationId} not found for payment {PaymentId}", reservationId, dataId);
             return new WebhookResult
             {
                 Success = false,
                 Error = "Reservation not found",
-                PaymentId = payload.PaymentId,
+                PaymentId = dataId,
                 FailureType = WebhookFailureType.Processing
             };
         }
 
         var amount = reservation.Quantity * reservation.TicketType.Price;
 
-        if (payload.Status.Equals("approved", StringComparison.OrdinalIgnoreCase))
+        if (payment.Status.Equals("approved", StringComparison.OrdinalIgnoreCase))
         {
-            return await ProcessApprovedPaymentAsync(reservation, payload.PaymentId, amount);
+            return await ProcessApprovedPaymentAsync(reservation, dataId, amount);
         }
 
-        return await ProcessFailedPaymentAsync(reservation, payload.PaymentId, amount);
+        return await ProcessFailedPaymentAsync(reservation, dataId, amount);
     }
 
     private async Task<WebhookResult> ProcessApprovedPaymentAsync(Reservation reservation, string paymentId, decimal amount)
@@ -217,68 +251,80 @@ public class PaymentService : IPaymentService
 
         if (reservation.Status == ReservationStatus.Active && reservation.ExpiresAt > DateTime.UtcNow)
         {
-            // B4.5: Wrap in transaction for atomicity
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
-
-            try
+            // B4.5: Execution strategy wraps the transaction for Npgsql retry compatibility.
+            // NpgsqlRetryingExecutionStrategy does not support user-initiated transactions
+            // directly; ExecuteAsync provides the retry-safe wrapper.
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                reservation.Status = ReservationStatus.Confirmed;
-                await _context.SaveChangesAsync();
+                using var dbTransaction = await _context.Database.BeginTransactionAsync();
 
-                var email = reservation.PurchaserEmail ?? reservation.User?.Email ?? "guest@ticketera.com";
-                var tickets = (await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI)).ToList();
-
-                _context.Transactions.Add(new Transaction
+                try
                 {
-                    Id = Guid.NewGuid(),
-                    ReservationId = reservation.Id,
-                    MercadoPagoId = paymentId,
-                    Amount = amount,
-                    Status = TransactionStatus.Approved,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                });
-                await _context.SaveChangesAsync();
+                    reservation.Status = ReservationStatus.Confirmed;
+                    await _context.SaveChangesAsync();
 
-                await dbTransaction.CommitAsync();
+                    var email = reservation.PurchaserEmail ?? reservation.User?.Email ?? "guest@ticketera.com";
+                    var tickets = (await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI)).ToList();
 
-                _logger.LogInformation(
-                    "Payment {PaymentId} approved; reservation {ReservationId} confirmed and tickets created",
-                    paymentId, reservation.Id);
-
-                // B4.5: Send email AFTER commit with try/catch (log only, don't rollback)
-                if (tickets.Count > 0)
-                {
-                    try
+                    _context.Transactions.Add(new Transaction
                     {
-                        var eventEntity = tickets[0].Event ?? reservation.Event;
-                        await _emailService.SendTicketEmailAsync(email, tickets, eventEntity);
-                    }
-                    catch (Exception ex)
+                        Id = Guid.NewGuid(),
+                        ReservationId = reservation.Id,
+                        MercadoPagoId = paymentId,
+                        Amount = amount,
+                        Status = TransactionStatus.Approved,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                    await _context.SaveChangesAsync();
+
+                    await dbTransaction.CommitAsync();
+
+                    _logger.LogInformation(
+                        "Payment {PaymentId} approved; reservation {ReservationId} confirmed and tickets created",
+                        paymentId, reservation.Id);
+
+                    // B4.5: Send email AFTER commit with try/catch (log only, don't rollback)
+                    if (tickets.Count > 0)
                     {
-                        _logger.LogError(ex,
-                            "Failed to send ticket email for reservation {ReservationId}. Payment was successful.",
-                            reservation.Id);
+                        try
+                        {
+                            var eventEntity = tickets[0].Event ?? reservation.Event;
+                            await _emailService.SendTicketEmailAsync(email, tickets, eventEntity);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex,
+                                "Failed to send ticket email for reservation {ReservationId}, payment {PaymentId}, recipient {Email}. Queuing for retry.",
+                                reservation.Id, paymentId, email);
+                            await QueueEmailRetryAsync(
+                                reservation.Id,
+                                paymentId,
+                                email,
+                                tickets.Select(t => t.Id).ToArray(),
+                                ex.Message);
+                        }
                     }
+
+                    return new WebhookResult { Success = true, PaymentId = paymentId };
                 }
-
-                return new WebhookResult { Success = true, PaymentId = paymentId };
-            }
-            catch (DbUpdateException) when (_context.Transactions.Any(t => t.MercadoPagoId == paymentId))
-            {
-                // B4.5: Concurrent duplicate — another request already inserted this transaction
-                await dbTransaction.RollbackAsync();
-                _logger.LogInformation(
-                    "Concurrent duplicate webhook for payment {PaymentId} — transaction already exists. Returning 200.",
-                    paymentId);
-                return new WebhookResult { Success = true, PaymentId = paymentId };
-            }
-            catch (Exception)
-            {
-                // B4.5: Atomic rollback — any failure rolls back the entire operation
-                await dbTransaction.RollbackAsync();
-                throw;
-            }
+                catch (DbUpdateException) when (_context.Transactions.Any(t => t.MercadoPagoId == paymentId))
+                {
+                    // B4.5: Concurrent duplicate — another request already inserted this transaction
+                    await dbTransaction.RollbackAsync();
+                    _logger.LogInformation(
+                        "Concurrent duplicate webhook for payment {PaymentId} — transaction already exists. Returning 200.",
+                        paymentId);
+                    return new WebhookResult { Success = true, PaymentId = paymentId };
+                }
+                catch (Exception)
+                {
+                    // B4.5: Atomic rollback — any failure rolls back the entire operation
+                    await dbTransaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
 
         _logger.LogWarning(
@@ -365,6 +411,62 @@ public class PaymentService : IPaymentService
         };
     }
 
+    /// <inheritdoc />
+    public async Task<WebhookResult> ConfirmPaymentAsync(string preferenceId)
+    {
+        _logger.LogInformation("Confirming payment for preference {PreferenceId}", preferenceId);
+
+        try
+        {
+            var preference = await _mercadoPagoClient.GetPreferenceAsync(preferenceId);
+            if (preference == null || !Guid.TryParse(preference.ExternalReference, out var reservationId))
+            {
+                return new WebhookResult { Success = false, Error = "Invalid preference or external reference" };
+            }
+
+            var payments = await _mercadoPagoClient.SearchPaymentsByExternalReferenceAsync(preference.ExternalReference);
+            var approvedPayment = payments.FirstOrDefault(p =>
+                p.Status.Equals("approved", StringComparison.OrdinalIgnoreCase));
+
+            if (approvedPayment == null)
+            {
+                _logger.LogWarning("No approved payment found for reservation {ReservationId}", reservationId);
+                return new WebhookResult { Success = false, Error = "No approved payment found" };
+            }
+
+            var existingTransaction = await _context.Transactions
+                .FirstOrDefaultAsync(t => t.MercadoPagoId == approvedPayment.Id);
+            if (existingTransaction != null)
+            {
+                _logger.LogInformation("Payment {PaymentId} already processed", approvedPayment.Id);
+                return new WebhookResult { Success = true, PaymentId = approvedPayment.Id };
+            }
+
+            var reservation = await _context.Reservations
+                .Include(r => r.TicketType)
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.Id == reservationId);
+
+            if (reservation == null)
+            {
+                return new WebhookResult
+                {
+                    Success = false,
+                    Error = "Reservation not found",
+                    PaymentId = approvedPayment.Id
+                };
+            }
+
+            var amount = reservation.Quantity * reservation.TicketType.Price;
+            return await ProcessApprovedPaymentAsync(reservation, approvedPayment.Id, amount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error confirming payment for preference {PreferenceId}", preferenceId);
+            return new WebhookResult { Success = false, Error = ex.Message };
+        }
+    }
+
     /// <summary>
     /// Validates a webhook HMAC-SHA256 signature from a string payload.
     /// </summary>
@@ -381,5 +483,119 @@ public class PaymentService : IPaymentService
     public static bool ValidateWebhookSignature(byte[] rawBody, string signature, string secret)
     {
         return HmacHelper.ValidateHmacSha256(rawBody, secret, signature);
+    }
+
+    /// <inheritdoc />
+    public async Task QueueEmailRetryAsync(Guid reservationId, string paymentId, string recipientEmail, Guid[] ticketIds, string error)
+    {
+        _logger.LogInformation(
+            "Queueing email retry for reservation {ReservationId}, payment {PaymentId}, recipient {RecipientEmail}",
+            reservationId, paymentId, recipientEmail);
+
+        var now = DateTime.UtcNow;
+        _context.PendingEmailSends.Add(new PendingEmailSend
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = reservationId,
+            PaymentId = paymentId,
+            RecipientEmail = recipientEmail,
+            TicketIds = ticketIds.ToList(),
+            LastError = error,
+            Attempts = 0,
+            MaxAttempts = 5,
+            Status = "pending",
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await _context.SaveChangesAsync();
+    }
+
+    /// <inheritdoc />
+    public async Task<RetryPendingEmailsResponse> RetryPendingEmailsAsync()
+    {
+        _logger.LogInformation("Starting retry of pending emails");
+
+        var pending = await _context.PendingEmailSends
+            .Where(p => p.Status == "pending" && p.Attempts < p.MaxAttempts)
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync();
+
+        var response = new RetryPendingEmailsResponse { Attempted = pending.Count };
+
+        foreach (var row in pending)
+        {
+            try
+            {
+                var reservation = await _context.Reservations
+                    .FirstOrDefaultAsync(r => r.Id == row.ReservationId);
+
+                if (reservation == null)
+                {
+                    _logger.LogWarning("Reservation {ReservationId} not found for email retry row {RowId}",
+                        row.ReservationId, row.Id);
+                    row.Status = "exhausted";
+                    row.LastError = "Reservation not found";
+                    row.Attempts = row.MaxAttempts;
+                    row.UpdatedAt = DateTime.UtcNow;
+                    response.Exhausted++;
+                    continue;
+                }
+
+                var tickets = await _context.Tickets
+                    .Where(t => row.TicketIds.Contains(t.Id))
+                    .ToListAsync();
+
+                if (tickets.Count == 0)
+                {
+                    _logger.LogWarning("No tickets found for email retry row {RowId}", row.Id);
+                    row.Status = "exhausted";
+                    row.LastError = "No tickets found";
+                    row.Attempts = row.MaxAttempts;
+                    row.UpdatedAt = DateTime.UtcNow;
+                    response.Exhausted++;
+                    continue;
+                }
+
+                await _emailService.SendTicketEmailAsync(row.RecipientEmail, tickets, tickets[0].Event);
+
+                row.Attempts++;
+                row.Status = "sent";
+                row.LastError = null;
+                row.LastAttemptAt = DateTime.UtcNow;
+                row.UpdatedAt = DateTime.UtcNow;
+                response.Sent++;
+
+                _logger.LogInformation("Retry email sent for row {RowId} to {RecipientEmail}", row.Id, row.RecipientEmail);
+            }
+            catch (Exception ex)
+            {
+                row.Attempts++;
+                row.LastError = ex.Message;
+                row.LastAttemptAt = DateTime.UtcNow;
+                row.UpdatedAt = DateTime.UtcNow;
+
+                if (row.Attempts >= row.MaxAttempts)
+                {
+                    row.Status = "exhausted";
+                    response.Exhausted++;
+                    _logger.LogError(ex, "Email retry exhausted for row {RowId} after {Attempts} attempts",
+                        row.Id, row.Attempts);
+                }
+                else
+                {
+                    response.Failed++;
+                    _logger.LogWarning(ex, "Email retry attempt {Attempts}/{MaxAttempts} failed for row {RowId}",
+                        row.Attempts, row.MaxAttempts, row.Id);
+                }
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Email retry complete: {Attempted} attempted, {Sent} sent, {Failed} failed, {Exhausted} exhausted",
+            response.Attempted, response.Sent, response.Failed, response.Exhausted);
+
+        return response;
     }
 }

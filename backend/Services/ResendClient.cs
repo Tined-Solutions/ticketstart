@@ -28,7 +28,16 @@ public class ResendClient : IResendClient
         _logger.LogDebug("Sending email to {Recipient} via Resend", request.To);
 
         var response = await _httpClient.PostAsJsonAsync("emails", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Resend API returned {StatusCode} for {Recipient}. Body: {ErrorBody}",
+                (int)response.StatusCode, request.To, errorBody);
+            throw new HttpRequestException(
+                $"Resend API error {(int)response.StatusCode}: {errorBody}");
+        }
 
         var result = await response.Content.ReadFromJsonAsync<ResendEmailResponse>(cancellationToken);
         if (result == null)

@@ -43,8 +43,8 @@ describe('Layout', () => {
   it('renders Navbar, main, and Footer', () => {
     renderLayout(<div>content</div>)
 
-    expect(screen.getByText('Ticketera')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /powered by ticketera/i })).toBeInTheDocument()
+    expect(screen.getByText('TicketStar')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /powered by ticketstar/i })).toBeInTheDocument()
     expect(document.querySelector('main')).toBeTruthy()
   })
 
