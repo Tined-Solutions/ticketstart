@@ -183,8 +183,15 @@ describe('Checkout', () => {
     expect(screen.getByText(/x 2/i)).toBeInTheDocument()
     expect(screen.getByText(/total:/i)).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /pagar con mercado pago/i })
+      screen.getByRole('button', { name: /confirmar y proceder al pago/i })
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /editar datos/i })
+    ).toBeInTheDocument()
+    expect(screen.getByText(/datos del comprador/i)).toBeInTheDocument()
+    expect(screen.getByText('Juan Perez')).toBeInTheDocument()
+    expect(screen.getByText('juan@example.com')).toBeInTheDocument()
+    expect(screen.getByText('12345678')).toBeInTheDocument()
   })
 
   it('updates the countdown timer as time advances', async () => {
@@ -304,10 +311,10 @@ describe('Checkout', () => {
       await Promise.resolve()
     })
 
-    expect(screen.getByRole('button', { name: /pagar con mercado pago/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirmar y proceder al pago/i })).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /pagar con mercado pago/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirmar y proceder al pago/i }))
       await Promise.resolve()
     })
 
@@ -341,16 +348,16 @@ describe('Checkout', () => {
       await Promise.resolve()
     })
 
-    expect(screen.getByRole('button', { name: /pagar con mercado pago/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirmar y proceder al pago/i })).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /pagar con mercado pago/i }))
+      fireEvent.click(screen.getByRole('button', { name: /confirmar y proceder al pago/i }))
       await Promise.resolve()
     })
 
     expect(screen.getByText(/la reserva expiro/i)).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /pagar con mercado pago/i })
+      screen.getByRole('button', { name: /confirmar y proceder al pago/i })
     ).not.toBeDisabled()
   })
 
@@ -369,7 +376,8 @@ describe('Checkout', () => {
       expect(screen.getByRole('heading', { name: /reserva expirada/i })).toBeInTheDocument()
     })
 
-    expect(screen.queryByRole('button', { name: /pagar con mercado pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /confirmar y proceder al pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /editar datos/i })).not.toBeInTheDocument()
   })
 
   it('renders a second email input labeled "Confirmar email"', () => {
@@ -482,5 +490,138 @@ describe('Checkout', () => {
     await user.type(screen.getByLabelText(/^dni$/i), '12345678')
 
     expect(screen.queryByText(/los dnis no coinciden/i)).not.toBeInTheDocument()
+  })
+
+  it('displays purchaser data in the confirmation review section', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    render(<Checkout />)
+
+    fillPurchaserFormFire({
+      name: 'Maria Gomez',
+      email: 'maria@test.com',
+      dni: '99887766',
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(/datos del comprador/i)).toBeInTheDocument()
+    expect(screen.getByText('Maria Gomez')).toBeInTheDocument()
+    expect(screen.getByText('maria@test.com')).toBeInTheDocument()
+    expect(screen.getByText('99887766')).toBeInTheDocument()
+  })
+
+  it('returns to the reservation form when clicking Editar datos, preserving input data', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    render(<Checkout />)
+
+    fillPurchaserFormFire({
+      name: 'Carlos Ruiz',
+      email: 'carlos@test.com',
+      dni: '11222333',
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    // Click "Editar datos" to go back
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /editar datos/i }))
+      await Promise.resolve()
+    })
+
+    // Should be back on the reservation form
+    expect(screen.getByRole('heading', { name: /reserva tus entradas/i })).toBeInTheDocument()
+
+    // Form data should be preserved
+    expect(screen.getByLabelText(/nombre completo/i)).toHaveValue('Carlos Ruiz')
+    expect(screen.getByLabelText('Email')).toHaveValue('carlos@test.com')
+    expect(screen.getByLabelText(/^dni$/i)).toHaveValue('11222333')
+
+    // The "Reservar entradas" button should be available again
+    expect(
+      screen.getByRole('button', { name: /reservar entradas/i })
+    ).toBeInTheDocument()
+  })
+
+  it('shows validation error when name is empty', async () => {
+    render(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), { name: '' })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/el nombre es obligatorio/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows validation error when email is empty', async () => {
+    render(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), { email: '', confirmEmail: '' })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('matches DNIs by their numeric value ignoring formatting', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    render(<Checkout />)
+
+    // Type clean numeric in DNI field, formatted with dots in confirm DNI
+    fillPurchaserFormFire({
+      name: 'Test User',
+      email: 'test@test.com',
+      dni: '43350328',
+      confirmDNI: '43.350.328',
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    // Should NOT show "DNIs no coinciden" — they're the same after cleaning
+    expect(screen.queryByText(/los dnis no coinciden/i)).not.toBeInTheDocument()
+    expect(mockPost).toHaveBeenCalled()
+  })
+
+  it('formats confirm DNI on blur matching the primary DNI format', async () => {
+    render(<Checkout />)
+
+    const confirmInput = screen.getByLabelText('Confirmar DNI')
+
+    // Type raw digits
+    await userEvent.type(confirmInput, '43350328')
+
+    // While focused, shows raw value
+    expect(confirmInput).toHaveValue('43350328')
+
+    // Blur the field
+    fireEvent.blur(confirmInput)
+
+    // After blur, should show formatted value
+    await waitFor(() => {
+      expect(confirmInput).toHaveValue('43.350.328')
+    })
   })
 })

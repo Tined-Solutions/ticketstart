@@ -8,6 +8,8 @@ import { getErrorMessage } from '../lib/apiError.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
+import { validateDocument, cleanDocument, formatDocument } from '../utils/identityValidation.js'
 
 function formatCountdown(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
@@ -38,6 +40,8 @@ export default function Checkout() {
   const [confirmEmail, setConfirmEmail] = useState('')
   const [purchaserDNI, setPurchaserDNI] = useState('')
   const [confirmDNI, setConfirmDNI] = useState('')
+  const [confirmDNIFocused, setConfirmDNIFocused] = useState(false)
+  const [documentCountry, setDocumentCountry] = useState('AR')
   const [reservation, setReservation] = useState(null)
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
@@ -81,7 +85,23 @@ export default function Checkout() {
     setLoading(true)
 
     try {
-      if (purchaserEmail.trim() !== confirmEmail.trim()) {
+      const name = purchaserName.trim()
+      if (!name) {
+        setError('El nombre es obligatorio')
+        setShakeError(true)
+        setLoading(false)
+        return
+      }
+
+      const email = purchaserEmail.trim()
+      if (!email) {
+        setError('El email es obligatorio')
+        setShakeError(true)
+        setLoading(false)
+        return
+      }
+
+      if (email !== confirmEmail.trim()) {
         setError('Los emails no coinciden')
         setShakeError(true)
         setLoading(false)
@@ -96,7 +116,15 @@ export default function Checkout() {
         return
       }
 
-      if (dni !== confirmDNI.trim()) {
+      const docValidation = validateDocument(dni, documentCountry)
+      if (!docValidation.valid) {
+        setError(docValidation.error)
+        setShakeError(true)
+        setLoading(false)
+        return
+      }
+
+      if (cleanDocument(dni) !== cleanDocument(confirmDNI)) {
         setError('Los DNIs no coinciden')
         setShakeError(true)
         setLoading(false)
@@ -138,9 +166,13 @@ export default function Checkout() {
     }
   }
 
-  const handleRestart = () => {
-    navigate('/events', { replace: true })
-  }
+	const handleEditData = () => {
+	    setReservation(null)
+	  }
+
+	  const handleRestart = () => {
+	    navigate('/events', { replace: true })
+	  }
 
   // ─── Expired state ──────────────────────────────────────────────────────
 
@@ -300,29 +332,18 @@ export default function Checkout() {
                   />
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="purchaserDNI"
-                    className="block text-sm font-medium text-text-2 mb-1"
-                  >
-                    DNI
-                  </label>
-                  <input
-                    id="purchaserDNI"
-                    type="text"
-                    value={purchaserDNI}
-                    onChange={(e) => {
-                      setPurchaserDNI(e.target.value)
-                      setError('')
-                    }}
-                    required
-                    maxLength={50}
-                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-                      text-text-1 placeholder:text-text-muted
-                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-                      transition-all duration-200"
-                  />
-                </div>
+                <IdentityDocumentInput
+                  id="purchaserDNI"
+                  label="DNI"
+                  value={purchaserDNI}
+                  onChange={(raw) => {
+                    setPurchaserDNI(raw)
+                    setError('')
+                  }}
+                  country={documentCountry}
+                  onCountryChange={setDocumentCountry}
+                  required
+                />
 
                 <div>
                   <label
@@ -334,14 +355,22 @@ export default function Checkout() {
                   <input
                     id="confirmDNI"
                     type="text"
-                    value={confirmDNI}
+                    inputMode="numeric"
+                    value={
+                      confirmDNIFocused
+                        ? confirmDNI
+                        : cleanDocument(confirmDNI)
+                          ? formatDocument(cleanDocument(confirmDNI), documentCountry)
+                          : confirmDNI
+                    }
                     onChange={(e) => {
                       setConfirmDNI(e.target.value)
                       setError('')
                     }}
+                    onFocus={() => setConfirmDNIFocused(true)}
+                    onBlur={() => setConfirmDNIFocused(false)}
                     onPaste={(e) => e.preventDefault()}
                     required
-                    maxLength={50}
                     className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
                       text-text-1 placeholder:text-text-muted
                       focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
@@ -397,51 +426,80 @@ export default function Checkout() {
           </span>
         </div>
 
-        {/* Order summary */}
-        <div className="text-left space-y-2 mb-6">
-          <div className="flex justify-between text-text-2 text-sm">
-            <span>Evento</span>
-            <span className="text-text-1 text-right">{cart.eventName}</span>
-          </div>
-          <div className="flex justify-between text-text-2 text-sm">
-            <span>Fecha</span>
-            <span className="text-text-1">{formatEventDate(cart.eventDate)}</span>
-          </div>
-          <div className="flex justify-between text-text-2 text-sm">
-            <span>Ubicacion</span>
-            <span className="text-text-1">{cart.eventLocation}</span>
-          </div>
-          <hr className="my-3 border-white/10" />
-          <div className="flex justify-between text-text-2 text-sm">
-            <span>{selection.name} x {reservation.quantity}</span>
-            <span className="text-text-1">
-              {formatCurrency(selection.price * reservation.quantity)}
-            </span>
-          </div>
-          <div className="flex justify-between font-display font-bold text-text-1 text-lg pt-2 border-t border-white/10">
-            <span>Total:</span>
-            <span className="text-brand-1">{formatCurrency(cart.totalPrice)}</span>
-          </div>
-        </div>
+	        {/* Order summary — event */}
+	        <div className="text-left space-y-2 mb-6">
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>Evento</span>
+	            <span className="text-text-1 text-right">{cart.eventName}</span>
+	          </div>
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>Fecha</span>
+	            <span className="text-text-1">{formatEventDate(cart.eventDate)}</span>
+	          </div>
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>Ubicacion</span>
+	            <span className="text-text-1">{cart.eventLocation}</span>
+	          </div>
+	          <hr className="my-3 border-white/10" />
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>{selection.name} x {reservation.quantity}</span>
+	            <span className="text-text-1">
+	              {formatCurrency(selection.price * reservation.quantity)}
+	            </span>
+	          </div>
+	          <div className="flex justify-between font-display font-bold text-text-1 text-lg pt-2 border-t border-white/10">
+	            <span>Total:</span>
+	            <span className="text-brand-1">{formatCurrency(cart.totalPrice)}</span>
+	          </div>
+	        </div>
 
-        {error && (
-          <div className="mb-4">
-            <Badge variant="error" className="px-4 py-2">
-              {error}
-            </Badge>
-          </div>
-        )}
+	        {/* Purchaser data review */}
+	        <div className="text-left space-y-2 mb-6">
+	          <h2 className="text-lg font-heading font-semibold text-text-1 mb-3">
+	            Datos del comprador
+	          </h2>
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>Nombre</span>
+	            <span className="text-text-1">{purchaserName}</span>
+	          </div>
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>Email</span>
+	            <span className="text-text-1">{purchaserEmail}</span>
+	          </div>
+	          <div className="flex justify-between text-text-2 text-sm">
+	            <span>DNI</span>
+	            <span className="text-text-1">{purchaserDNI}</span>
+	          </div>
+	        </div>
 
-        <Button
-          variant="gradient"
-          size="lg"
-          loading={payLoading}
-          onClick={handlePay}
-          disabled={isExpired}
-          className="w-full"
-        >
-          {payLoading ? 'Preparando pago...' : 'Pagar con Mercado Pago'}
-        </Button>
+	        {error && (
+	          <div className="mb-4">
+	            <Badge variant="error" className="px-4 py-2">
+	              {error}
+	            </Badge>
+	          </div>
+	        )}
+
+	        <div className="flex gap-3">
+	          <Button
+	            variant="secondary"
+	            size="lg"
+	            onClick={handleEditData}
+	            className="flex-1"
+	          >
+	            Editar datos
+	          </Button>
+	          <Button
+	            variant="gradient"
+	            size="lg"
+	            loading={payLoading}
+	            onClick={handlePay}
+	            disabled={isExpired}
+	            className="flex-1"
+	          >
+	            {payLoading ? 'Preparando pago...' : 'Confirmar y proceder al pago'}
+	          </Button>
+	        </div>
       </GlassCard>
     </div>
   )
