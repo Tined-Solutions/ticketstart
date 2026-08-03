@@ -12,7 +12,7 @@ export default function Home() {
         imageUrl={null}
         title={
           <span className="bg-gradient-to-r from-brand-1 to-brand-2 bg-clip-text text-transparent">
-            TicketStar
+            TicketStart
           </span>
         }
         subtitle="La plataforma mas simple para descubrir eventos, reservar entradas y gestionar tus propios shows."
