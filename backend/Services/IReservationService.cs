@@ -68,6 +68,20 @@ public interface IReservationService
     Task<Reservation?> GetReservationByIdAsync(Guid reservationId);
 
     /// <summary>
+    /// Updates the purchaser data (DNI, email) on an existing active reservation.
+    /// Does NOT affect ticket stock — the reservation already holds the tickets.
+    /// Requires a valid reservation token for authorization.
+    /// </summary>
+    /// <param name="reservationId">Reservation identifier</param>
+    /// <param name="request">Updated purchaser data and reservation token</param>
+    /// <returns>Updated reservation</returns>
+    /// <exception cref="KeyNotFoundException">Thrown when reservation not found</exception>
+    /// <exception cref="InvalidOperationException">Thrown when reservation is not active or expired</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when token is invalid</exception>
+    /// <exception cref="ArgumentException">Thrown when DNI is invalid</exception>
+    Task<Reservation> UpdateReservationAsync(Guid reservationId, UpdateReservationRequest request);
+
+    /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
     /// Token format: nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.
@@ -98,6 +112,16 @@ public class CreateReservationRequest
     public string PurchaserDNI { get; set; } = string.Empty;
     public string? PurchaserEmail { get; set; }
     public string? ConfirmEmail { get; set; }
+}
+
+/// <summary>
+/// Request model for updating an existing reservation's purchaser data.
+/// </summary>
+public class UpdateReservationRequest
+{
+    public string PurchaserDNI { get; set; } = string.Empty;
+    public string? PurchaserEmail { get; set; }
+    public string Token { get; set; } = string.Empty;
 }
 
 /// <summary>

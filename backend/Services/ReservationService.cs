@@ -422,6 +422,66 @@ public class ReservationService : IReservationService
     }
 
     /// <summary>
+    /// Updates the purchaser data (DNI, email) on an existing active reservation.
+    /// Does NOT affect ticket stock — the reservation already holds the tickets.
+    /// Requires a valid reservation token for authorization.
+    /// </summary>
+    public async Task<Reservation> UpdateReservationAsync(Guid reservationId, UpdateReservationRequest request)
+    {
+        _logger.LogInformation("Updating reservation {ReservationId}", reservationId);
+
+        var reservation = await _context.Reservations
+            .FirstOrDefaultAsync(r => r.Id == reservationId);
+
+        if (reservation == null)
+        {
+            _logger.LogWarning("Reservation {ReservationId} not found for update", reservationId);
+            throw new KeyNotFoundException($"Reservation {reservationId} not found");
+        }
+
+        if (reservation.Status != ReservationStatus.Active)
+        {
+            _logger.LogWarning("Reservation {ReservationId} cannot be updated. Current status: {Status}",
+                reservationId, reservation.Status);
+            throw new InvalidOperationException($"Reservation cannot be updated. Current status: {reservation.Status}");
+        }
+
+        if (reservation.ExpiresAt <= DateTime.UtcNow)
+        {
+            _logger.LogWarning("Reservation {ReservationId} has expired and cannot be updated", reservationId);
+            throw new InvalidOperationException("Reservation has expired and cannot be updated");
+        }
+
+        // Validate reservation token (proves the caller owns this reservation)
+        if (!ValidateReservationToken(request.Token, out _))
+        {
+            _logger.LogWarning("Invalid reservation token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        // Validate purchaser DNI
+        if (string.IsNullOrWhiteSpace(request.PurchaserDNI))
+        {
+            throw new ArgumentException("Purchaser DNI is required", nameof(request.PurchaserDNI));
+        }
+
+        if (request.PurchaserDNI.Length > 50)
+        {
+            throw new ArgumentException("Purchaser DNI must not exceed 50 characters", nameof(request.PurchaserDNI));
+        }
+
+        // Update only the editable fields — stock and ticket selection remain untouched
+        reservation.PurchaserDNI = request.PurchaserDNI.Trim();
+        reservation.PurchaserEmail = request.PurchaserEmail?.Trim();
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Reservation {ReservationId} updated successfully", reservationId);
+
+        return reservation;
+    }
+
+    /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
     /// Token format: nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.

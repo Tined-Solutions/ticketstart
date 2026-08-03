@@ -112,6 +112,71 @@ public class ReservationController : ControllerBase
     }
 
     /// <summary>
+    /// Updates purchaser data (DNI, email) on an existing active reservation.
+    /// Does NOT affect ticket stock — the reservation already holds the tickets.
+    /// Requires a valid reservation token for authorization.
+    /// </summary>
+    /// <param name="id">Reservation identifier</param>
+    /// <param name="request">Updated purchaser data with reservation token</param>
+    /// <returns>Updated reservation details</returns>
+    [HttpPatch("{id}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> UpdateReservation(Guid id, [FromBody] UpdateReservationRequest request)
+    {
+        if (request == null)
+        {
+            return BadRequest(new { error = "Request body is required" });
+        }
+
+        try
+        {
+            var reservation = await _reservationService.UpdateReservationAsync(id, request);
+
+            var response = new ReservationResponse
+            {
+                Id = reservation.Id,
+                EventId = reservation.EventId,
+                TicketTypeId = reservation.TicketTypeId,
+                Quantity = reservation.Quantity,
+                PurchaserEmail = reservation.PurchaserEmail,
+                ExpiresAt = reservation.ExpiresAt,
+                Status = reservation.Status.ToString(),
+                Token = request.Token // Keep the same token — it's still valid
+            };
+
+            _logger.LogInformation("Reservation {ReservationId} updated successfully", id);
+
+            return Ok(response);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Reservation {ReservationId} not found for update", id);
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Reservation {ReservationId} cannot be updated", id);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Invalid token for reservation {ReservationId}", id);
+            return Unauthorized(new { error = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Validation error updating reservation {ReservationId}", id);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error updating reservation {ReservationId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An unexpected error occurred while updating the reservation" });
+        }
+    }
+
+    /// <summary>
     /// Extracts user identifier from JWT claims if authenticated.
     /// Returns null for guest users (unauthenticated).
     /// </summary>
