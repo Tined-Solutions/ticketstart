@@ -42,6 +42,7 @@ export default function Checkout() {
   const [confirmDNI, setConfirmDNI] = useState('')
   const [confirmDNIFocused, setConfirmDNIFocused] = useState(false)
   const [documentCountry, setDocumentCountry] = useState('AR')
+  const [isEditing, setIsEditing] = useState(false)
   const [reservation, setReservation] = useState(null)
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
@@ -101,6 +102,13 @@ export default function Checkout() {
         return
       }
 
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setError('Formato de email inválido')
+        setShakeError(true)
+        setLoading(false)
+        return
+      }
+
       if (email !== confirmEmail.trim()) {
         setError('Los emails no coinciden')
         setShakeError(true)
@@ -131,15 +139,22 @@ export default function Checkout() {
         return
       }
 
-      const response = await apiClient.post('/reservations', {
-        eventId: cart.eventId,
-        ticketTypeId: selection.ticketTypeId,
-        quantity: selection.quantity,
-        purchaserEmail: purchaserEmail.trim(),
-        confirmEmail: confirmEmail.trim(),
-        purchaserDNI: dni,
-      })
+      const response = reservation
+        ? await apiClient.patch(`/reservations/${reservation.id}`, {
+            purchaserEmail: purchaserEmail.trim(),
+            purchaserDNI: dni,
+            token: reservation.token,
+          })
+        : await apiClient.post('/reservations', {
+            eventId: cart.eventId,
+            ticketTypeId: selection.ticketTypeId,
+            quantity: selection.quantity,
+            purchaserEmail: purchaserEmail.trim(),
+            confirmEmail: confirmEmail.trim(),
+            purchaserDNI: dni,
+          })
       setReservation(response.data)
+      setIsEditing(false)
     } catch (error) {
       setError(getErrorMessage(error))
       setShakeError(true)
@@ -167,7 +182,7 @@ export default function Checkout() {
   }
 
 	const handleEditData = () => {
-	    setReservation(null)
+	    setIsEditing(true)
 	  }
 
 	  const handleRestart = () => {
@@ -196,7 +211,7 @@ export default function Checkout() {
 
   // ─── Phase 1 — Reservation form ─────────────────────────────────────────
 
-  if (!reservation) {
+  if (!reservation || isEditing) {
     return (
       <AnimatePresence mode="wait">
         <motion.div
@@ -215,7 +230,7 @@ export default function Checkout() {
           </Link>
 
           <h1 className="text-3xl font-display font-bold text-text-1 mb-6">
-            Reserva tus entradas
+            {isEditing ? 'Editar tus datos' : 'Reserva tus entradas'}
           </h1>
 
           {/* Event summary */}
@@ -393,7 +408,7 @@ export default function Checkout() {
                   loading={loading}
                   className="w-full"
                 >
-                  {loading ? 'Reservando...' : 'Reservar entradas'}
+                  {loading ? 'Reservando...' : isEditing ? 'Guardar cambios' : 'Reservar entradas'}
                 </Button>
               </form>
             </GlassCard>

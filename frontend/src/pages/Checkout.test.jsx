@@ -5,6 +5,7 @@ import Checkout from './Checkout.jsx'
 
 const mockNavigate = vi.fn()
 const mockPost = vi.fn()
+const mockPatch = vi.fn()
 const mockLocationState = vi.fn()
 
 vi.mock('react-router-dom', () => ({
@@ -16,6 +17,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/client.js', () => ({
   default: {
     post: (...args) => mockPost(...args),
+    patch: (...args) => mockPatch(...args),
   },
 }))
 
@@ -103,6 +105,7 @@ describe('Checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPost.mockReset()
+    mockPatch.mockReset()
     mockNavigate.mockReset()
     mockLocationState.mockReset()
     mockLocationState.mockReturnValue(cart)
@@ -544,18 +547,81 @@ describe('Checkout', () => {
       await Promise.resolve()
     })
 
-    // Should be back on the reservation form
-    expect(screen.getByRole('heading', { name: /reserva tus entradas/i })).toBeInTheDocument()
+    // Should be back on the edit form with the reservation still active
+    expect(screen.getByRole('heading', { name: /editar tus datos/i })).toBeInTheDocument()
 
     // Form data should be preserved
     expect(screen.getByLabelText(/nombre completo/i)).toHaveValue('Carlos Ruiz')
     expect(screen.getByLabelText('Email')).toHaveValue('carlos@test.com')
     expect(screen.getByLabelText(/^dni$/i)).toHaveValue('11222333')
 
-    // The "Reservar entradas" button should be available again
+    // The "Guardar cambios" button should be available
     expect(
-      screen.getByRole('button', { name: /reservar entradas/i })
+      screen.getByRole('button', { name: /guardar cambios/i })
     ).toBeInTheDocument()
+  })
+
+  it('sends a PATCH request when saving edits on an existing reservation', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    render(<Checkout />)
+
+    fillPurchaserFormFire({
+      name: 'Original Name',
+      email: 'original@test.com',
+      dni: '12345678',
+    })
+
+    // Create initial reservation
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    // Click "Editar datos"
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /editar datos/i }))
+      await Promise.resolve()
+    })
+
+    // Change the data
+    fireEvent.change(screen.getByLabelText(/nombre completo/i), {
+      target: { value: 'Nombre Editado' },
+    })
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'editado@test.com' },
+    })
+    fireEvent.change(screen.getByLabelText(/^dni$/i), {
+      target: { value: '87654321' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirmar DNI'), {
+      target: { value: '87654321' },
+    })
+
+    // Setup PATCH mock for the edit
+    mockPatch.mockResolvedValueOnce({ data: reservation })
+
+    // Save changes
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }))
+      await Promise.resolve()
+    })
+
+    // Should have called PATCH, NOT POST
+    expect(mockPatch).toHaveBeenCalledWith(
+      `/reservations/${reservation.id}`,
+      expect.objectContaining({
+        purchaserEmail: 'editado@test.com',
+        purchaserDNI: '87654321',
+        token: reservation.token,
+      })
+    )
+    // Should NOT have created a second reservation
+    expect(mockPost).toHaveBeenCalledTimes(1)
   })
 
   it('shows validation error when name is empty', async () => {
@@ -575,6 +641,19 @@ describe('Checkout', () => {
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
 
     expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows validation error when email format is invalid', async () => {
+    render(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), {
+      email: 'no-es-un-email',
+      confirmEmail: 'no-es-un-email',
+    })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/formato de email inválido/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
   })
 
