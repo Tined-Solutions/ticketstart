@@ -85,16 +85,27 @@ function getLookupEmailInput() {
   return screen.getAllByLabelText(/email/i)[0]
 }
 
+function getLookupDniInput() {
+  return screen.getByLabelText(/^dni$/i)
+}
+
 function getResendEmailInput() {
   return screen.getAllByLabelText(/email/i)[1]
 }
 
-function fillLookupForm(user, { email = 'juan@example.com' } = {}) {
+function fillLookupForm(
+  user,
+  { email = 'juan@example.com', dni = '12345678' } = {}
+) {
   return {
     async submit() {
       if (email) {
         await user.clear(getLookupEmailInput())
         await user.type(getLookupEmailInput(), email)
+      }
+      if (dni) {
+        await user.clear(getLookupDniInput())
+        await user.type(getLookupDniInput(), dni)
       }
       const lookupButton = screen.getByRole('button', { name: /buscar entradas/i })
       await user.click(lookupButton)
@@ -130,13 +141,14 @@ describe('TicketLookup', () => {
 
   // -- Rendering --------------------------------------------------------
 
-  it('renders the lookup form with email input', () => {
+  it('renders the lookup form with email and DNI inputs', () => {
     render(<TicketLookup />)
 
     expect(
       screen.getByRole('heading', { name: /buscar mis entradas/i })
     ).toBeInTheDocument()
     expect(getLookupEmailInput()).toBeInTheDocument()
+    expect(getLookupDniInput()).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /buscar entradas/i })
     ).toBeInTheDocument()
@@ -180,9 +192,78 @@ describe('TicketLookup', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('shows validation error when DNI is empty', async () => {
+    render(<TicketLookup />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /buscar entradas/i })
+    )
+
+    expect(
+      screen.getByText(/el documento es obligatorio/i)
+    ).toBeInTheDocument()
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('shows validation error for invalid DNI format and does not call the API', async () => {
+    render(<TicketLookup />)
+    const form = fillLookupForm(userEvent.setup(), { dni: '123' })
+    await form.submit()
+
+    expect(screen.getAllByText(/formato de dni inv[aá]lido/i).length).toBeGreaterThan(0)
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('clears the DNI validation error when the user starts typing', async () => {
+    render(<TicketLookup />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /buscar entradas/i })
+    )
+    expect(
+      screen.getByText(/el documento es obligatorio/i)
+    ).toBeInTheDocument()
+
+    await userEvent.type(getLookupDniInput(), '12345678')
+    expect(
+      screen.queryByText(/el documento es obligatorio/i)
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not call the lookup API when DNI is invalid', async () => {
+    render(<TicketLookup />)
+    const form = fillLookupForm(userEvent.setup(), { dni: '12345' })
+    await form.submit()
+
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('validates a UY cédula and sends the clean DNI to the API', async () => {
+    mockGet.mockResolvedValue({ data: [mockTicket] })
+
+    render(<TicketLookup />)
+    const user = userEvent.setup()
+
+    await user.selectOptions(
+      screen.getByLabelText('País del documento'),
+      'UY'
+    )
+    await user.type(getLookupEmailInput(), 'juan@example.com')
+    await user.type(getLookupDniInput(), '5.123.456-1')
+    await user.click(screen.getByRole('button', { name: /buscar entradas/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    expect(mockGet).toHaveBeenCalledWith('/tickets/lookup', {
+      params: { email: 'juan@example.com', dni: '51234561' },
+    })
+  })
+
   // -- Successful lookup ------------------------------------------------
 
-  it('calls the lookup API with email only and displays tickets on success', async () => {
+  it('calls the lookup API with email and DNI and displays tickets on success', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket, mockUsedTicket] })
 
     render(<TicketLookup />)
@@ -194,7 +275,7 @@ describe('TicketLookup', () => {
     })
 
     expect(mockGet).toHaveBeenCalledWith('/tickets/lookup', {
-      params: { email: 'juan@example.com' },
+      params: { email: 'juan@example.com', dni: '12345678' },
     })
 
     expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
@@ -325,12 +406,12 @@ describe('TicketLookup', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/no se encontraron entradas con ese email/i)
+        screen.getByText(/no se encontraron entradas con ese email y dni/i)
       ).toBeInTheDocument()
     })
 
     expect(
-      screen.getByText(/verifica que el email sea correcto/i)
+      screen.getByText(/verifica que los datos sean correctos/i)
     ).toBeInTheDocument()
 
     expect(screen.getByRole('link', { name: /ver eventos/i })).toHaveAttribute(

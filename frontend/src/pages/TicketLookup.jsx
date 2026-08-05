@@ -10,6 +10,8 @@ import Skeleton from '../components/ui/Skeleton.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
+import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
+import { validateDocument, cleanDocument } from '../utils/identityValidation.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,6 +105,8 @@ function TicketCardSkeleton() {
 export default function TicketLookup() {
   // Lookup form state
   const [email, setEmail] = useState('')
+  const [dni, setDni] = useState('')
+  const [documentCountry, setDocumentCountry] = useState('AR')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [tickets, setTickets] = useState(null) // null = not searched yet
@@ -118,9 +122,16 @@ export default function TicketLookup() {
 
   // -- Lookup -----------------------------------------------------------
 
+  function validateDni() {
+    const result = validateDocument(dni, documentCountry)
+    if (!result.valid) return result.error
+    return ''
+  }
+
   function validateLookupForm() {
     return {
       email: validateEmail(email),
+      dni: validateDni(),
     }
   }
 
@@ -128,7 +139,7 @@ export default function TicketLookup() {
     e.preventDefault()
 
     const formErrors = validateLookupForm()
-    const hasErrors = formErrors.email
+    const hasErrors = formErrors.email || formErrors.dni
     setErrors(formErrors)
     if (hasErrors) return
 
@@ -138,7 +149,7 @@ export default function TicketLookup() {
 
     try {
       const response = await apiClient.get('/tickets/lookup', {
-        params: { email: email.trim() },
+        params: { email: email.trim(), dni: cleanDocument(dni) },
       })
       setTickets(response.data || [])
     } catch (err) {
@@ -209,7 +220,7 @@ export default function TicketLookup() {
             Buscar mis entradas
           </h1>
           <p className="text-text-2">
-            Ingresa tu email para recuperar tus entradas
+            Ingresa tu email y tu DNI para recuperar tus entradas
           </p>
         </header>
 
@@ -243,6 +254,32 @@ export default function TicketLookup() {
                   role="alert"
                 >
                   {errors.email}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <IdentityDocumentInput
+                id="lookup-dni"
+                label="DNI"
+                value={dni}
+                onChange={(raw) => {
+                  setDni(raw)
+                  if (errors.dni) setErrors((prev) => ({ ...prev, dni: '' }))
+                }}
+                country={documentCountry}
+                onCountryChange={(country) => {
+                  setDocumentCountry(country)
+                  if (errors.dni) setErrors((prev) => ({ ...prev, dni: '' }))
+                }}
+                disabled={loading}
+              />
+              {errors.dni && (
+                <p
+                  className="text-rose-400 text-xs mt-1"
+                  role="alert"
+                >
+                  {errors.dni}
                 </p>
               )}
             </div>
@@ -290,7 +327,7 @@ export default function TicketLookup() {
             <EmptyState
               icon="🎫"
               title="No se encontraron entradas"
-              description="No se encontraron entradas con ese email. Verifica que el email sea correcto."
+              description="No se encontraron entradas con ese email y DNI. Verifica que los datos sean correctos."
               action={
                 <Link to="/events">
                   <Button variant="secondary">Ver eventos</Button>
