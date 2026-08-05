@@ -763,4 +763,195 @@ public class TicketLookupPropertyTests : IDisposable
     }
 
     #endregion
+
+    #region Active lookup (email + DNI): LookupActiveTicketsByEmailAndDniAsync
+
+    /// <summary>
+    /// Seeds an organizer, event, and ticket type for active-lookup tests.
+    /// </summary>
+    private async Task<(Event Event, TicketType TicketType)> SeedActiveLookupDataAsync()
+    {
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 100,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        await _context.SaveChangesAsync();
+
+        return (eventEntity, ticketType);
+    }
+
+    private async Task<Ticket> SeedActiveLookupTicketAsync(Guid eventId, Guid ticketTypeId, string email, string dni, bool isUsed)
+    {
+        var ticket = new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventId,
+            TicketTypeId = ticketTypeId,
+            PurchaserEmail = email,
+            PurchaserDNI = dni,
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = isUsed,
+            UsedAt = isUsed ? DateTime.UtcNow.AddHours(-1) : null,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        return ticket;
+    }
+
+    /// <summary>
+    /// Active lookup returns only unused tickets; used tickets for the same email and DNI
+    /// are excluded.
+    /// Validates: Requirements 8.2, 8.5
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_ReturnsOnlyUnusedTickets()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync();
+        var email = "buyer@test.com";
+        var dni = "12345678";
+
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, dni, isUsed: true);
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, dni, isUsed: false);
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, dni, isUsed: false);
+
+        // Act
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, dni);
+        var resultList = results.ToList();
+
+        // Assert — only the 2 unused tickets are counted (used ticket is excluded)
+        Assert.Single(resultList);
+        var summary = resultList.First();
+        Assert.Equal("Test Event", summary.EventName);
+        Assert.Equal("General Admission", summary.TicketType);
+        Assert.Equal(2, summary.Quantity);
+        Assert.Equal("b***@test.com", summary.PurchaserEmail);
+    }
+
+    /// <summary>
+    /// Active lookup matches DNI by digits only: stored "43.350.328" matches input
+    /// "43350328", and vice versa, including UY-style hyphen formatting.
+    /// Validates: Requirement 8.5
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_MatchesDniByDigitsOnly()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync();
+        var email = "buyer@test.com";
+
+        // Stored value contains formatting separators
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, "43.350.328", isUsed: false);
+
+        // Act — input is clean digits
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, "43350328");
+
+        // Assert
+        var summary = Assert.Single(results);
+        Assert.Equal("Test Event", summary.EventName);
+        Assert.Equal(1, summary.Quantity);
+    }
+
+    /// <summary>
+    /// Active lookup matches DNI by digits only when the input contains formatting
+    /// (UY-style hyphens) and the stored value is clean digits.
+    /// Validates: Requirement 8.5
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_MatchesFormattedDniInputAgainstCleanStoredValue()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync();
+        var email = "buyer@test.com";
+
+        // Stored value is clean digits
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, "51234563", isUsed: false);
+
+        // Act — input uses UY-style hyphen formatting
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, "5.123.456-3");
+
+        // Assert
+        var summary = Assert.Single(results);
+        Assert.Equal(1, summary.Quantity);
+    }
+
+    /// <summary>
+    /// Active lookup matches email case-insensitively after trimming.
+    /// Validates: Requirement 8.2
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_MatchesEmailCaseInsensitively()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync();
+        var email = "buyer@test.com";
+        var dni = "12345678";
+
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, dni, isUsed: false);
+
+        // Act — query with uppercase email and surrounding whitespace
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync("  BUYER@TEST.COM  ", dni);
+
+        // Assert
+        var summary = Assert.Single(results);
+        Assert.Equal(1, summary.Quantity);
+        // PurchaserEmail is masked from the trimmed original email (case preserved)
+        Assert.Equal("B***@TEST.COM", summary.PurchaserEmail);
+    }
+
+    /// <summary>
+    /// Active lookup returns empty when the DNI does not match.
+    /// Validates: Requirement 8.5
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_ReturnsEmptyWhenDniDoesNotMatch()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync();
+        var email = "buyer@test.com";
+
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, "12345678", isUsed: false);
+
+        // Act — same email, different DNI
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, "99999999");
+        var resultList = results.ToList();
+
+        // Assert
+        Assert.Empty(resultList);
+    }
+
+    #endregion
 }

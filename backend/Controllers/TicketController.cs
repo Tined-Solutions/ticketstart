@@ -36,16 +36,14 @@ public class TicketController : TicketeraControllerBase
     }
 
     /// <summary>
-    /// Looks up tickets by email and optionally DNI.
-    /// When DNI is provided, returns full details with QR codes (authenticated flow).
-    /// When only email is provided, returns info-only response without QR fields (public flow).
+    /// Looks up active (unused) tickets by email and DNI.
+    /// Requires both email and DNI; returns info-only response without QR fields (public flow).
     /// Validates: Requirements 8.1, 8.2, 8.3, 8.5, Batch 5 — B5.1
     /// </summary>
     /// <param name="email">Purchaser email address</param>
-    /// <param name="dni">Purchaser DNI number (optional — for authenticated lookup with QR codes)</param>
-    /// <returns>List of matching tickets (with or without QR codes depending on DNI)</returns>
+    /// <param name="dni">Purchaser DNI number</param>
+    /// <returns>List of matching info-only ticket summaries</returns>
     [HttpGet("lookup")]
-    [ProducesResponseType(typeof(IEnumerable<TicketLookupResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(IEnumerable<TicketLookupInfoResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> LookupTickets(
@@ -63,38 +61,20 @@ public class TicketController : TicketeraControllerBase
             return BadRequest(new { error = "Email is required" });
         }
 
+        if (string.IsNullOrWhiteSpace(dni))
+        {
+            _logger.LogWarning("Ticket lookup failed: DNI is required");
+            return BadRequest(new { error = "Email and DNI are required" });
+        }
+
         try
         {
-            // Email-only lookup: return info-only response without QR codes (B5.1)
-            if (string.IsNullOrWhiteSpace(dni))
-            {
-                var infoTickets = await _ticketService.LookupTicketsByEmailAsync(email);
-                return Ok(infoTickets);
-            }
+            // Active info-only lookup without QR codes (public flow)
+            var infoTickets = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, dni);
 
-            // Email + DNI lookup: return full response with QR codes (existing behavior)
-            var tickets = await _ticketService.LookupTicketsAsync(email, dni);
+            _logger.LogInformation("Ticket lookup successful: Found {Count} ticket groups", infoTickets.Count());
 
-            // Map to response DTOs with QR code images
-            var response = tickets.Select(ticket => new TicketLookupResponse
-            {
-                Id = ticket.Id,
-                EventId = ticket.EventId,
-                EventName = ticket.Event.Name,
-                EventDate = ticket.Event.Date,
-                EventLocation = ticket.Event.Location,
-                TicketTypeName = ticket.TicketType.Name,
-                Price = ticket.TicketType.Price,
-                QRCodeData = ticket.QRCodeData,
-                QRCodeImage = _ticketService.GenerateQRCodeImage(ticket.QRCodeData),
-                IsUsed = ticket.IsUsed,
-                UsedAt = ticket.UsedAt,
-                CreatedAt = ticket.CreatedAt
-            }).ToList();
-
-            _logger.LogInformation("Ticket lookup successful: Found {Count} tickets", response.Count);
-
-            return Ok(response);
+            return Ok(infoTickets);
         }
         catch (Exception ex)
         {

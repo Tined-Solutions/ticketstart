@@ -454,6 +454,74 @@ public class TicketService : ITicketService
     }
 
     /// <summary>
+    /// Looks up active (unused) tickets by email and DNI and returns info-only response
+    /// (no QR fields). DNI is matched by digits only so formatting (dots, hyphens, spaces)
+    /// never affects matching; email is matched case-insensitively after trimming.
+    /// Groups tickets by event for a summary response.
+    /// Validates: Batch 5 — B5.1
+    /// </summary>
+    public async Task<IEnumerable<TicketLookupInfoResponse>> LookupActiveTicketsByEmailAndDniAsync(string email, string dni)
+    {
+        _logger.LogInformation("Looking up active tickets for email hash {EmailHash} and DNI hash {DNIHash}",
+            LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
+
+        var trimmedEmail = email?.Trim() ?? "";
+        var emailKey = trimmedEmail.ToLowerInvariant();
+        var dniKey = NormalizeDocument(dni);
+
+        var tickets = await _context.Tickets
+            .Include(t => t.Event)
+            .Include(t => t.TicketType)
+            .Where(t => t.PurchaserEmail.ToLower() == emailKey)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+
+        // Filter in memory: DNI matched by digits only, and only unused (active) tickets
+        var activeTickets = tickets
+            .Where(t => NormalizeDocument(t.PurchaserDNI) == dniKey && !t.IsUsed)
+            .ToList();
+
+        if (activeTickets.Count == 0)
+        {
+            _logger.LogInformation("No active tickets found for email hash {EmailHash} and DNI hash {DNIHash}",
+                LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
+            return Enumerable.Empty<TicketLookupInfoResponse>();
+        }
+
+        // Group by event to return a summary without QR codes
+        var responses = activeTickets
+            .GroupBy(t => new { t.EventId, EventName = t.Event.Name, t.Event.Date, TicketTypeName = t.TicketType.Name })
+            .Select(g => new TicketLookupInfoResponse
+            {
+                EventName = g.Key.EventName,
+                EventDate = g.Key.Date,
+                TicketType = g.Key.TicketTypeName,
+                Quantity = g.Count(),
+                PurchaserEmail = MaskEmail(trimmedEmail)
+            })
+            .ToList();
+
+        _logger.LogInformation("Found {Count} active ticket groups for email hash {EmailHash} and DNI hash {DNIHash}",
+            responses.Count, LogRedactor.HashIdentifier(email), LogRedactor.HashIdentifier(dni));
+
+        return responses;
+    }
+
+    /// <summary>
+    /// Normalizes a document number by keeping only its digits so that formatting
+    /// (dots, hyphens, spaces) never affects matching.
+    /// </summary>
+    private static string NormalizeDocument(string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+        {
+            return string.Empty;
+        }
+
+        return new string(raw.Where(char.IsDigit).ToArray());
+    }
+
+    /// <summary>
     /// Resends tickets by email. Always returns success to prevent info leak.
     /// Validates: Batch 5 — B5.2
     /// </summary>

@@ -7,7 +7,6 @@ using Moq;
 using System.Text;
 using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Helpers;
-using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
 
@@ -227,8 +226,8 @@ public class LogRedactorTests
 
         var ticketService = new Mock<ITicketService>();
         ticketService
-            .Setup(s => s.LookupTicketsAsync(email, dni))
-            .ReturnsAsync(new List<Ticket>());
+            .Setup(s => s.LookupActiveTicketsByEmailAndDniAsync(email, dni))
+            .ReturnsAsync(new List<TicketLookupInfoResponse>());
 
         var auditService = new Mock<IAuditLogService>();
         var turnstile = new Mock<ITurnstileService>();

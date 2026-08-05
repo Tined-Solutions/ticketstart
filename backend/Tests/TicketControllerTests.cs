@@ -45,13 +45,14 @@ public class TicketControllerTests
         };
     }
 
-    #region B5.1 — Lookup Response Excludes QR Fields
+    #region B5.1 — Lookup Requires Email and DNI, Returns Info-Only Active Tickets
 
     [Fact]
-    public async Task LookupByEmailOnly_ReturnsInfoOnlyResponse_WithoutQRFields()
+    public async Task Lookup_WithEmailAndDni_ReturnsInfoOnlyResponse_WithoutQRFields()
     {
         // Arrange
         var email = "buyer@test.com";
+        var dni = "12345678";
         var mockResponse = new List<TicketLookupInfoResponse>
         {
             new TicketLookupInfoResponse
@@ -65,11 +66,11 @@ public class TicketControllerTests
         };
 
         _mockTicketService
-            .Setup(s => s.LookupTicketsByEmailAsync(email))
+            .Setup(s => s.LookupActiveTicketsByEmailAndDniAsync(email, dni))
             .ReturnsAsync(mockResponse);
 
-        // Act — lookup with email only (no DNI)
-        var result = await _controller.LookupTickets(email);
+        // Act — lookup with email and DNI
+        var result = await _controller.LookupTickets(email, dni);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -90,18 +91,37 @@ public class TicketControllerTests
     }
 
     [Fact]
-    public async Task LookupByEmailOnly_NonexistentEmail_Returns200WithGenericMessage()
+    public async Task Lookup_WithEmailAndDni_DoesNotCallFullQrLookup()
+    {
+        // Arrange
+        var email = "buyer@test.com";
+        var dni = "12345678";
+
+        _mockTicketService
+            .Setup(s => s.LookupActiveTicketsByEmailAndDniAsync(email, dni))
+            .ReturnsAsync(new List<TicketLookupInfoResponse>());
+
+        // Act
+        await _controller.LookupTickets(email, dni);
+
+        // Assert — the QR-returning lookup is never invoked for the public endpoint
+        _mockTicketService.Verify(s => s.LookupTicketsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Lookup_NonexistentEmailOrDni_Returns200WithEmptyList()
     {
         // Arrange
         var email = "nonexistent@test.com";
+        var dni = "99999999";
         var emptyResponse = new List<TicketLookupInfoResponse>();
 
         _mockTicketService
-            .Setup(s => s.LookupTicketsByEmailAsync(email))
+            .Setup(s => s.LookupActiveTicketsByEmailAndDniAsync(email, dni))
             .ReturnsAsync(emptyResponse);
 
-        // Act — lookup with email only (no DNI)
-        var result = await _controller.LookupTickets(email);
+        // Act — lookup with email and DNI that match nothing
+        var result = await _controller.LookupTickets(email, dni);
 
         // Assert — should return 200 OK, not 404
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -112,17 +132,37 @@ public class TicketControllerTests
     }
 
     [Fact]
-    public async Task LookupByEmailOnly_EmptyEmail_ReturnsBadRequest()
+    public async Task Lookup_EmptyEmail_ReturnsBadRequest()
     {
         // Arrange
         string email = "";
 
         // Act — lookup with empty email
+        var result = await _controller.LookupTickets(email, "12345678");
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequestResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Lookup_MissingDni_ReturnsBadRequest()
+    {
+        // Arrange
+        var email = "buyer@test.com";
+
+        // Act — lookup with email but no DNI
         var result = await _controller.LookupTickets(email);
 
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequestResult.StatusCode);
+
+        var responseObj = badRequestResult.Value;
+        var errorProp = responseObj!.GetType().GetProperty("error");
+        Assert.NotNull(errorProp);
+        var error = errorProp.GetValue(responseObj) as string;
+        Assert.Contains("DNI", error, StringComparison.Ordinal);
     }
 
     #endregion

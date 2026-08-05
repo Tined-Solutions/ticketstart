@@ -78,6 +78,17 @@ public interface ITicketService
     Task<IEnumerable<TicketLookupInfoResponse>> LookupTicketsByEmailAsync(string email);
 
     /// <summary>
+    /// Looks up active (unused) tickets by email and DNI and returns info-only response
+    /// (no QR fields). DNI is matched by digits only; email is matched case-insensitively
+    /// after trimming. Used for public ticket lookup without authentication.
+    /// Validates: Batch 5 — B5.1
+    /// </summary>
+    /// <param name="email">Purchaser email</param>
+    /// <param name="dni">Purchaser DNI</param>
+    /// <returns>List of active ticket info responses without QR data</returns>
+    Task<IEnumerable<TicketLookupInfoResponse>> LookupActiveTicketsByEmailAndDniAsync(string email, string dni);
+
+    /// <summary>
     /// Resends tickets by email grouped by event. Returns generic success
     /// regardless of whether tickets exist for the given email (no info leak).
     /// Validates: Batch 5 — B5.2
