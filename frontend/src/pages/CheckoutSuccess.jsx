@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
+import { queryKeys } from '../lib/queryKeys.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -85,6 +87,7 @@ const stateConfig = {
 
 export default function CheckoutSuccess() {
   const [searchParams] = useSearchParams()
+  const queryClient = useQueryClient()
   const preferenceId = searchParams.get('preference_id')
   const [state, setState] = useState(preferenceId ? 'confirming' : 'error')
   const [errorMsg, setErrorMsg] = useState('')
@@ -99,6 +102,11 @@ export default function CheckoutSuccess() {
 
       if (response.data?.status === 'confirmed') {
         setState('confirmed')
+        // Payment confirmed → tickets sold → availability changed. The affected
+        // event id is unknown from preference_id, so invalidate every event
+        // detail plus the catalog list.
+        queryClient.invalidateQueries({ queryKey: queryKeys.events })
+        queryClient.invalidateQueries({ queryKey: ['event'] })
       } else {
         setState('pending')
         setErrorMsg(response.data?.error || '')
@@ -107,7 +115,7 @@ export default function CheckoutSuccess() {
       setState('error')
       setErrorMsg('No se pudo conectar con el servidor.')
     }
-  }, [preferenceId])
+  }, [preferenceId, queryClient])
 
   useEffect(() => {
     confirmPayment()

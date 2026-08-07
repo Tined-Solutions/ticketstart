@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EventDetail from './EventDetail.jsx'
+import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
@@ -42,7 +43,7 @@ describe('EventDetail', () => {
   it('renders event info from API data', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /recital de rock nacional/i })).toBeInTheDocument()
@@ -58,7 +59,7 @@ describe('EventDetail', () => {
   it('shows ticket types with prices and availability', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
@@ -74,7 +75,7 @@ describe('EventDetail', () => {
   it('shows loading state while fetching', () => {
     mockGet.mockImplementation(() => new Promise(() => {}))
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     expect(screen.getByText(/cargando evento/i)).toBeInTheDocument()
   })
@@ -82,7 +83,7 @@ describe('EventDetail', () => {
   it('shows error state for a non-existent event', async () => {
     mockGet.mockRejectedValue({ response: { status: 404 } })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByText(/el evento no existe o no esta disponible/i)).toBeInTheDocument()
@@ -94,7 +95,7 @@ describe('EventDetail', () => {
       response: { data: { error: { message: 'Error de servidor' } } },
     })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByText(/error de servidor/i)).toBeInTheDocument()
@@ -111,7 +112,7 @@ describe('EventDetail', () => {
   it('selects a ticket type and adjusts quantity', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
@@ -143,7 +144,7 @@ describe('EventDetail', () => {
       },
     })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /vip/i })).toBeInTheDocument()
@@ -163,7 +164,7 @@ describe('EventDetail', () => {
   it('navigates to checkout with a single selection when clicking reserve', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
@@ -203,7 +204,7 @@ describe('EventDetail', () => {
   it('disables reserve button when no ticket type is selected', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
@@ -216,7 +217,7 @@ describe('EventDetail', () => {
   it('renders back link to the event catalog', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
-    render(<EventDetail />)
+    renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /volver al catalogo/i })).toHaveAttribute(

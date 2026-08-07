@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '../api/client.js'
 import { useAuth } from '../context/auth.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import { queryKeys } from '../lib/queryKeys.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -25,6 +27,7 @@ const shakeAnim = {
 export default function Checkout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
 
   const cart = location.state
@@ -155,6 +158,13 @@ export default function Checkout() {
           })
       setReservation(response.data)
       setIsEditing(false)
+
+      // A new reservation holds stock → availability changed. Only invalidate
+      // on create (PATCH only updates purchaser data, not stock).
+      if (!reservation) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.events })
+        queryClient.invalidateQueries({ queryKey: queryKeys.event(cart.eventId) })
+      }
     } catch (error) {
       setError(getErrorMessage(error))
       setShakeError(true)
@@ -185,9 +195,12 @@ export default function Checkout() {
 	    setIsEditing(true)
 	  }
 
-	  const handleRestart = () => {
-	    navigate('/events', { replace: true })
-	  }
+  const handleRestart = () => {
+    // Reservation expired → held stock was released → availability changed.
+    queryClient.invalidateQueries({ queryKey: queryKeys.events })
+    queryClient.invalidateQueries({ queryKey: queryKeys.event(cart.eventId) })
+    navigate('/events', { replace: true })
+  }
 
   // ─── Expired state ──────────────────────────────────────────────────────
 

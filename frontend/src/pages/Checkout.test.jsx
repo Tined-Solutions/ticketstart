@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Checkout from './Checkout.jsx'
+import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 const mockNavigate = vi.fn()
 const mockPost = vi.fn()
@@ -118,7 +119,7 @@ describe('Checkout', () => {
   it('redirects to the event catalog when there is no cart state', async () => {
     mockLocationState.mockReturnValue(undefined)
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/events', { replace: true })
@@ -126,7 +127,7 @@ describe('Checkout', () => {
   })
 
   it('renders the reservation form with event and selection summary', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     expect(screen.getByRole('heading', { name: /reserva tus entradas/i })).toBeInTheDocument()
     expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
@@ -145,7 +146,7 @@ describe('Checkout', () => {
   })
 
   it('shows a validation error when DNI is missing', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), { dni: ' ' })
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -161,7 +162,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire()
 
@@ -204,7 +205,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire()
 
@@ -229,7 +230,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire()
 
@@ -256,7 +257,7 @@ describe('Checkout', () => {
     })
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup())
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -275,7 +276,7 @@ describe('Checkout', () => {
       response: { data: { error: { message: 'No hay stock disponible' } } },
     })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup())
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -305,7 +306,7 @@ describe('Checkout', () => {
     })
     vi.stubGlobal('window', mockedWindow)
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire()
 
@@ -342,7 +343,7 @@ describe('Checkout', () => {
         response: { data: { error: { message: 'La reserva expiro' } } },
       })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire()
 
@@ -370,7 +371,7 @@ describe('Checkout', () => {
     })
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup())
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -384,7 +385,7 @@ describe('Checkout', () => {
   })
 
   it('renders a second email input labeled "Confirmar email"', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar email')).toHaveAttribute('type', 'email')
@@ -392,7 +393,7 @@ describe('Checkout', () => {
   })
 
   it('blocks paste on the confirm email field', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     const confirmInput = screen.getByLabelText('Confirmar email')
     const pasteEvent = new Event('paste', { bubbles: true, cancelable: true })
@@ -402,7 +403,7 @@ describe('Checkout', () => {
   })
 
   it('shows validation error when emails do not match', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), {
       email: 'juan@example.com',
@@ -415,7 +416,7 @@ describe('Checkout', () => {
   })
 
   it('shows both email fields in the form with correct labels', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar email')).toBeInTheDocument()
@@ -423,7 +424,7 @@ describe('Checkout', () => {
 
   it('clears error when user types in either email field after a mismatch', async () => {
     const user = userEvent.setup()
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(user, {
       email: 'juan@example.com',
@@ -440,7 +441,7 @@ describe('Checkout', () => {
   })
 
   it('renders a second DNI input labeled "Confirmar DNI"', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar DNI')).toHaveAttribute('type', 'text')
@@ -448,7 +449,7 @@ describe('Checkout', () => {
   })
 
   it('blocks paste on the confirm DNI field', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     const confirmInput = screen.getByLabelText('Confirmar DNI')
     const pasteEvent = new Event('paste', { bubbles: true, cancelable: true })
@@ -458,7 +459,7 @@ describe('Checkout', () => {
   })
 
   it('shows validation error when DNIs do not match', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), {
       dni: '12345678',
@@ -471,7 +472,7 @@ describe('Checkout', () => {
   })
 
   it('shows both DNI fields in the form with correct labels', () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
@@ -479,7 +480,7 @@ describe('Checkout', () => {
 
   it('clears error when user types in either DNI field after a mismatch', async () => {
     const user = userEvent.setup()
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(user, {
       dni: '12345678',
@@ -502,7 +503,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire({
       name: 'Maria Gomez',
@@ -528,7 +529,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire({
       name: 'Carlos Ruiz',
@@ -568,7 +569,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     fillPurchaserFormFire({
       name: 'Original Name',
@@ -625,7 +626,7 @@ describe('Checkout', () => {
   })
 
   it('shows validation error when name is empty', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), { name: '' })
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -635,7 +636,7 @@ describe('Checkout', () => {
   })
 
   it('shows validation error when email is empty', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), { email: '', confirmEmail: '' })
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
@@ -645,7 +646,7 @@ describe('Checkout', () => {
   })
 
   it('shows validation error when email format is invalid', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     await fillPurchaserForm(userEvent.setup(), {
       email: 'no-es-un-email',
@@ -664,7 +665,7 @@ describe('Checkout', () => {
     const reservation = buildReservation()
     mockPost.mockResolvedValueOnce({ data: reservation })
 
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     // Type clean numeric in DNI field, formatted with dots in confirm DNI
     fillPurchaserFormFire({
@@ -685,7 +686,7 @@ describe('Checkout', () => {
   })
 
   it('formats confirm DNI on blur matching the primary DNI format', async () => {
-    render(<Checkout />)
+    renderWithQueryClient(<Checkout />)
 
     const confirmInput = screen.getByLabelText('Confirmar DNI')
 

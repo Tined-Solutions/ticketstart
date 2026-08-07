@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import apiClient from '../api/client.js'
+import { useEvent } from '../hooks/useEvent.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
@@ -141,54 +141,18 @@ export default function EventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [event, setEvent] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { data: event, isLoading, isError, error, refetch } = useEvent(id)
+
   const [selectedTicketTypeId, setSelectedTicketTypeId] = useState(null)
   const [quantity, setQuantity] = useState(0)
 
-  const loadEvent = useCallback(
-    (controller) => {
-      apiClient
-        .get(`/events/${id}`, { signal: controller.signal })
-        .then((response) => {
-          if (controller.signal.aborted) return
-          const eventData = response.data
-          setEvent(eventData)
-          setSelectedTicketTypeId(null)
-          setQuantity(0)
-          setError('')
-          setLoading(false)
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return
-          if (error.response?.status === 404) {
-            setError('El evento no existe o no esta disponible')
-          } else {
-            const message =
-              error.response?.data?.error?.message ||
-              error.response?.data?.message ||
-              'Ocurrio un error al cargar el evento'
-            setError(message)
-          }
-          setLoading(false)
-        })
-    },
-    [id]
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    loadEvent(controller)
-    return () => controller.abort()
-  }, [loadEvent])
-
-  const handleRetry = () => {
-    setLoading(true)
-    setError('')
-    const controller = new AbortController()
-    loadEvent(controller)
-  }
+  const errorMessage = isError
+    ? error?.response?.status === 404
+      ? 'El evento no existe o no esta disponible'
+      : error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        'Ocurrio un error al cargar el evento'
+    : ''
 
   const handleSelectTicketType = (ticketTypeId) => {
     setSelectedTicketTypeId(ticketTypeId)
@@ -232,7 +196,7 @@ export default function EventDetail() {
 
   // ─── Loading state ──────────────────────────────────────────────────────
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         <p className="px-4 py-8 text-text-2">Cargando evento...</p>
@@ -243,15 +207,15 @@ export default function EventDetail() {
 
   // ─── Error state ────────────────────────────────────────────────────────
 
-  if (error) {
+  if (isError) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <Link to="/events" className="inline-block text-text-2 hover:text-text-1 mb-6 transition-colors">
           ← Volver al catalogo
         </Link>
         <GlassCard className="py-12">
-          <p className="text-text-1 mb-4">{error}</p>
-          <Button variant="gradient" onClick={handleRetry}>
+          <p className="text-text-1 mb-4">{errorMessage}</p>
+          <Button variant="gradient" onClick={() => refetch()}>
             Reintentar
           </Button>
         </GlassCard>

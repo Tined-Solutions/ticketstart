@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EventList from './EventList.jsx'
+import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
@@ -53,7 +54,7 @@ describe('EventList', () => {
   it('renders event cards from API data', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
@@ -70,7 +71,7 @@ describe('EventList', () => {
   it('shows loading state while fetching', () => {
     mockGet.mockImplementation(() => new Promise(() => {}))
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     expect(screen.getByRole('heading', { name: /eventos/i })).toBeInTheDocument()
     expect(document.querySelectorAll('.event-card-skeleton').length).toBeGreaterThan(0)
@@ -81,7 +82,7 @@ describe('EventList', () => {
       response: { data: { error: { message: 'Error de conexion' } } },
     })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/error de conexion/i)).toBeInTheDocument()
@@ -98,7 +99,7 @@ describe('EventList', () => {
   it('shows empty state when no events exist', async () => {
     mockGet.mockResolvedValue({ data: [] })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/no hay eventos disponibles/i)).toBeInTheDocument()
@@ -109,7 +110,7 @@ describe('EventList', () => {
   it('navigates to event detail when clicking a card', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
@@ -125,7 +126,7 @@ describe('EventList', () => {
   it('navigates to event detail when pressing Enter on a card', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
@@ -143,7 +144,7 @@ describe('EventList', () => {
   it('event cards are native <button> elements', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
-    render(<EventList />)
+    renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()

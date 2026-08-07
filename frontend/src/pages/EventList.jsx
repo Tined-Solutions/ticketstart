@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import apiClient from '../api/client.js'
+import { useEvents } from '../hooks/useEvents.js'
 import { formatEventDate } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
@@ -72,42 +71,13 @@ function EventCard({ event, onClick }) {
 
 export default function EventList() {
   const navigate = useNavigate()
-  const [events, setEvents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { data: events = [], isLoading, isError, error, refetch } = useEvents()
 
-  const loadEvents = useCallback((controller) => {
-    apiClient
-      .get('/events', { signal: controller.signal })
-      .then((response) => {
-        if (controller.signal.aborted) return
-        setEvents(response.data || [])
-        setError('')
-        setLoading(false)
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return
-          const message =
-            error.response?.data?.error?.message ||
-            error.response?.data?.message ||
-            'Ocurrio un error al cargar los eventos'
-        setError(message)
-        setLoading(false)
-      })
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    loadEvents(controller)
-    return () => controller.abort()
-  }, [loadEvents])
-
-  const handleRetry = () => {
-    setLoading(true)
-    setError('')
-    const controller = new AbortController()
-    loadEvents(controller)
-  }
+  const errorMessage = isError
+    ? error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      'Ocurrio un error al cargar los eventos'
+    : ''
 
   const handleEventClick = (eventId) => () => {
     navigate(`/events/${eventId}`)
@@ -131,7 +101,7 @@ export default function EventList() {
       </motion.header>
 
       {/* Loading state: Skeleton grid */}
-      {loading && (
+      {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <GlassCard key={i} className="event-card-skeleton p-0 overflow-hidden">
@@ -147,17 +117,17 @@ export default function EventList() {
       )}
 
       {/* Error state */}
-      {!loading && error && (
+      {!isLoading && isError && (
         <GlassCard className="text-center py-12 max-w-lg mx-auto">
-          <p className="text-text-1 mb-4">{error}</p>
-          <Button variant="gradient" onClick={handleRetry}>
+          <p className="text-text-1 mb-4">{errorMessage}</p>
+          <Button variant="gradient" onClick={() => refetch()}>
             Reintentar
           </Button>
         </GlassCard>
       )}
 
       {/* Empty state */}
-      {!loading && !error && events.length === 0 && (
+      {!isLoading && !isError && events.length === 0 && (
         <EmptyState
           icon="📅"
           title="Sin eventos"
@@ -171,7 +141,7 @@ export default function EventList() {
       )}
 
       {/* Event grid */}
-      {!loading && !error && events.length > 0 && (
+      {!isLoading && !isError && events.length > 0 && (
         <motion.div
           variants={staggerContainer}
           initial="initial"

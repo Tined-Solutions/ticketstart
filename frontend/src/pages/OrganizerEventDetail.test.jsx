@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import OrganizerEventDetail from './OrganizerEventDetail.jsx'
+import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 const mockGet = vi.fn()
 
@@ -12,7 +13,7 @@ vi.mock('../api/client.js', () => ({
 }))
 
 function renderEventDetail(id = 'evt-1') {
-  return render(
+  return renderWithQueryClient(
     <MemoryRouter initialEntries={[`/organizer/events/${id}`]}>
       <Routes>
         <Route path="/organizer/events/:id" element={<OrganizerEventDetail />} />

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import apiClient from '../api/client.js'
 import EventForm from '../components/EventForm.jsx'
+import { useEvent } from '../hooks/useEvent.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import { queryKeys } from '../lib/queryKeys.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import { fadeIn } from '../lib/motion.js'
@@ -11,43 +12,21 @@ import { fadeIn } from '../lib/motion.js'
 export default function OrganizerEventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const [eventData, setEventData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { data: eventData, isLoading, isError, error } = useEvent(id)
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function fetchEvent() {
-      try {
-        const response = await apiClient.get(`/events/${id}`)
-        if (!cancelled) {
-          setEventData(response.data)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err))
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    fetchEvent()
-
-    return () => {
-      cancelled = true
-    }
-  }, [id])
+  const errorMessage = isError ? getErrorMessage(error) : ''
 
   function handleSuccess() {
+    // Event edited → details/stock may have changed → invalidate the catalog
+    // and this event's detail before returning to the dashboard.
+    queryClient.invalidateQueries({ queryKey: queryKeys.events })
+    queryClient.invalidateQueries({ queryKey: queryKeys.event(id) })
     navigate('/organizer/dashboard', { replace: true })
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12">
@@ -57,11 +36,11 @@ export default function OrganizerEventDetail() {
     )
   }
 
-  if (error) {
+  if (isError) {
     return (
       <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         <GlassCard className="text-center py-12" role="alert">
-          <p className="text-text-1 mb-3">{error}</p>
+          <p className="text-text-1 mb-3">{errorMessage}</p>
           <Button variant="secondary" onClick={() => navigate('/organizer/dashboard')}>
             Volver al dashboard
           </Button>
