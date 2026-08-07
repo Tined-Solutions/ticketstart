@@ -7,6 +7,7 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
+import AddTicketsModal from '../components/AddTicketsModal.jsx'
 import { fadeIn } from '../lib/motion.js'
 
 function formatDate(dateString) {
@@ -83,6 +84,8 @@ export default function AdminPanel() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [feedback, setFeedback] = useState({ type: '', message: '' })
+
+  const [addTicketsTarget, setAddTicketsTarget] = useState(null)
 
   const initialFormData = { name: '', email: '', password: '', role: '' }
   const [formData, setFormData] = useState(initialFormData)
@@ -312,6 +315,14 @@ export default function AdminPanel() {
                         <td className="py-3.5 px-4 align-middle" data-label="Acciones">
                           <div className="flex gap-2 flex-nowrap">
                             <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => setAddTicketsTarget(event)}
+                              aria-label={`Agregar entradas a ${event.name}`}
+                            >
+                              Agregar entradas
+                            </Button>
+                            <Button
                               variant="secondary"
                               size="sm"
                               onClick={() => navigate(`/organizer/events/${event.id}`)}
@@ -470,6 +481,21 @@ export default function AdminPanel() {
           onConfirm={handleDeleteConfirm}
           onCancel={handleDeleteCancel}
           deleting={deleting}
+        />
+      )}
+
+      {addTicketsTarget && (
+        <AddTicketsModal
+          eventId={addTicketsTarget.id}
+          eventName={addTicketsTarget.name}
+          onClose={() => setAddTicketsTarget(null)}
+          onSuccess={() => {
+            setAddTicketsTarget(null)
+            // ATS-007: the modal already invalidated ['event', id] + ['events'];
+            // re-run the manual admin list fetch to reflect the new stock.
+            const controller = new AbortController()
+            loadData(controller)
+          }}
         />
       )}
     </motion.div>

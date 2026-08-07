@@ -65,42 +65,46 @@ export default function EventForm({
     const ticketErrors = []
     let hasTicketError = false
 
-    for (let i = 0; i < ticketTypes.length; i++) {
-      const tt = ticketTypes[i]
-      const rowErrors = {}
+    // Ticket types are only validated in create mode: edit mode hides the fieldset
+    // and the PUT body omits ticket types (D-2 / ATS-008 — no silent no-op).
+    if (isCreate) {
+      for (let i = 0; i < ticketTypes.length; i++) {
+        const tt = ticketTypes[i]
+        const rowErrors = {}
 
-      if (!tt.name.trim()) {
-        rowErrors.name = 'El nombre es obligatorio'
-        hasTicketError = true
+        if (!tt.name.trim()) {
+          rowErrors.name = 'El nombre es obligatorio'
+          hasTicketError = true
+        }
+
+        const priceNum = Number(tt.price)
+        if (tt.price === '' || Number.isNaN(priceNum)) {
+          rowErrors.price = 'El precio es obligatorio'
+          hasTicketError = true
+        } else if (priceNum <= 0) {
+          rowErrors.price = 'El precio debe ser mayor a 0'
+          hasTicketError = true
+        }
+
+        const quantityNum = Number(tt.quantity)
+        if (tt.quantity === '' || Number.isNaN(quantityNum)) {
+          rowErrors.quantity = 'La cantidad es obligatoria'
+          hasTicketError = true
+        } else if (!Number.isInteger(quantityNum) || quantityNum <= 0) {
+          rowErrors.quantity = 'La cantidad debe ser un numero entero mayor a 0'
+          hasTicketError = true
+        }
+
+        ticketErrors.push(rowErrors)
       }
 
-      const priceNum = Number(tt.price)
-      if (tt.price === '' || Number.isNaN(priceNum)) {
-        rowErrors.price = 'El precio es obligatorio'
-        hasTicketError = true
-      } else if (priceNum <= 0) {
-        rowErrors.price = 'El precio debe ser mayor a 0'
-        hasTicketError = true
+      if (hasTicketError) {
+        newErrors.ticketTypes = ticketErrors
       }
 
-      const quantityNum = Number(tt.quantity)
-      if (tt.quantity === '' || Number.isNaN(quantityNum)) {
-        rowErrors.quantity = 'La cantidad es obligatoria'
-        hasTicketError = true
-      } else if (!Number.isInteger(quantityNum) || quantityNum <= 0) {
-        rowErrors.quantity = 'La cantidad debe ser un numero entero mayor a 0'
-        hasTicketError = true
+      if (ticketTypes.length === 0) {
+        newErrors.ticketTypes = 'Debe agregar al menos un tipo de entrada'
       }
-
-      ticketErrors.push(rowErrors)
-    }
-
-    if (hasTicketError) {
-      newErrors.ticketTypes = ticketErrors
-    }
-
-    if (ticketTypes.length === 0) {
-      newErrors.ticketTypes = 'Debe agregar al menos un tipo de entrada'
     }
 
     return newErrors
@@ -349,117 +353,128 @@ export default function EventForm({
         )}
       </div>
 
-      <fieldset className="ticket-types-section" disabled={submitting}>
-        <legend>
-          <h2>Tipos de entrada</h2>
-        </legend>
+      {isCreate ? (
+        <fieldset className="ticket-types-section" disabled={submitting}>
+          <legend>
+            <h2>Tipos de entrada</h2>
+          </legend>
 
-        {typeof errors.ticketTypes === 'string' && (
-          <div className="error-container" role="alert">
-            <p>{errors.ticketTypes}</p>
-          </div>
-        )}
-
-        {ticketTypes.map((tt, index) => (
-          <div key={tt.key} className="ticket-type-row">
-            <div className="ticket-type-fields">
-              <div className="form-group ticket-type-name-group">
-                <label htmlFor={`tt-name-${tt.key}`}>Nombre</label>
-                <input
-                  id={`tt-name-${tt.key}`}
-                  type="text"
-                  value={tt.name}
-                  onChange={(e) =>
-                    handleTicketTypeChange(index, 'name', e.target.value)
-                  }
-                  placeholder="Ej: General, VIP"
-                  required
-                  disabled={submitting}
-                  aria-invalid={
-                    errors.ticketTypes?.[index]?.name ? 'true' : undefined
-                  }
-                />
-                {errors.ticketTypes?.[index]?.name && (
-                  <span className="form-error">
-                    {errors.ticketTypes[index].name}
-                  </span>
-                )}
-              </div>
-
-              <div className="form-group ticket-type-price-group">
-                <label htmlFor={`tt-price-${tt.key}`}>Precio ($)</label>
-                <input
-                  id={`tt-price-${tt.key}`}
-                  type="number"
-                  value={tt.price}
-                  onChange={(e) =>
-                    handleTicketTypeChange(index, 'price', e.target.value)
-                  }
-                  placeholder="15000"
-                  min="0"
-                  step="0.01"
-                  required
-                  disabled={submitting}
-                  aria-invalid={
-                    errors.ticketTypes?.[index]?.price ? 'true' : undefined
-                  }
-                />
-                {errors.ticketTypes?.[index]?.price && (
-                  <span className="form-error">
-                    {errors.ticketTypes[index].price}
-                  </span>
-                )}
-              </div>
-
-              <div className="form-group ticket-type-quantity-group">
-                <label htmlFor={`tt-quantity-${tt.key}`}>Cantidad</label>
-                <input
-                  id={`tt-quantity-${tt.key}`}
-                  type="number"
-                  value={tt.quantity}
-                  onChange={(e) =>
-                    handleTicketTypeChange(index, 'quantity', e.target.value)
-                  }
-                  placeholder="100"
-                  min="1"
-                  step="1"
-                  required
-                  disabled={submitting}
-                  aria-invalid={
-                    errors.ticketTypes?.[index]?.quantity ? 'true' : undefined
-                  }
-                />
-                {errors.ticketTypes?.[index]?.quantity && (
-                  <span className="form-error">
-                    {errors.ticketTypes[index].quantity}
-                  </span>
-                )}
-              </div>
+          {typeof errors.ticketTypes === 'string' && (
+            <div className="error-container" role="alert">
+              <p>{errors.ticketTypes}</p>
             </div>
+          )}
 
-            {ticketTypes.length > 1 && (
-              <button
-                type="button"
-                className="button-secondary ticket-type-remove"
-                onClick={() => handleRemoveTicketType(index)}
-                disabled={submitting}
-                aria-label={`Eliminar tipo de entrada ${tt.name || index + 1}`}
-              >
-                Eliminar
-              </button>
-            )}
-          </div>
-        ))}
+          {ticketTypes.map((tt, index) => (
+            <div key={tt.key} className="ticket-type-row">
+              <div className="ticket-type-fields">
+                <div className="form-group ticket-type-name-group">
+                  <label htmlFor={`tt-name-${tt.key}`}>Nombre</label>
+                  <input
+                    id={`tt-name-${tt.key}`}
+                    type="text"
+                    value={tt.name}
+                    onChange={(e) =>
+                      handleTicketTypeChange(index, 'name', e.target.value)
+                    }
+                    placeholder="Ej: General, VIP"
+                    required
+                    disabled={submitting}
+                    aria-invalid={
+                      errors.ticketTypes?.[index]?.name ? 'true' : undefined
+                    }
+                  />
+                  {errors.ticketTypes?.[index]?.name && (
+                    <span className="form-error">
+                      {errors.ticketTypes[index].name}
+                    </span>
+                  )}
+                </div>
 
-        <button
-          type="button"
-          className="button-secondary ticket-type-add"
-          onClick={handleAddTicketType}
-          disabled={submitting}
-        >
-          + Agregar tipo de entrada
-        </button>
-      </fieldset>
+                <div className="form-group ticket-type-price-group">
+                  <label htmlFor={`tt-price-${tt.key}`}>Precio ($)</label>
+                  <input
+                    id={`tt-price-${tt.key}`}
+                    type="number"
+                    value={tt.price}
+                    onChange={(e) =>
+                      handleTicketTypeChange(index, 'price', e.target.value)
+                    }
+                    placeholder="15000"
+                    min="0"
+                    step="0.01"
+                    required
+                    disabled={submitting}
+                    aria-invalid={
+                      errors.ticketTypes?.[index]?.price ? 'true' : undefined
+                    }
+                  />
+                  {errors.ticketTypes?.[index]?.price && (
+                    <span className="form-error">
+                      {errors.ticketTypes[index].price}
+                    </span>
+                  )}
+                </div>
+
+                <div className="form-group ticket-type-quantity-group">
+                  <label htmlFor={`tt-quantity-${tt.key}`}>Cantidad</label>
+                  <input
+                    id={`tt-quantity-${tt.key}`}
+                    type="number"
+                    value={tt.quantity}
+                    onChange={(e) =>
+                      handleTicketTypeChange(index, 'quantity', e.target.value)
+                    }
+                    placeholder="100"
+                    min="1"
+                    step="1"
+                    required
+                    disabled={submitting}
+                    aria-invalid={
+                      errors.ticketTypes?.[index]?.quantity ? 'true' : undefined
+                    }
+                  />
+                  {errors.ticketTypes?.[index]?.quantity && (
+                    <span className="form-error">
+                      {errors.ticketTypes[index].quantity}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {ticketTypes.length > 1 && (
+                <button
+                  type="button"
+                  className="button-secondary ticket-type-remove"
+                  onClick={() => handleRemoveTicketType(index)}
+                  disabled={submitting}
+                  aria-label={`Eliminar tipo de entrada ${tt.name || index + 1}`}
+                >
+                  Eliminar
+                </button>
+              )}
+            </div>
+          ))}
+
+          <button
+            type="button"
+            className="button-secondary ticket-type-add"
+            onClick={handleAddTicketType}
+            disabled={submitting}
+          >
+            + Agregar tipo de entrada
+          </button>
+        </fieldset>
+      ) : (
+        <div className="ticket-types-section" role="note">
+          <h2>Tipos de entrada</h2>
+          <p>
+            El stock de entradas se gestiona desde el panel de administracion
+            (accion &quot;Agregar entradas&quot;). Los tipos de entrada no se
+            editan aqui.
+          </p>
+        </div>
+      )}
 
       <div className="form-actions">
         <button

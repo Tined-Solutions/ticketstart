@@ -433,10 +433,16 @@ describe('EventForm — edit mode', () => {
     expect(preview).toBeInTheDocument()
     expect(preview.src).toBe('https://example.com/rock.jpg')
 
-    // Should show existing ticket types
-    const rows = screen.getAllByText(/nombre/i)
-      .filter((el) => el.closest('.ticket-type-row'))
-    expect(rows).toHaveLength(2)
+    // ATS-008 / D-2: edit mode hides the ticket-type fieldset (no silent no-op).
+    // The admin is pointed to the supported stock path instead.
+    expect(
+      screen.queryByRole('button', { name: /agregar tipo de entrada/i })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /el stock de entradas se gestiona desde el panel de administracion/i
+      )
+    ).toBeInTheDocument()
 
     expect(
       screen.getByRole('button', { name: /guardar cambios/i })
