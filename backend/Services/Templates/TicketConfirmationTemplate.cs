@@ -30,7 +30,7 @@ public static class TicketConfirmationTemplate
         html.AppendLine("<html>");
         html.AppendLine("<head>");
         html.AppendLine("<meta charset='utf-8' />");
-        html.AppendLine("<title>Your tickets</title>");
+        html.AppendLine("<title>Tus entradas</title>");
         html.AppendLine("<style>");
         html.AppendLine("body { font-family: Arial, sans-serif; color: #333; line-height: 1.5; }");
         html.AppendLine(".container { max-width: 600px; margin: 0 auto; padding: 20px; }");
@@ -43,44 +43,44 @@ public static class TicketConfirmationTemplate
         html.AppendLine("<body>");
         html.AppendLine("<div class='container'>");
 
-        html.AppendLine("<h1>Your ticket purchase is confirmed!</h1>");
+        html.AppendLine("<h1>¡Tu compra está confirmada!</h1>");
 
         html.AppendLine("<div class='event'>");
         html.AppendLine($"<h2>{HtmlEncoder.Escape(eventDetails.Name)}</h2>");
-        html.AppendLine($"<p><strong>Date:</strong> {eventDetails.Date.ToUniversalTime():yyyy-MM-dd HH:mm} UTC</p>");
-        html.AppendLine($"<p><strong>Location:</strong> {HtmlEncoder.Escape(eventDetails.Location)}</p>");
+        html.AppendLine($"<p><strong>Fecha:</strong> {eventDetails.Date.ToUniversalTime():dd/MM/yyyy HH:mm}</p>");
+        html.AppendLine($"<p><strong>Ubicación:</strong> {HtmlEncoder.Escape(eventDetails.Location)}</p>");
         if (!string.IsNullOrWhiteSpace(eventDetails.Description))
         {
             html.AppendLine($"<p>{HtmlEncoder.Escape(eventDetails.Description)}</p>");
         }
         html.AppendLine("</div>");
 
-        html.AppendLine($"<p>Hi {HtmlEncoder.Escape(recipientEmail)},</p>");
-        html.AppendLine($"<p>You have purchased <strong>{ticketList.Count}</strong> ticket(s). Please find your QR codes below.</p>");
+        html.AppendLine("<p>¡Hola!</p>");
+        html.AppendLine($"<p>Compraste <strong>{ticketList.Count}</strong> entrada(s). Tus códigos QR están más abajo.</p>");
 
         for (var i = 0; i < ticketList.Count; i++)
         {
             var (ticket, contentId) = ticketList[i];
-            var ticketTypeName = ticket.TicketType?.Name ?? "Ticket";
+            var ticketTypeName = ticket.TicketType?.Name ?? "Entrada";
             var ticketPrice = ticket.TicketType?.Price.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00";
 
             html.AppendLine("<div class='ticket'>");
-            html.AppendLine($"<h3>Ticket {i + 1}: {HtmlEncoder.Escape(ticketTypeName)}</h3>");
-            html.AppendLine($"<p><strong>Price:</strong> ${ticketPrice}</p>");
+            html.AppendLine($"<h3>Entrada {i + 1}: {HtmlEncoder.Escape(ticketTypeName)}</h3>");
+            html.AppendLine($"<p><strong>Precio:</strong> ${ticketPrice}</p>");
             html.AppendLine("<div class='qr-code'>");
-            html.AppendLine($"<img src=\"cid:{HtmlEncoder.Escape(contentId)}\" alt=\"QR Code for ticket {i + 1}\" width=\"200\" height=\"200\" />");
+            html.AppendLine($"<img src=\"cid:{HtmlEncoder.Escape(contentId)}\" alt=\"Código QR de la entrada {i + 1}\" width=\"200\" height=\"200\" />");
             html.AppendLine("</div>");
             html.AppendLine("</div>");
         }
 
         html.AppendLine("<div class='summary'>");
-        html.AppendLine("<h2>Purchase confirmation</h2>");
-        html.AppendLine($"<p><strong>Total tickets:</strong> {ticketList.Count}</p>");
-        html.AppendLine($"<p><strong>Total amount:</strong> ${totalAmount.ToString("0.00", CultureInfo.InvariantCulture)}</p>");
-        html.AppendLine($"<p><strong>Confirmation email:</strong> {HtmlEncoder.Escape(recipientEmail)}</p>");
+        html.AppendLine("<h2>Confirmación de compra</h2>");
+        html.AppendLine($"<p><strong>Total de entradas:</strong> {ticketList.Count}</p>");
+        html.AppendLine($"<p><strong>Monto total:</strong> ${totalAmount.ToString("0.00", CultureInfo.InvariantCulture)}</p>");
+        html.AppendLine($"<p><strong>Email de confirmación:</strong> {HtmlEncoder.Escape(recipientEmail)}</p>");
         html.AppendLine("</div>");
 
-        html.AppendLine("<p>Thank you for your purchase!</p>");
+        html.AppendLine("<p>¡Gracias por tu compra!</p>");
         html.AppendLine("</div>");
         html.AppendLine("</body>");
         html.AppendLine("</html>");

@@ -267,9 +267,9 @@ public class EmailPropertyTests
 
         Assert.True(result.Success);
         Assert.NotNull(captured);
-        Assert.Contains("Ticket 1: Ticket", captured!.Html);
-        Assert.Contains("<strong>Price:</strong> $0.00", captured.Html);
-        Assert.Contains("<strong>Total amount:</strong> $0.00", captured.Html);
+        Assert.Contains("Entrada 1: Entrada", captured.Html);
+        Assert.Contains("<strong>Precio:</strong> $0.00", captured.Html);
+        Assert.Contains("<strong>Monto total:</strong> $0.00", captured.Html);
     }
 
     #endregion
@@ -298,7 +298,7 @@ public class EmailPropertyTests
         Assert.True(result.Success);
         Assert.NotNull(captured);
         Assert.Contains(eventEntity.Name, captured!.Html);
-        Assert.Contains(eventEntity.Date.ToString("yyyy-MM-dd"), captured.Html);
+        Assert.Contains(eventEntity.Date.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture), captured.Html);
         Assert.Contains(eventEntity.Location, captured.Html);
     }
 
@@ -334,7 +334,7 @@ public class EmailPropertyTests
 
         Assert.NotNull(captured);
         Assert.Contains("Jazz in the Park", captured!.Html);
-        Assert.Contains("2026-09-20", captured.Html);
+        Assert.Contains(eventEntity.Date.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture), captured.Html);
         Assert.Contains("Central Park Stage", captured.Html);
     }
 
@@ -420,8 +420,8 @@ public class EmailPropertyTests
 
         Assert.True(result.Success);
         Assert.NotNull(captured);
-        Assert.Contains("You have purchased <strong>0</strong> ticket(s).", captured!.Html);
-        Assert.Contains("<strong>Total amount:</strong> $0.00", captured.Html);
+        Assert.Contains("Compraste <strong>0</strong> entrada(s).", captured.Html);
+        Assert.Contains("<strong>Monto total:</strong> $0.00", captured.Html);
     }
 
     #endregion
@@ -546,7 +546,7 @@ public class EmailPropertyTests
         Assert.Equal(recipient, captured!.To);
         Assert.Contains(amount.ToString("0.00", CultureInfo.InvariantCulture), captured.Html);
         Assert.Contains(reason, captured.Html);
-        Assert.Contains("Refund", captured.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reembolso", captured.Subject, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

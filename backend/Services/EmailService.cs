@@ -72,7 +72,7 @@ public class EmailService : IEmailService
         {
             From = ResolvedFrom,
             To = recipientEmail,
-            Subject = $"Your tickets for {eventDetails.Name}",
+            Subject = $"Tus entradas para {eventDetails.Name}",
             Html = html,
             Attachments = attachments
         };
@@ -170,7 +170,7 @@ public class EmailService : IEmailService
         {
             From = ResolvedFrom,
             To = recipientEmail,
-            Subject = "Refund notification",
+            Subject = "Notificación de reembolso",
             Html = html
         };
 
