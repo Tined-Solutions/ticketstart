@@ -20,6 +20,7 @@ public class AdminControllerTests
     private readonly Mock<IAdminService> _mockAdminService;
     private readonly Mock<IAuthService> _mockAuthService;
     private readonly Mock<IAuditLogService> _mockAuditLogService;
+    private readonly Mock<IEventService> _mockEventService;
     private readonly Mock<ILogger<AdminController>> _mockLogger;
     private readonly AdminController _controller;
 
@@ -28,12 +29,14 @@ public class AdminControllerTests
         _mockAdminService = new Mock<IAdminService>();
         _mockAuthService = new Mock<IAuthService>();
         _mockAuditLogService = new Mock<IAuditLogService>();
+        _mockEventService = new Mock<IEventService>();
         _mockLogger = new Mock<ILogger<AdminController>>();
         _controller = new AdminController(
             _mockAdminService.Object,
             _mockAuthService.Object,
             _mockAuditLogService.Object,
-            _mockLogger.Object)
+            _mockLogger.Object,
+            _mockEventService.Object)
         {
             ControllerContext = new ControllerContext
             {

@@ -29,6 +29,10 @@ public class EventService : IEventService
     // Maximum image size: 5MB
     private const long MaxImageSizeBytes = 5 * 1024 * 1024;
 
+    // Admin add-ticket-stock caps (D-7): per-operation high anti-error cap, not a restrictive limit.
+    private const int MaxAdditionalStock = 1000;
+    private const int MaxTicketQuantityPerOperation = 1000;
+
     public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client)
     {
         _context = context;
@@ -191,6 +195,176 @@ public class EventService : IEventService
             .ToDictionaryAsync(x => x.TicketTypeId, x => x.Sum);
 
         return (soldByType, reservedByType);
+    }
+
+    /// <summary>
+    /// Increments an existing TicketType.Quantity under the same SELECT ... FOR UPDATE row lock used
+    /// by ReservationService.CreateReservationTransactionalAsync (D-1). The operation serializes against
+    /// concurrent reservations on the same ticket type: no lost update, no oversell (ATS-002/ATS-003).
+    /// Availability is never stored — the response recomputes it mathematically (ATS-006).
+    /// </summary>
+    public async Task<TicketTypeWithAvailability> AddTicketStockAsync(Guid eventId, Guid ticketTypeId, int additionalQuantity)
+    {
+        _logger.LogInformation("Admin adding {Quantity} tickets to ticket type {TicketTypeId} (event {EventId})",
+            additionalQuantity, ticketTypeId, eventId);
+
+        // Validate before taking the lock where possible (D-7)
+        if (additionalQuantity <= 0)
+            throw new ArgumentException("Additional quantity must be greater than zero", nameof(additionalQuantity));
+
+        if (additionalQuantity > MaxAdditionalStock)
+            throw new ArgumentException($"Additional quantity must not exceed {MaxAdditionalStock}", nameof(additionalQuantity));
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                var provider = _context.Database.ProviderName;
+
+                TicketType? ticketType;
+                if (provider == "Npgsql.EntityFrameworkCore.PostgreSQL")
+                {
+                    // Native PostgreSQL row lock: blocks concurrent reservations on the same row.
+                    ticketType = await _context.TicketTypes
+                        .FromSqlInterpolated($"SELECT * FROM \"TicketTypes\" WHERE \"Id\" = {ticketTypeId} AND \"EventId\" = {eventId} FOR UPDATE")
+                        .FirstOrDefaultAsync();
+                }
+                else if (provider == "Microsoft.EntityFrameworkCore.Sqlite")
+                {
+                    // SQLite has no FOR UPDATE support. A no-op UPDATE on the row acquires the
+                    // database write lock so the check-then-write serializes against concurrent writers.
+                    ticketType = await _context.TicketTypes
+                        .FirstOrDefaultAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
+                    if (ticketType != null)
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $"UPDATE \"TicketTypes\" SET \"CreatedAt\" = \"CreatedAt\" WHERE \"Id\" = {ticketTypeId}");
+                    }
+                }
+                else
+                {
+                    // InMemory provider (tests): no native locking support.
+                    ticketType = await _context.TicketTypes
+                        .FirstOrDefaultAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
+                }
+
+                if (ticketType == null)
+                {
+                    _logger.LogWarning("Ticket type {TicketTypeId} not found for event {EventId}", ticketTypeId, eventId);
+                    throw new KeyNotFoundException($"Ticket type {ticketTypeId} not found for event {eventId}");
+                }
+
+                ticketType.Quantity += additionalQuantity;
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Added {Quantity} tickets to ticket type {TicketTypeId}; new quantity {NewQuantity}",
+                    additionalQuantity, ticketTypeId, ticketType.Quantity);
+
+                return await MapTicketTypeWithAvailabilityAsync(ticketType);
+            }
+            catch
+            {
+                // Any failure rolls back the entire operation.
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Creates a new TicketType on an existing event inside a transaction (ATS-004).
+    /// Transaction-only — no shared row lock is needed because the new row cannot race with
+    /// existing reservations. Availability is never stored (ATS-006).
+    /// </summary>
+    public async Task<TicketTypeWithAvailability> AddTicketTypeAsync(Guid eventId, string name, decimal price, int quantity)
+    {
+        _logger.LogInformation("Admin creating ticket type '{Name}' (price {Price}, quantity {Quantity}) for event {EventId}",
+            name, price, quantity, eventId);
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                var eventEntity = await _context.Events.FindAsync(eventId);
+                if (eventEntity == null)
+                {
+                    _logger.LogWarning("Event {EventId} not found", eventId);
+                    throw new KeyNotFoundException($"Event with ID {eventId} not found");
+                }
+
+                // Validate inside the transaction (D-7; mirrors CreateEventAsync guards)
+                if (string.IsNullOrWhiteSpace(name))
+                    throw new ArgumentException("Ticket type name is required", nameof(name));
+
+                if (name.Trim().Length > 100)
+                    throw new ArgumentException("Ticket type name must not exceed 100 characters", nameof(name));
+
+                if (price < 0)
+                    throw new ArgumentException("Ticket price cannot be negative", nameof(price));
+
+                if (quantity <= 0)
+                    throw new ArgumentException("Ticket quantity must be greater than zero", nameof(quantity));
+
+                if (quantity > MaxTicketQuantityPerOperation)
+                    throw new ArgumentException($"Ticket quantity must not exceed {MaxTicketQuantityPerOperation}", nameof(quantity));
+
+                var now = DateTime.UtcNow;
+                var ticketType = new TicketType
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = eventId,
+                    Name = name.Trim(),
+                    Price = price,
+                    Quantity = quantity,
+                    CreatedAt = now
+                };
+
+                _context.TicketTypes.Add(ticketType);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Created ticket type '{Name}' ({TicketTypeId}) for event {EventId}",
+                    ticketType.Name, ticketType.Id, eventId);
+
+                return await MapTicketTypeWithAvailabilityAsync(ticketType);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Maps a TicketType entity to the { id, name, price, quantity, available } response shape (D-4).
+    /// Availability is recomputed mathematically with the same clamping used by MapToEventWithAvailabilityAsync.
+    /// </summary>
+    private async Task<TicketTypeWithAvailability> MapTicketTypeWithAvailabilityAsync(TicketType tt)
+    {
+        var (sold, reserved) = await ComputeAvailabilityAggregatesAsync(new List<Guid> { tt.Id });
+
+        sold.TryGetValue(tt.Id, out var soldCount);
+        reserved.TryGetValue(tt.Id, out var reservedCount);
+        var available = Math.Max(0, tt.Quantity - soldCount - reservedCount);
+
+        return new TicketTypeWithAvailability
+        {
+            Id = tt.Id,
+            Name = tt.Name,
+            Price = tt.Price,
+            Quantity = tt.Quantity,
+            Available = available
+        };
     }
 
     /// <summary>

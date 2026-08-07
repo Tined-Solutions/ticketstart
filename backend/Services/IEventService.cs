@@ -66,7 +66,40 @@ public interface IEventService
     /// <returns>The public URL of the uploaded image in R2 storage</returns>
     /// <exception cref="ArgumentException">Thrown when image validation fails (invalid type or size)</exception>
     Task<string> UploadEventImageAsync(Stream imageStream, string fileName, string contentType);
+
+    /// <summary>
+    /// Increments an existing TicketType.Quantity under SELECT...FOR UPDATE. Mirrors ReservationService.
+    /// </summary>
+    /// <param name="eventId">ID of the event owning the ticket type</param>
+    /// <param name="ticketTypeId">ID of the ticket type to increment</param>
+    /// <param name="additionalQuantity">Positive quantity to add to the existing stock (≤ MaxAdditionalStock)</param>
+    /// <returns>The updated ticket type with recomputed availability</returns>
+    /// <exception cref="KeyNotFoundException">Event or ticket type not found, or EventId mismatch.</exception>
+    /// <exception cref="ArgumentException">additionalQuantity <= 0 or > MaxAdditionalStock.</exception>
+    Task<TicketTypeWithAvailability> AddTicketStockAsync(Guid eventId, Guid ticketTypeId, int additionalQuantity);
+
+    /// <summary>
+    /// Creates a new TicketType on an existing event (transaction-only, no row lock).
+    /// </summary>
+    /// <param name="eventId">ID of the event to attach the new ticket type to</param>
+    /// <param name="name">Ticket type name (non-empty, trimmed, ≤ 100 chars)</param>
+    /// <param name="price">Ticket price (≥ 0)</param>
+    /// <param name="quantity">Initial stock quantity (&gt; 0 and ≤ MaxTicketQuantityPerOperation)</param>
+    /// <returns>The created ticket type with recomputed availability</returns>
+    /// <exception cref="KeyNotFoundException">Event not found.</exception>
+    /// <exception cref="ArgumentException">Invalid name/price/quantity.</exception>
+    Task<TicketTypeWithAvailability> AddTicketTypeAsync(Guid eventId, string name, decimal price, int quantity);
 }
+
+/// <summary>
+/// Request body for incrementing the stock of an existing ticket type.
+/// </summary>
+public record AddTicketStockRequest(int AdditionalQuantity);
+
+/// <summary>
+/// Request body for creating a new ticket type on an existing event.
+/// </summary>
+public record AddTicketTypeRequest(string Name, decimal Price, int Quantity);
 
 /// <summary>
 /// Request model for creating a new event.

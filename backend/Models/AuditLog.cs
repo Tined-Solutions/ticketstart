@@ -78,7 +78,9 @@ public enum AuditActionType
     DeleteEvent,
     CreateUser,
     ProcessWebhook,
-    ValidateQr
+    ValidateQr,
+    AddTicketStock,   // NEW (ATS-005) — ActionType varchar(100), no migration
+    AddTicketType     // NEW (ATS-005)
 }
 
 /// <summary>

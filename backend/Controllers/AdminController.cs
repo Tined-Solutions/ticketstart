@@ -17,18 +17,21 @@ public class AdminController : TicketeraControllerBase
     private readonly IAdminService _adminService;
     private readonly IAuthService _authService;
     private readonly IAuditLogService _auditLogService;
+    private readonly IEventService _eventService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         IAdminService adminService,
         IAuthService authService,
         IAuditLogService auditLogService,
-        ILogger<AdminController> logger)
+        ILogger<AdminController> logger,
+        IEventService eventService)
     {
         _adminService = adminService;
         _authService = authService;
         _auditLogService = auditLogService;
         _logger = logger;
+        _eventService = eventService;
     }
 
     /// <summary>
@@ -169,6 +172,56 @@ public class AdminController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Increments the stock (Quantity) of an existing ticket type on an event.
+    /// Concurrency-safe: mirrors the ReservationService SELECT ... FOR UPDATE row lock (ATS-003).
+    /// </summary>
+    /// <param name="eventId">ID of the event owning the ticket type</param>
+    /// <param name="ticketTypeId">ID of the ticket type to increment</param>
+    /// <param name="request">Body with the positive additional quantity (≤ 1000)</param>
+    /// <returns>200 with the updated ticket type and recomputed availability</returns>
+    [HttpPost("events/{eventId:guid}/ticket-types/{ticketTypeId:guid}/stock")]
+    public async Task<IActionResult> AddTicketStock(Guid eventId, Guid ticketTypeId, [FromBody] AddTicketStockRequest request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var tt = await _eventService.AddTicketStockAsync(eventId, ticketTypeId, request.AdditionalQuantity);
+            await TryLogAuditAsync(adminId, new AuditLogContext(adminId, AuditActionType.AddTicketStock,
+                AuditResourceType.Event, eventId, Truncate($"Admin added {request.AdditionalQuantity} tickets to ticket type {tt.Name} (event {eventId})", 1000)));
+            return Ok(tt);
+        }
+        catch (KeyNotFoundException) { return NotFound(new { error = "Event or ticket type not found" }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex) { _logger.LogError(ex, "Error adding ticket stock"); return StatusCode(500, new { error = "An error occurred while adding ticket stock" }); }
+    }
+
+    /// <summary>
+    /// Creates a new ticket type (different zone/price) on an existing event (ATS-004).
+    /// </summary>
+    /// <param name="eventId">ID of the event to attach the new ticket type to</param>
+    /// <param name="request">Body with name, price and initial quantity</param>
+    /// <returns>201 with the created ticket type and recomputed availability</returns>
+    [HttpPost("events/{eventId:guid}/ticket-types")]
+    public async Task<IActionResult> AddTicketType(Guid eventId, [FromBody] AddTicketTypeRequest request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var tt = await _eventService.AddTicketTypeAsync(eventId, request.Name, request.Price, request.Quantity);
+            await TryLogAuditAsync(adminId, new AuditLogContext(adminId, AuditActionType.AddTicketType,
+                AuditResourceType.Event, eventId, Truncate($"Admin created ticket type {tt.Name} (price {tt.Price}, quantity {tt.Quantity}) for event {eventId}", 1000)));
+            return CreatedAtAction(nameof(AddTicketType), new { eventId, ticketTypeId = tt.Id }, tt);
+        }
+        catch (KeyNotFoundException) { return NotFound(new { error = "Event not found" }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex) { _logger.LogError(ex, "Error adding ticket type"); return StatusCode(500, new { error = "An error occurred while adding the ticket type" }); }
+    }
+
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try
@@ -182,6 +235,11 @@ public class AdminController : TicketeraControllerBase
                 adminId, context.Action, context.Resource, context.ResourceId);
         }
     }
+
+    /// <summary>
+    /// Truncates a string to the given maximum length, mirroring the AuditLog.Details varchar(1000) column cap (D-6).
+    /// </summary>
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }
 
 /// <summary>
