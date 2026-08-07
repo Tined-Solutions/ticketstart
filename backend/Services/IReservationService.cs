@@ -3,14 +3,17 @@ using TicketeraOnline.Api.Models;
 namespace TicketeraOnline.Api.Services;
 
 /// <summary>
-/// Service interface for managing ticket reservations with expiration and concurrency control.
-/// Handles temporary ticket holds, inventory management, and reservation lifecycle.
+/// Service interface for managing ticket reservations with expiration.
+/// Handles temporary ticket holds and reservation lifecycle.
+/// Stock is never stored as a counter: availability is computed mathematically from sold
+/// tickets and active unexpired reservations inside a single transaction with a native
+/// PostgreSQL row lock (SELECT ... FOR UPDATE).
 /// </summary>
 public interface IReservationService
 {
     /// <summary>
     /// Creates a new reservation with 10-minute expiration.
-    /// Decrements ticket inventory atomically using database transactions and optimistic concurrency control.
+    /// Atomic: row lock + availability check + insert inside one transaction.
     /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6
     /// </summary>
     /// <param name="userId">Optional user identifier (nullable for guest purchases)</param>
@@ -22,7 +25,6 @@ public interface IReservationService
     /// <returns>Created reservation with identifier</returns>
     /// <exception cref="ArgumentException">Thrown when quantity is invalid, DNI is invalid, or insufficient tickets available</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event or ticket type not found</exception>
-    /// <exception cref="InvalidOperationException">Thrown on concurrency conflicts</exception>
     Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null);
 
     /// <summary>
@@ -34,7 +36,8 @@ public interface IReservationService
     Task<bool> ValidateReservationAsync(Guid reservationId);
 
     /// <summary>
-    /// Releases all expired active reservations and restores ticket inventory.
+    /// Marks all expired active reservations as Expired (state cleanup only).
+    /// Does not touch any stock counter.
     /// Validates: Requirement 4.5
     /// </summary>
     /// <returns>Number of reservations released</returns>
@@ -51,8 +54,8 @@ public interface IReservationService
     Task<Reservation> ConfirmReservationAsync(Guid reservationId);
 
     /// <summary>
-    /// Cancels a reservation and restores ticket inventory.
-    /// Marks reservation as Cancelled and increments ticket quantity.
+    /// Cancels a reservation (state change only). No stock counter is touched.
+    /// Marks reservation as Cancelled.
     /// </summary>
     /// <param name="reservationId">Reservation identifier</param>
     /// <returns>Updated reservation</returns>

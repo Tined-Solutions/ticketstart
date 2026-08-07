@@ -12,7 +12,8 @@ namespace TicketeraOnline.Api.Tests;
 
 /// <summary>
 /// Tests for ReservationExpirationService.
-/// Uses InMemory for Timer-based tests and SQLite for PeriodicTimer/ExecuteUpdateAsync tests.
+/// Uses InMemory for hosted-service tests and SQLite for the PeriodicTimer loop tests.
+/// The worker is passive: it only marks expired reservations as Expired, it never touches stock.
 /// Validates: Requirements 4.5, 4.6, 4.7 and Batch 3 REQ-9, REQ-10.
 /// </summary>
 public class ReservationExpirationServiceTests
@@ -118,9 +119,9 @@ public class ReservationExpirationServiceTests
     }
 
     /// <summary>
-    /// Integration test: Tests that the service properly releases expired reservations and restores inventory.
+    /// Integration test: Tests that the service properly releases expired reservations.
     /// Validates: Requirements 4.5, 4.6, 4.7
-    /// - 4.5: WHEN a reservation expires, THE Expiration_Service SHALL release the reserved tickets back to inventory
+    /// - 4.5: WHEN a reservation expires, THE Expiration_Service SHALL release the expired reservation
     /// - 4.6: THE Expiration_Service SHALL run continuously as an IHostedService background worker
     /// - 4.7: THE Expiration_Service SHALL check for expired reservations at regular intervals
     /// </summary>
@@ -243,8 +244,7 @@ public class ReservationExpirationServiceTests
             var reservationService = scope.ServiceProvider.GetRequiredService<IReservationService>();
             
             // Should be able to reserve the full quantity (100) since the expired reservations (15 + 10 = 25) were released
-            var newReservation = await reservationService.CreateReservationAsync(
-                Guid.NewGuid(), 
+            var newReservation = await reservationService.CreateReservationAsync(                Guid.NewGuid(), 
                 eventId, 
                 ticketTypeId, 
                 100,
@@ -397,7 +397,7 @@ public class ReservationExpirationServiceTests
         await serviceProvider.DisposeAsync();
     }
 
-    #region B3.4: PeriodicTimer + ExecuteUpdateAsync tests (SQLite)
+    #region B3.4: PeriodicTimer passive cleanup tests (SQLite)
 
     /// <summary>
     /// ExecuteAsync stops gracefully when cancellation is requested.
@@ -418,7 +418,7 @@ public class ReservationExpirationServiceTests
 
         var serviceProvider = services.BuildServiceProvider();
 
-        // Ensure schema using the test context that handles RowVersion for SQLite
+        // Ensure schema using the test context for SQLite (TicketType no longer has a RowVersion)
         using (var scope = serviceProvider.CreateScope())
         {
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -443,10 +443,11 @@ public class ReservationExpirationServiceTests
     }
 
     /// <summary>
-    /// Expired reservations are processed and CurrentlyReserved is decremented.
+    /// Expired active reservations are marked as Expired by the passive cleanup loop.
+    /// The worker is passive: it only changes state, it never touches stock.
     /// </summary>
     [Fact]
-    public async Task ExecuteAsync_DecrementsCurrentlyReserved_ForExpiredReservations()
+    public async Task ExecuteAsync_MarksExpiredReservations_AsExpired()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
@@ -462,9 +463,9 @@ public class ReservationExpirationServiceTests
         var serviceProvider = services.BuildServiceProvider();
 
         Guid ticketTypeId;
+        Guid reservationId;
         using (var scope = serviceProvider.CreateScope())
         {
-            // Use ReservationStockTestDbContext for SQLite seed to avoid RowVersion issues
             var testOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseSqlite(connection)
                 .Options;
@@ -479,7 +480,7 @@ public class ReservationExpirationServiceTests
             var tt = new TicketType
             {
                 Id = Guid.NewGuid(), EventId = evt.Id, Name = "GA", Price = 50m, Quantity = 100,
-                CurrentlyReserved = 25, CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow
             };
             context.TicketTypes.Add(tt);
             ticketTypeId = tt.Id;
@@ -491,6 +492,7 @@ public class ReservationExpirationServiceTests
                 Status = ReservationStatus.Active, CreatedAt = DateTime.UtcNow.AddMinutes(-15)
             };
             context.Reservations.Add(expired);
+            reservationId = expired.Id;
             await context.SaveChangesAsync();
         }
 
@@ -505,23 +507,24 @@ public class ReservationExpirationServiceTests
         cts.Cancel();
         await executeTask;
 
-        // Assert — CurrentlyReserved should be back to 0
+        // Assert — the expired reservation is marked Expired (state cleanup only)
         using (var scope = serviceProvider.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var tt = await context.TicketTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == ticketTypeId);
-            Assert.Equal(0, tt!.CurrentlyReserved);
-
-            var reservations = await context.Reservations.ToListAsync();
-            Assert.All(reservations, r => Assert.Equal(ReservationStatus.Expired, r.Status));
+            var reservation = await context.Reservations.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == reservationId);
+            Assert.NotNull(reservation);
+            Assert.Equal(ReservationStatus.Expired, reservation!.Status);
         }
     }
 
     /// <summary>
-    /// Math.Max(0, ...) prevents CurrentlyReserved from going negative.
+    /// Expired reservations do not count as occupied: once the passive worker marks them
+    /// Expired (or even before, since availability filters by ExpiresAt > now), the full
+    /// quantity becomes available again for new reservations.
     /// </summary>
     [Fact]
-    public async Task ExecuteAsync_ClampsCurrentlyReservedToZero()
+    public async Task ExecuteAsync_ExpiredReservations_DoNotCountAsOccupied()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
@@ -537,6 +540,7 @@ public class ReservationExpirationServiceTests
         var serviceProvider = services.BuildServiceProvider();
 
         Guid ticketTypeId;
+        Guid eventId;
         using (var scope = serviceProvider.CreateScope())
         {
             var testOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -553,12 +557,13 @@ public class ReservationExpirationServiceTests
             var tt = new TicketType
             {
                 Id = Guid.NewGuid(), EventId = evt.Id, Name = "GA", Price = 50m, Quantity = 100,
-                CurrentlyReserved = 5, CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow
             };
             context.TicketTypes.Add(tt);
             ticketTypeId = tt.Id;
+            eventId = evt.Id;
 
-            // Reservation claims 10 but only 5 were reserved (edge case from inconsistent state)
+            // 10 tickets reserved, but already expired
             var expired = new Reservation
             {
                 Id = Guid.NewGuid(), EventId = evt.Id, TicketTypeId = tt.Id,
@@ -578,12 +583,14 @@ public class ReservationExpirationServiceTests
         cts.Cancel();
         await executeTask;
 
-        // Assert — clamped at 0, not negative
+        // Assert — expired reservations don't block availability: the full 100 can be reserved.
         using (var scope = serviceProvider.CreateScope())
         {
-            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var tt = await context.TicketTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == ticketTypeId);
-            Assert.Equal(0, tt!.CurrentlyReserved);
+            var reservationService = scope.ServiceProvider.GetRequiredService<IReservationService>();
+            var newReservation = await reservationService.CreateReservationAsync(
+                null, eventId, ticketTypeId, 100, "12345678");
+            Assert.NotNull(newReservation);
+            Assert.Equal(100, newReservation.Quantity);
         }
     }
 

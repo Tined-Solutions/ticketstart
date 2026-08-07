@@ -68,11 +68,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(t => t.Name).IsRequired().HasMaxLength(100);
             entity.Property(t => t.Price).IsRequired().HasColumnType("decimal(18,2)");
             entity.Property(t => t.Quantity).IsRequired();
-            entity.Property(t => t.CurrentlyReserved).IsRequired().HasDefaultValue(0);
             entity.Property(t => t.CreatedAt).IsRequired();
-            entity.Property(t => t.RowVersion)
-                .IsRowVersion()
-                .HasDefaultValueSql("gen_random_bytes(8)");
 
             entity.HasOne(t => t.Event)
                 .WithMany(e => e.TicketTypes)

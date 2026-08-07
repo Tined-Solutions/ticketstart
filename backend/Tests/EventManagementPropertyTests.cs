@@ -169,21 +169,21 @@ public class EventManagementPropertyTests : IDisposable
     /// <summary>
     /// Property 6: Ticket Availability Calculation Correctness
     /// For any event with ticket types, the calculated availability SHALL equal 
-    /// the ticket type quantity minus the number of confirmed tickets sold.
+    /// the ticket type quantity minus sold tickets minus active unexpired reservations.
     /// **Validates: Requirements 2.6**
     /// </summary>
     [Fact]
-    public async Task TicketAvailabilityCalculation_EqualsQuantityMinusSoldTickets()
+    public async Task TicketAvailabilityCalculation_EqualsQuantityMinusOccupiedTickets()
     {
-        // Test various scenarios with different quantities and reserved counts.
-        // Availability = Quantity - CurrentlyReserved (Batch 3 formula)
+        // Test various scenarios with different quantities and active reservation counts.
+        // Availability = Quantity - sold - active reservations (mathematical, no counter)
         var testScenarios = new[]
         {
-            new { InitialQuantity = 100, CurrentlyReserved = 0, ExpectedAvailable = 100 },
-            new { InitialQuantity = 50, CurrentlyReserved = 25, ExpectedAvailable = 25 },
-            new { InitialQuantity = 200, CurrentlyReserved = 199, ExpectedAvailable = 1 },
-            new { InitialQuantity = 75, CurrentlyReserved = 75, ExpectedAvailable = 0 },
-            new { InitialQuantity = 10, CurrentlyReserved = 3, ExpectedAvailable = 7 }
+            new { InitialQuantity = 100, ReservedQuantity = 0, ExpectedAvailable = 100 },
+            new { InitialQuantity = 50, ReservedQuantity = 25, ExpectedAvailable = 25 },
+            new { InitialQuantity = 200, ReservedQuantity = 199, ExpectedAvailable = 1 },
+            new { InitialQuantity = 75, ReservedQuantity = 75, ExpectedAvailable = 0 },
+            new { InitialQuantity = 10, ReservedQuantity = 3, ExpectedAvailable = 7 }
         };
 
         foreach (var scenario in testScenarios)
@@ -220,13 +220,27 @@ public class EventManagementPropertyTests : IDisposable
 
             var createdEvent = await _eventService.CreateEventAsync(createRequest, organizerId);
             var ticketType = createdEvent.TicketTypes.First();
-            ticketType.CurrentlyReserved = scenario.CurrentlyReserved;
-            await _context.SaveChangesAsync();
+
+            // Simulate active reservations by creating real reservation rows
+            if (scenario.ReservedQuantity > 0)
+            {
+                _context.Reservations.Add(new Reservation
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = ticketType.EventId,
+                    TicketTypeId = ticketType.Id,
+                    Quantity = scenario.ReservedQuantity,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                    Status = ReservationStatus.Active,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
 
             // Act - Retrieve event with availability
             var eventWithAvailability = await _eventService.GetEventByIdAsync(createdEvent.Id);
 
-            // Assert - Verify availability calculation: Quantity - CurrentlyReserved = Available
+            // Assert - Verify availability calculation: Quantity - active reservations = Available
             Assert.NotNull(eventWithAvailability);
             Assert.NotEmpty(eventWithAvailability.TicketTypes);
             
@@ -234,8 +248,8 @@ public class EventManagementPropertyTests : IDisposable
             Assert.Equal(scenario.InitialQuantity, retrievedType.Quantity);
             Assert.Equal(scenario.ExpectedAvailable, retrievedType.Available);
             
-            // Verify the property: Available = Quantity - CurrentlyReserved
-            var calculatedAvailable = scenario.InitialQuantity - scenario.CurrentlyReserved;
+            // Verify the property: Available = Quantity - active reservations
+            var calculatedAvailable = scenario.InitialQuantity - scenario.ReservedQuantity;
             Assert.Equal(calculatedAvailable, retrievedType.Available);
         }
     }
@@ -279,10 +293,20 @@ public class EventManagementPropertyTests : IDisposable
         var generalTicketType = createdEvent.TicketTypes.First(tt => tt.Name == "General");
         var studentTicketType = createdEvent.TicketTypes.First(tt => tt.Name == "Student");
 
-        // Set CurrentlyReserved to simulate active reservations (Batch 3 formula)
-        vipTicketType.CurrentlyReserved = 5;
-        generalTicketType.CurrentlyReserved = 75;
-        studentTicketType.CurrentlyReserved = 0;
+        // Simulate active reservations with real reservation rows (VIP 5, General 75, Student 0)
+        _context.Reservations.AddRange(
+            new Reservation
+            {
+                Id = Guid.NewGuid(), EventId = vipTicketType.EventId, TicketTypeId = vipTicketType.Id,
+                Quantity = 5, ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                Status = ReservationStatus.Active, CreatedAt = DateTime.UtcNow
+            },
+            new Reservation
+            {
+                Id = Guid.NewGuid(), EventId = generalTicketType.EventId, TicketTypeId = generalTicketType.Id,
+                Quantity = 75, ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                Status = ReservationStatus.Active, CreatedAt = DateTime.UtcNow
+            });
         await _context.SaveChangesAsync();
 
         // Act

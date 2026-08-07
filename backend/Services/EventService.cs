@@ -110,8 +110,9 @@ public class EventService : IEventService
 
     /// <summary>
     /// Retrieves an event by ID with ticket availability calculation.
-    /// Availability = ticket type quantity - currently reserved tickets.
-    /// No longer loads all Tickets via Include (O(1) availability check).
+    /// Availability is computed mathematically in real time:
+    /// Quantity - sold tickets (Tickets rows) - active unexpired reservations.
+    /// There is no stock counter.
     /// </summary>
     public async Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId)
     {
@@ -127,11 +128,16 @@ public class EventService : IEventService
             return null;
         }
 
-        return MapToEventWithAvailability(eventEntity);
+        var (sold, reserved) = await ComputeAvailabilityAggregatesAsync(
+            eventEntity.TicketTypes.Select(tt => tt.Id).ToList());
+
+        return await MapToEventWithAvailabilityAsync(eventEntity, sold, reserved);
     }
 
     /// <summary>
     /// Retrieves all published events with ticket availability calculations.
+    /// Aggregations for all ticket types across all events run as two batched queries
+    /// (one COUNT/GROUP BY, one SUM/GROUP BY) to avoid N+1.
     /// </summary>
     public async Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync()
     {
@@ -141,7 +147,50 @@ public class EventService : IEventService
             .Include(e => e.TicketTypes)
             .ToListAsync();
 
-        return events.Select(MapToEventWithAvailability);
+        var allTicketTypeIds = events
+            .SelectMany(e => e.TicketTypes)
+            .Select(tt => tt.Id)
+            .ToList();
+
+        var (sold, reserved) = await ComputeAvailabilityAggregatesAsync(allTicketTypeIds);
+
+        var result = new List<EventWithAvailability>();
+        foreach (var eventEntity in events)
+        {
+            result.Add(await MapToEventWithAvailabilityAsync(eventEntity, sold, reserved));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Computes, in two batched queries, the number of sold tickets and the sum of active
+    /// unexpired reservation quantities for the given ticket type ids.
+    /// </summary>
+    private async Task<(IReadOnlyDictionary<Guid, int> Sold, IReadOnlyDictionary<Guid, int> Reserved)> ComputeAvailabilityAggregatesAsync(List<Guid> ticketTypeIds)
+    {
+        if (ticketTypeIds.Count == 0)
+        {
+            return (new Dictionary<Guid, int>(), new Dictionary<Guid, int>());
+        }
+
+        var now = DateTime.UtcNow;
+
+        var soldByType = await _context.Tickets
+            .Where(t => ticketTypeIds.Contains(t.TicketTypeId))
+            .GroupBy(t => t.TicketTypeId)
+            .Select(g => new { TicketTypeId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.TicketTypeId, x => x.Count);
+
+        var reservedByType = await _context.Reservations
+            .Where(r => ticketTypeIds.Contains(r.TicketTypeId) &&
+                        r.Status == ReservationStatus.Active &&
+                        r.ExpiresAt > now)
+            .GroupBy(r => r.TicketTypeId)
+            .Select(g => new { TicketTypeId = g.Key, Sum = g.Sum(r => r.Quantity) })
+            .ToDictionaryAsync(x => x.TicketTypeId, x => x.Sum);
+
+        return (soldByType, reservedByType);
     }
 
     /// <summary>
@@ -430,23 +479,31 @@ public class EventService : IEventService
 
     /// <summary>
     /// Maps an Event entity to EventWithAvailability response model.
-    /// Calculates ticket availability: quantity - currently reserved (O(1), no Tickets table scan).
+    /// Availability = Quantity - sold - active unexpired reservations (clamped to 0).
+    /// Counts are pre-aggregated in batched queries to avoid N+1.
     /// </summary>
-    private static EventWithAvailability MapToEventWithAvailability(Event eventEntity)
+    private static async Task<EventWithAvailability> MapToEventWithAvailabilityAsync(
+        Event eventEntity,
+        IReadOnlyDictionary<Guid, int> soldCounts,
+        IReadOnlyDictionary<Guid, int> reservedCounts)
     {
         var ticketTypesWithAvailability = eventEntity.TicketTypes.Select(tt =>
         {
+            soldCounts.TryGetValue(tt.Id, out var sold);
+            reservedCounts.TryGetValue(tt.Id, out var reserved);
+            var available = Math.Max(0, tt.Quantity - sold - reserved);
+
             return new TicketTypeWithAvailability
             {
                 Id = tt.Id,
                 Name = tt.Name,
                 Price = tt.Price,
                 Quantity = tt.Quantity,
-                Available = tt.Quantity - tt.CurrentlyReserved
+                Available = available
             };
         }).ToList();
 
-        return new EventWithAvailability
+        return await Task.FromResult(new EventWithAvailability
         {
             Id = eventEntity.Id,
             Name = eventEntity.Name,
@@ -458,6 +515,6 @@ public class EventService : IEventService
             CreatedAt = eventEntity.CreatedAt,
             UpdatedAt = eventEntity.UpdatedAt,
             TicketTypes = ticketTypesWithAvailability
-        };
+        });
     }
 }

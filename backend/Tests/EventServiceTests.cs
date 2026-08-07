@@ -308,8 +308,6 @@ public class EventServiceTests : IDisposable
             });
         }
 
-        // Set CurrentlyReserved = 10 (simulating active reservations)
-        ticketType.CurrentlyReserved = 10;
         _context.Events.Add(eventEntity);
         _context.TicketTypes.Add(ticketType);
         await _context.SaveChangesAsync();
@@ -319,7 +317,7 @@ public class EventServiceTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(40, result.TicketTypes.First().Available); // 50 - 10 (CurrentlyReserved) = 40
+        Assert.Equal(40, result.TicketTypes.First().Available); // 50 - 10 sold tickets = 40
     }
 
     [Fact]
@@ -765,14 +763,24 @@ public class EventServiceTests : IDisposable
 
     #endregion
 
-    #region B3.6: Availability computed from CurrentlyReserved (not Tickets count)
+    #region B3.6: Availability computed from sold tickets + active reservations
 
     [Fact]
-    public async Task GetEventByIdAsync_ComputesAvailability_FromCurrentlyReserved()
+    public async Task GetEventByIdAsync_ComputesAvailability_FromActiveReservations()
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateEventWithTickets(10);
-        ticketType.CurrentlyReserved = 3;
+
+        _context.Reservations.Add(new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            Quantity = 3,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active,
+            CreatedAt = DateTime.UtcNow
+        });
         await _context.SaveChangesAsync();
 
         // Act
@@ -781,18 +789,15 @@ public class EventServiceTests : IDisposable
         // Assert
         Assert.NotNull(result);
         var tt = Assert.Single(result.TicketTypes);
-        Assert.Equal(7, tt.Available); // 10 - 3 = 7
+        Assert.Equal(7, tt.Available); // 10 - 3 active reservation = 7
     }
 
     [Fact]
-    public async Task GetEventByIdAsync_IgnoresSoldTickets_WhenUsingCurrentlyReserved()
+    public async Task GetEventByIdAsync_CountsSoldTickets_InAvailability()
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateEventWithTickets(10);
-        ticketType.CurrentlyReserved = 4;
-        await _context.SaveChangesAsync();
 
-        // Add sold tickets — these should NOT affect availability when using CurrentlyReserved
         _context.Tickets.Add(new Ticket
         {
             Id = Guid.NewGuid(), TicketTypeId = ticketType.Id,
@@ -810,18 +815,28 @@ public class EventServiceTests : IDisposable
         // Act
         var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
 
-        // Assert — availability should be based on CurrentlyReserved, not ticket count
+        // Assert — sold tickets count against availability
         Assert.NotNull(result);
         var tt = Assert.Single(result.TicketTypes);
-        Assert.Equal(6, tt.Available); // 10 - 4 = 6 (ignores 2 sold tickets)
+        Assert.Equal(8, tt.Available); // 10 - 2 sold tickets = 8
     }
 
     [Fact]
-    public async Task GetAllPublishedEventsAsync_ComputesAvailability_FromCurrentlyReserved()
+    public async Task GetAllPublishedEventsAsync_ComputesAvailability_FromActiveReservations()
     {
         // Arrange
         var (eventEntity, ticketType) = await CreateEventWithTickets(20);
-        ticketType.CurrentlyReserved = 8;
+
+        _context.Reservations.Add(new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            Quantity = 8,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active,
+            CreatedAt = DateTime.UtcNow
+        });
         await _context.SaveChangesAsync();
 
         // Act
@@ -831,7 +846,7 @@ public class EventServiceTests : IDisposable
         // Assert
         Assert.NotNull(result);
         var tt = Assert.Single(result.TicketTypes);
-        Assert.Equal(12, tt.Available); // 20 - 8 = 12
+        Assert.Equal(12, tt.Available); // 20 - 8 active reservation = 12
     }
 
     private async Task<(Event, TicketType)> CreateEventWithTickets(int quantity)
@@ -855,7 +870,7 @@ public class EventServiceTests : IDisposable
         var tt = new TicketType
         {
             Id = Guid.NewGuid(), EventId = evt.Id, Name = "GA",
-            Price = 50m, Quantity = quantity, CurrentlyReserved = 0, CreatedAt = DateTime.UtcNow
+            Price = 50m, Quantity = quantity, CreatedAt = DateTime.UtcNow
         };
         _context.TicketTypes.Add(tt);
         await _context.SaveChangesAsync();

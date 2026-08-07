@@ -1,24 +1,23 @@
 using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
-using TicketeraOnline.Api.Services;
 
 namespace TicketeraOnline.Api.Services;
 
 /// <summary>
-/// Background service that monitors and releases expired reservations.
-/// Uses PeriodicTimer for reliable scheduling and ExecuteUpdateAsync for atomic stock restoration.
+/// Background service that cleans up expired reservations.
+/// Passive worker: its ONLY purpose is to flip the state of reservations whose
+/// ExpiresAt is in the past from Active to Expired. It does NOT control stock —
+/// availability is computed mathematically from active, unexpired reservations.
 /// Validates: Requirements 4.5, 4.6, 4.7 and Batch 3 REQ-9, REQ-10.
 /// </summary>
 public class ReservationExpirationService : IHostedService, IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ReservationExpirationService> _logger;
-    private Timer? _timer;
     private Task? _executeTask;
     private CancellationTokenSource? _cts;
 
-    private const int CheckIntervalSeconds = 30;
     private static readonly TimeSpan PeriodicInterval = TimeSpan.FromMinutes(1);
 
     public ReservationExpirationService(
@@ -30,16 +29,12 @@ public class ReservationExpirationService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Starts the background service using the legacy Timer-based approach.
-    /// Also starts the PeriodicTimer-based ExecuteAsync loop for atomic stock restoration.
+    /// Starts the background service. Only the PeriodicTimer-based ExecuteAsync loop runs.
     /// </summary>
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Reservation Expiration Service starting. Check interval: {Interval}s", CheckIntervalSeconds);
+        _logger.LogInformation("Reservation Expiration Service starting. Interval: {Interval}", PeriodicInterval);
 
-        _timer = new Timer(CheckExpiredReservations, null, TimeSpan.Zero, TimeSpan.FromSeconds(CheckIntervalSeconds));
-
-        // Start the PeriodicTimer-based loop for atomic stock restoration
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _executeTask = ExecuteAsync(_cts.Token);
 
@@ -47,13 +42,16 @@ public class ReservationExpirationService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// PeriodicTimer-based execution loop for atomic stock restoration.
-    /// Decrements CurrentlyReserved on TicketType for expired reservations using ExecuteUpdateAsync.
-    /// Runs every minute and stops gracefully on cancellation.
+    /// PeriodicTimer-based execution loop for passive reservation expiry cleanup.
+    /// Marks expired active reservations as Expired. Runs every minute and stops
+    /// gracefully on cancellation.
+    /// NOTE (pending): a real-time "reservation expired" notification channel does not
+    /// exist yet. When one is introduced, this loop should notify for records with
+    /// ExpiresAt &lt; NOW() — currently it only performs the state cleanup.
     /// </summary>
     public async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Periodic stock-restoration loop started (interval: {Interval})", PeriodicInterval);
+        _logger.LogInformation("Periodic expiry-cleanup loop started (interval: {Interval})", PeriodicInterval);
 
         using var timer = new PeriodicTimer(PeriodicInterval);
 
@@ -69,18 +67,17 @@ public class ReservationExpirationService : IHostedService, IDisposable
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Periodic stock-restoration loop cancelled");
+            _logger.LogInformation("Periodic expiry-cleanup loop cancelled");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fatal error in periodic stock-restoration loop");
+            _logger.LogError(ex, "Fatal error in periodic expiry-cleanup loop");
         }
     }
 
     /// <summary>
-    /// Processes expired reservations by marking them as Expired and atomically
-    /// decrementing CurrentlyReserved on the corresponding TicketType.
-    /// Uses ExecuteUpdateAsync to avoid race conditions.
+    /// Marks expired active reservations as Expired. No stock is touched — expired
+    /// reservations automatically stop counting toward the mathematical availability.
     /// </summary>
     private async Task ProcessExpiredReservationsAsync()
     {
@@ -102,26 +99,19 @@ public class ReservationExpirationService : IHostedService, IDisposable
                 return;
             }
 
-            _logger.LogInformation("Processing {Count} expired reservations for stock restoration", expiredReservations.Count);
+            _logger.LogInformation("Processing {Count} expired reservations for state cleanup", expiredReservations.Count);
 
             foreach (var reservation in expiredReservations)
             {
-                // Atomically decrement CurrentlyReserved, clamped to zero
-                await context.TicketTypes
-                    .Where(tt => tt.Id == reservation.TicketTypeId)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(tt => tt.CurrentlyReserved,
-                            tt => Math.Max(0, tt.CurrentlyReserved - reservation.Quantity)));
-
-                // Mark the reservation as expired
+                // Passive cleanup: only the visual state changes. No stock counter exists.
                 reservation.Status = ReservationStatus.Expired;
 
-                _logger.LogInformation("Released {Quantity} tickets of type {TicketTypeId} from expired reservation {ReservationId}",
-                    reservation.Quantity, reservation.TicketTypeId, reservation.Id);
+                _logger.LogInformation("Marked reservation {ReservationId} as expired ({Quantity} tickets of type {TicketTypeId})",
+                    reservation.Id, reservation.Quantity, reservation.TicketTypeId);
             }
 
             await context.SaveChangesAsync();
-            _logger.LogInformation("Stock restored for {Count} expired reservations", expiredReservations.Count);
+            _logger.LogInformation("Expired state cleanup completed for {Count} reservations", expiredReservations.Count);
         }
         catch (Exception ex)
         {
@@ -130,41 +120,11 @@ public class ReservationExpirationService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Legacy Timer callback that marks expired reservations (compatibility with InMemory tests).
-    /// </summary>
-    private async void CheckExpiredReservations(object? state)
-    {
-        _logger.LogDebug("Checking for expired reservations...");
-
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            var reservationService = scope.ServiceProvider.GetRequiredService<IReservationService>();
-            var releasedCount = await reservationService.ReleaseExpiredReservationsAsync();
-
-            if (releasedCount > 0)
-            {
-                _logger.LogInformation("Released {Count} expired reservations (legacy timer)", releasedCount);
-            }
-            else
-            {
-                _logger.LogDebug("No expired reservations to release");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in legacy timer callback — continuing");
-        }
-    }
-
-    /// <summary>
-    /// Stops both the legacy timer and the PeriodicTimer loop.
+    /// Stops the PeriodicTimer loop.
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Reservation Expiration Service stopping...");
-
-        _timer?.Change(Timeout.Infinite, 0);
 
         if (_cts != null)
         {
@@ -189,7 +149,6 @@ public class ReservationExpirationService : IHostedService, IDisposable
 
     public void Dispose()
     {
-        _timer?.Dispose();
         _cts?.Dispose();
     }
 }

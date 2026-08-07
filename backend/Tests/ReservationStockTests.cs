@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
@@ -11,31 +10,19 @@ using Xunit;
 namespace TicketeraOnline.Api.Tests;
 
 /// <summary>
-/// Test-specific DbContext that removes the [Timestamp] concurrency behavior from TicketType.RowVersion.
-/// SQLite does not auto-generate rowversion values, so we disable the auto-generation and NOT NULL constraint.
+/// Test-specific DbContext. Kept as a thin ApplicationDbContext subclass for SQLite
+/// test scenarios; no concurrency-token overrides are needed since TicketType no
+/// longer carries a RowVersion.
 /// </summary>
 internal class ReservationStockTestDbContext : ApplicationDbContext
 {
     public ReservationStockTestDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        base.OnModelCreating(modelBuilder);
-
-        // Remove [Timestamp] behavior: make RowVersion not a concurrency token and not database-generated
-        modelBuilder.Entity<TicketType>(entity =>
-        {
-            entity.Property(t => t.RowVersion)
-                .IsConcurrencyToken(false)
-                .ValueGeneratedNever()
-                .IsRequired(false);
-        });
-    }
 }
 
 /// <summary>
-/// Unit tests for atomic stock reservation using ExecuteUpdateAsync (Batch 3).
-/// Uses SQLite in-memory because EF Core InMemory provider does not support ExecuteUpdateAsync.
+/// Tests for atomic stock-safe reservation creation.
+/// Uses SQLite in-memory to exercise the transaction + write-lock path.
+/// Availability is mathematical: Quantity - sold tickets - active unexpired reservations.
 /// Validates REQ-7, REQ-8: atomic reservation and concurrent stock safety.
 /// </summary>
 public class ReservationStockTests : IDisposable
@@ -104,7 +91,6 @@ public class ReservationStockTests : IDisposable
             Name = "General Admission",
             Price = 50.00m,
             Quantity = ticketQuantity,
-            CurrentlyReserved = 0,
             CreatedAt = DateTime.UtcNow
         };
         _context.TicketTypes.Add(ticketType);
@@ -116,14 +102,13 @@ public class ReservationStockTests : IDisposable
     #region B3.2: Atomic Stock Reservation
 
     /// <summary>
-    /// When stock is sufficient, CreateReservationAsync decrements CurrentlyReserved atomically.
+    /// When stock is sufficient, CreateReservationAsync creates an active reservation.
     /// </summary>
     [Fact]
-    public async Task CreateReservation_WithSufficientStock_DecrementsCurrentlyReserved()
+    public async Task CreateReservation_WithSufficientStock_CreatesActiveReservation()
     {
         // Arrange
         var (_, ticketType, _) = await CreateTestEventWithTickets(10);
-        Assert.Equal(0, ticketType.CurrentlyReserved);
 
         // Act
         var reservation = await _reservationService.CreateReservationAsync(
@@ -132,16 +117,17 @@ public class ReservationStockTests : IDisposable
         // Assert
         Assert.NotNull(reservation);
         Assert.Equal(3, reservation.Quantity);
+        Assert.Equal(ReservationStatus.Active, reservation.Status);
 
-        // Detach the stale entity so FindAsync reads fresh from DB
-        _context.Entry(ticketType).State = EntityState.Detached;
-        var updated = await _context.TicketTypes.FindAsync(ticketType.Id);
-        Assert.Equal(3, updated!.CurrentlyReserved);
+        var activeReservations = await _context.Reservations
+            .Where(r => r.Status == ReservationStatus.Active)
+            .SumAsync(r => r.Quantity);
+        Assert.Equal(3, activeReservations);
     }
 
     /// <summary>
     /// When stock is insufficient, CreateReservationAsync throws ArgumentException
-    /// and CurrentlyReserved is unchanged.
+    /// and no reservation is created.
     /// </summary>
     [Fact]
     public async Task CreateReservation_WithInsufficientStock_ThrowsArgumentException()
@@ -155,22 +141,19 @@ public class ReservationStockTests : IDisposable
 
         Assert.Contains("Insufficient", ex.Message, StringComparison.OrdinalIgnoreCase);
 
-        // CurrentlyReserved should be unchanged
-        _context.Entry(ticketType).State = EntityState.Detached;
-        var updated = await _context.TicketTypes.FindAsync(ticketType.Id);
-        Assert.Equal(0, updated!.CurrentlyReserved);
+        // No reservation should have been inserted
+        Assert.Equal(0, await _context.Reservations.CountAsync());
     }
 
     /// <summary>
-    /// When stock is exhausted (CurrentlyReserved equals Quantity), next reservation fails.
+    /// When stock is exhausted (fully occupied by an active reservation), the next reservation fails.
     /// </summary>
     [Fact]
     public async Task CreateReservation_WhenStockExhausted_ThrowsArgumentException()
     {
         // Arrange
         var (_, ticketType, _) = await CreateTestEventWithTickets(5);
-        ticketType.CurrentlyReserved = 5; // fully reserved
-        await _context.SaveChangesAsync();
+        await _reservationService.CreateReservationAsync(null, ticketType.EventId, ticketType.Id, 5, TestPurchaserDNI);
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -180,10 +163,10 @@ public class ReservationStockTests : IDisposable
     }
 
     /// <summary>
-    /// Multiple reservations from the same stock pool all decrement CurrentlyReserved correctly.
+    /// Multiple reservations from the same stock pool consume availability mathematically.
     /// </summary>
     [Fact]
-    public async Task MultipleReservations_AllDecrementCurrentlyReserved()
+    public async Task MultipleReservations_ConsumeStockMathematically()
     {
         // Arrange
         var (_, ticketType, _) = await CreateTestEventWithTickets(10);
@@ -198,18 +181,16 @@ public class ReservationStockTests : IDisposable
         Assert.Equal(4, r2.Quantity);
         Assert.Equal(2, r3.Quantity);
 
-        // Use AsNoTracking to bypass change tracker cache (ExecuteUpdateAsync bypasses the tracker)
-        var updated = await _context.TicketTypes.AsNoTracking()
-            .FirstOrDefaultAsync(tt => tt.Id == ticketType.Id);
-        Assert.Equal(9, updated!.CurrentlyReserved);
+        var activeReserved = await _context.Reservations
+            .Where(r => r.TicketTypeId == ticketType.Id &&
+                        r.Status == ReservationStatus.Active &&
+                        r.ExpiresAt > DateTime.UtcNow)
+            .SumAsync(r => r.Quantity);
+        Assert.Equal(9, activeReserved);
 
         // Last ticket should still be available
         var r4 = await _reservationService.CreateReservationAsync(null, ticketType.EventId, ticketType.Id, 1, "44444444");
         Assert.NotNull(r4);
-
-        updated = await _context.TicketTypes.AsNoTracking()
-            .FirstOrDefaultAsync(tt => tt.Id == ticketType.Id);
-        Assert.Equal(10, updated!.CurrentlyReserved);
 
         // 11th should fail
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -219,6 +200,7 @@ public class ReservationStockTests : IDisposable
     /// <summary>
     /// Concurrent reservations with only 1 available ticket: exactly one succeeds.
     /// Uses SQLite shared-cache in-memory so concurrent connections see the same data.
+    /// The no-op write-lock UPDATE inside the transaction serializes the check-then-insert.
     /// </summary>
     [Fact]
     public async Task ConcurrentReservations_WithOneAvailableTicket_ExactlyOneSucceeds()
@@ -264,7 +246,6 @@ public class ReservationStockTests : IDisposable
             Name = "GA",
             Price = 50m,
             Quantity = 1,
-            CurrentlyReserved = 0,
             CreatedAt = DateTime.UtcNow
         };
         seedContext.TicketTypes.Add(seedTicketType);
