@@ -8,8 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:wsl": "bash scripts/wsl-test.sh"
+    "test": "bash scripts/wsl-test.sh"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.3",
