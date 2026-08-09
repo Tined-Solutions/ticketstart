@@ -188,7 +188,7 @@ export default function OrganizerDashboard() {
       ) : (
         <GlassCard className="p-0 sm:p-0 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+            <table className="admin-table w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-border">
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
@@ -219,6 +219,7 @@ export default function OrganizerDashboard() {
                           size="sm"
                           onClick={() => navigate(`/organizer/events/${m.eventId}`)}
                           aria-label={`Editar ${m.eventName}`}
+                          className="min-h-[44px]"
                         >
                           Editar
                         </Button>
@@ -227,6 +228,7 @@ export default function OrganizerDashboard() {
                           size="sm"
                           onClick={() => navigate(`/organizer/events/${m.eventId}/metrics`)}
                           aria-label={`Ver metricas de ${m.eventName}`}
+                          className="min-h-[44px]"
                         >
                           Metricas
                         </Button>
@@ -235,6 +237,7 @@ export default function OrganizerDashboard() {
                           size="sm"
                           onClick={() => handleDeleteClick(m)}
                           aria-label={`Eliminar ${m.eventName}`}
+                          className="min-h-[44px]"
                         >
                           Eliminar
                         </Button>
