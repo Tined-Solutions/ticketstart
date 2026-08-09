@@ -155,6 +155,28 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Accessibility ──────────────────────────────────────────────────────── */
 
+/* Remove the 300ms tap delay and prevent double-tap zoom on interactive
+   elements (mobile UX) without disabling pinch-zoom on the page. */
+a,
+button,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+/* Respect prefers-reduced-motion globally: collapse animations/transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -165,4 +187,89 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* ── Responsive tables (AdminPanel) ───────────────────────────────────────
+   Below <md (767px) the admin tables switch from a horizontal scroll to
+   card-style rows. Each <td> carries a data-label attribute used as the row
+   label via CSS content. The <thead> is visually hidden (a11y-friendly). */
+
+.admin-table {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .admin-table {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .admin-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .admin-table tr {
+    display: block;
+    width: 100%;
+    padding: 6px 16px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .admin-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    padding: 9px 0;
+    border: none;
+    text-align: right;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .admin-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-2);
+    flex-shrink: 0;
+    text-align: left;
+  }
+
+  .admin-table td[data-label="Acciones"] {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    border-top: 1px solid var(--border);
+    margin-top: 6px;
+    padding-top: 12px;
+  }
+
+  .admin-table td[data-label="Acciones"]::before {
+    display: none;
+  }
+
+  .admin-table td[data-label="Acciones"] > div {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    overflow-wrap: anywhere;
+  }
 }

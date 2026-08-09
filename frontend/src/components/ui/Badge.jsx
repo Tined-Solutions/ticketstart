@@ -5,11 +5,12 @@ const variantClasses = {
   info: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400',
 }
 
-export default function Badge({ children, variant = 'info', className = '' }) {
+export default function Badge({ children, variant = 'info', className = '', ...rest }) {
   return (
     <span
       className={`inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap
         ${variantClasses[variant] || variantClasses.info} ${className}`}
+      {...rest}
     >
       {children}
     </span>

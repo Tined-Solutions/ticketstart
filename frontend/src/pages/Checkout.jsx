@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '../api/client.js'
 import { useAuth } from '../context/auth.js'
@@ -24,11 +24,18 @@ const shakeAnim = {
   transition: { duration: 0.35 },
 }
 
+const inputClass =
+  'w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg ' +
+  'text-text-1 placeholder:text-text-muted ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent ' +
+  'transition-[border-color,box-shadow] duration-200'
+
 export default function Checkout() {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const prefersReducedMotion = useReducedMotion()
 
   const cart = location.state
 
@@ -50,6 +57,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [shakeError, setShakeError] = useState(false)
 
   const [now, setNow] = useState(() => Date.now())
@@ -76,6 +84,68 @@ export default function Checkout() {
     }
   }, [isExpired])
 
+  const clearFieldErrors = (...fields) => {
+    setFieldErrors((prev) => {
+      if (!fields.some((f) => f in prev)) return prev
+      const next = { ...prev }
+      for (const f of fields) delete next[f]
+      return next
+    })
+  }
+
+  function validatePurchaserForm() {
+    const errors = {}
+    const name = purchaserName.trim()
+    const email = purchaserEmail.trim()
+    const confirmEmailValue = confirmEmail.trim()
+    const dni = purchaserDNI.trim()
+
+    if (!name) {
+      errors.purchaserName = 'El nombre es obligatorio'
+    }
+
+    if (!email) {
+      errors.purchaserEmail = 'El email es obligatorio'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.purchaserEmail = 'Formato de email inválido'
+    }
+
+    if (email) {
+      if (!confirmEmailValue) {
+        errors.confirmEmail = 'El email es obligatorio'
+      } else if (email !== confirmEmailValue) {
+        errors.confirmEmail = 'Los emails no coinciden'
+      }
+    }
+
+    if (!dni) {
+      errors.purchaserDNI = 'El DNI es obligatorio'
+    } else {
+      const docValidation = validateDocument(dni, documentCountry)
+      if (!docValidation.valid) {
+        errors.purchaserDNI = docValidation.error
+      }
+    }
+
+    if (dni && cleanDocument(dni) !== cleanDocument(confirmDNI)) {
+      errors.confirmDNI = 'Los DNIs no coinciden'
+    }
+
+    return errors
+  }
+
+  function focusFirstError(errors) {
+    const order = ['purchaserName', 'purchaserEmail', 'confirmEmail', 'purchaserDNI', 'confirmDNI']
+    for (const key of order) {
+      if (!errors[key]) continue
+      const el = document.getElementById(key)
+      if (el) {
+        el.focus()
+        return
+      }
+    }
+  }
+
   if (!cart?.selection) {
     return null
   }
@@ -86,65 +156,24 @@ export default function Checkout() {
     event.preventDefault()
     setError('')
     setShakeError(false)
+
+    const errors = validatePurchaserForm()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      setShakeError(true)
+      focusFirstError(errors)
+      return
+    }
+
     setLoading(true)
 
     try {
-      const name = purchaserName.trim()
-      if (!name) {
-        setError('El nombre es obligatorio')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
       const email = purchaserEmail.trim()
-      if (!email) {
-        setError('El email es obligatorio')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setError('Formato de email inválido')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
-      if (email !== confirmEmail.trim()) {
-        setError('Los emails no coinciden')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
       const dni = purchaserDNI.trim()
-      if (!dni) {
-        setError('El DNI es obligatorio')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
-      const docValidation = validateDocument(dni, documentCountry)
-      if (!docValidation.valid) {
-        setError(docValidation.error)
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
-
-      if (cleanDocument(dni) !== cleanDocument(confirmDNI)) {
-        setError('Los DNIs no coinciden')
-        setShakeError(true)
-        setLoading(false)
-        return
-      }
 
       const response = reservation
         ? await apiClient.patch(`/reservations/${reservation.id}`, {
-            purchaserEmail: purchaserEmail.trim(),
+            purchaserEmail: email,
             purchaserDNI: dni,
             token: reservation.token,
           })
@@ -152,7 +181,7 @@ export default function Checkout() {
             eventId: cart.eventId,
             ticketTypeId: selection.ticketTypeId,
             quantity: selection.quantity,
-            purchaserEmail: purchaserEmail.trim(),
+            purchaserEmail: email,
             confirmEmail: confirmEmail.trim(),
             purchaserDNI: dni,
           })
@@ -212,10 +241,10 @@ export default function Checkout() {
             Reserva expirada
           </h1>
           <p className="text-text-2 mb-6">
-            Tu reserva ya no es valida. Las entradas fueron liberadas.
+            Tu reserva ya no es válida. Las entradas fueron liberadas.
           </p>
           <Button variant="gradient" onClick={handleRestart}>
-            Volver al catalogo
+            Volver al catálogo
           </Button>
         </GlassCard>
       </div>
@@ -229,9 +258,9 @@ export default function Checkout() {
       <AnimatePresence mode="wait">
         <motion.div
           key="phase1"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -16 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+          animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
+          exit={prefersReducedMotion ? {} : { opacity: 0, y: -16 }}
           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
           className="max-w-2xl mx-auto px-4 py-8"
         >
@@ -239,9 +268,12 @@ export default function Checkout() {
             to="/events"
             className="inline-flex items-center gap-1 text-text-2 hover:text-text-1 mb-6 transition-colors"
           >
-            ← Volver al catalogo
+            ← Volver al catálogo
           </Link>
 
+          <p className="text-sm font-medium text-brand-1 mb-1" aria-hidden="true">
+            Paso 1 de 2
+          </p>
           <h1 className="text-3xl font-display font-bold text-text-1 mb-6">
             {isEditing ? 'Editar tus datos' : 'Reserva tus entradas'}
           </h1>
@@ -283,7 +315,7 @@ export default function Checkout() {
 
           {/* Purchaser form */}
           <motion.div
-            animate={shakeError ? shakeAnim : {}}
+            animate={prefersReducedMotion ? {} : shakeError ? shakeAnim : {}}
             onAnimationComplete={() => setShakeError(false)}
           >
             <GlassCard className="p-6">
@@ -301,15 +333,24 @@ export default function Checkout() {
                   </label>
                   <input
                     id="purchaserName"
+                    name="purchaserName"
                     type="text"
                     value={purchaserName}
-                    onChange={(e) => setPurchaserName(e.target.value)}
+                    onChange={(e) => {
+                      setPurchaserName(e.target.value)
+                      clearFieldErrors('purchaserName')
+                    }}
                     required
-                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-                      text-text-1 placeholder:text-text-muted
-                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-                      transition-all duration-200"
+                    autoComplete="name"
+                    aria-invalid={fieldErrors.purchaserName ? 'true' : undefined}
+                    aria-describedby={fieldErrors.purchaserName ? 'purchaserName-error' : undefined}
+                    className={inputClass}
                   />
+                  {fieldErrors.purchaserName && (
+                    <p id="purchaserName-error" role="alert" className="mt-1.5 text-sm text-danger">
+                      {fieldErrors.purchaserName}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -321,19 +362,27 @@ export default function Checkout() {
                   </label>
                   <input
                     id="purchaserEmail"
+                    name="purchaserEmail"
                     type="email"
                     value={purchaserEmail}
                     onChange={(e) => {
                       setPurchaserEmail(e.target.value)
                       setError('')
+                      clearFieldErrors('purchaserEmail', 'confirmEmail')
                     }}
                     onPaste={(e) => e.preventDefault()}
                     required
-                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-                      text-text-1 placeholder:text-text-muted
-                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-                      transition-all duration-200"
+                    autoComplete="email"
+                    spellCheck={false}
+                    aria-invalid={fieldErrors.purchaserEmail ? 'true' : undefined}
+                    aria-describedby={fieldErrors.purchaserEmail ? 'purchaserEmail-error' : undefined}
+                    className={inputClass}
                   />
+                  {fieldErrors.purchaserEmail && (
+                    <p id="purchaserEmail-error" role="alert" className="mt-1.5 text-sm text-danger">
+                      {fieldErrors.purchaserEmail}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -345,32 +394,47 @@ export default function Checkout() {
                   </label>
                   <input
                     id="confirmEmail"
+                    name="confirmEmail"
                     type="email"
                     value={confirmEmail}
                     onChange={(e) => {
                       setConfirmEmail(e.target.value)
                       setError('')
+                      clearFieldErrors('purchaserEmail', 'confirmEmail')
                     }}
                     onPaste={(e) => e.preventDefault()}
                     required
-                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-                      text-text-1 placeholder:text-text-muted
-                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-                      transition-all duration-200"
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-invalid={fieldErrors.confirmEmail ? 'true' : undefined}
+                    aria-describedby={fieldErrors.confirmEmail ? 'confirmEmail-error' : undefined}
+                    className={inputClass}
                   />
+                  {fieldErrors.confirmEmail && (
+                    <p id="confirmEmail-error" role="alert" className="mt-1.5 text-sm text-danger">
+                      {fieldErrors.confirmEmail}
+                    </p>
+                  )}
                 </div>
 
                 <IdentityDocumentInput
                   id="purchaserDNI"
+                  name="purchaserDNI"
                   label="DNI"
                   value={purchaserDNI}
                   onChange={(raw) => {
                     setPurchaserDNI(raw)
                     setError('')
+                    clearFieldErrors('purchaserDNI', 'confirmDNI')
                   }}
                   country={documentCountry}
-                  onCountryChange={setDocumentCountry}
+                  onCountryChange={(c) => {
+                    setDocumentCountry(c)
+                    clearFieldErrors('purchaserDNI', 'confirmDNI')
+                  }}
                   required
+                  autoComplete="off"
+                  error={fieldErrors.purchaserDNI}
                 />
 
                 <div>
@@ -382,6 +446,7 @@ export default function Checkout() {
                   </label>
                   <input
                     id="confirmDNI"
+                    name="confirmDNI"
                     type="text"
                     inputMode="numeric"
                     value={
@@ -394,21 +459,27 @@ export default function Checkout() {
                     onChange={(e) => {
                       setConfirmDNI(e.target.value)
                       setError('')
+                      clearFieldErrors('confirmDNI', 'purchaserDNI')
                     }}
                     onFocus={() => setConfirmDNIFocused(true)}
                     onBlur={() => setConfirmDNIFocused(false)}
                     onPaste={(e) => e.preventDefault()}
                     required
-                    className="w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-                      text-text-1 placeholder:text-text-muted
-                      focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-                      transition-all duration-200"
+                    autoComplete="off"
+                    aria-invalid={fieldErrors.confirmDNI ? 'true' : undefined}
+                    aria-describedby={fieldErrors.confirmDNI ? 'confirmDNI-error' : undefined}
+                    className={inputClass}
                   />
+                  {fieldErrors.confirmDNI && (
+                    <p id="confirmDNI-error" role="alert" className="mt-1.5 text-sm text-danger">
+                      {fieldErrors.confirmDNI}
+                    </p>
+                  )}
                 </div>
 
                 {error && (
                   <div>
-                    <Badge variant="error" className="px-4 py-2">
+                    <Badge variant="error" className="px-4 py-2" role="alert">
                       {error}
                     </Badge>
                   </div>
@@ -421,7 +492,7 @@ export default function Checkout() {
                   loading={loading}
                   className="w-full"
                 >
-                  {loading ? 'Reservando...' : isEditing ? 'Guardar cambios' : 'Reservar entradas'}
+                  {loading ? 'Reservando…' : isEditing ? 'Guardar cambios' : 'Reservar entradas'}
                 </Button>
               </form>
             </GlassCard>
@@ -441,7 +512,7 @@ export default function Checkout() {
         </h1>
 
         {/* Countdown timer */}
-        <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass-surface mb-6">
+        <div className="inline-flex flex-col items-center gap-1 px-6 py-3 rounded-full glass-surface mb-6">
           <span className="text-text-2 text-sm">Tiempo restante:</span>
           <span
             className={`font-mono text-lg font-bold tabular-nums ${
@@ -452,6 +523,11 @@ export default function Checkout() {
           >
             {formatCountdown(remainingSeconds)}
           </span>
+          {remainingSeconds <= 30 && (
+            <span className="text-rose-400 text-sm font-medium">
+              Quedan pocos segundos
+            </span>
+          )}
         </div>
 
 	        {/* Order summary — event */}
@@ -465,7 +541,7 @@ export default function Checkout() {
 	            <span className="text-text-1">{formatEventDate(cart.eventDate)}</span>
 	          </div>
 	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Ubicacion</span>
+	            <span>Ubicación</span>
 	            <span className="text-text-1">{cart.eventLocation}</span>
 	          </div>
 	          <hr className="my-3 border-white/10" />
@@ -502,7 +578,7 @@ export default function Checkout() {
 
 	        {error && (
 	          <div className="mb-4">
-	            <Badge variant="error" className="px-4 py-2">
+	            <Badge variant="error" className="px-4 py-2" role="alert">
 	              {error}
 	            </Badge>
 	          </div>
@@ -525,7 +601,7 @@ export default function Checkout() {
 	            disabled={isExpired}
 	            className="flex-1"
 	          >
-	            {payLoading ? 'Preparando pago...' : 'Confirmar y proceder al pago'}
+	            {payLoading ? 'Preparando pago…' : 'Confirmar y proceder al pago'}
 	          </Button>
 	        </div>
       </GlassCard>

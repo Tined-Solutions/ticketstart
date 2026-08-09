@@ -246,7 +246,7 @@ describe('Checkout', () => {
     })
 
     expect(screen.getByRole('heading', { name: /reserva expirada/i })).toBeInTheDocument()
-    expect(screen.getByText(/tu reserva ya no es valida/i)).toBeInTheDocument()
+    expect(screen.getByText(/tu reserva ya no es válida/i)).toBeInTheDocument()
     expect(screen.getByText(/las entradas fueron liberadas/i)).toBeInTheDocument()
     expect(screen.queryByRole('timer')).not.toBeInTheDocument()
   })
@@ -263,10 +263,10 @@ describe('Checkout', () => {
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /volver al catalogo/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /volver al catálogo/i })).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /volver al catalogo/i }))
+    await userEvent.click(screen.getByRole('button', { name: /volver al catálogo/i }))
 
     expect(mockNavigate).toHaveBeenCalledWith('/events', { replace: true })
   })
@@ -703,5 +703,55 @@ describe('Checkout', () => {
     await waitFor(() => {
       expect(confirmInput).toHaveValue('43.350.328')
     })
+  })
+
+  it('sets autocomplete and spellcheck attributes for a11y', () => {
+    renderWithQueryClient(<Checkout />)
+
+    expect(screen.getByLabelText(/nombre completo/i)).toHaveAttribute('autocomplete', 'name')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'email')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('spellcheck', 'false')
+    expect(screen.getByLabelText('Confirmar email')).toHaveAttribute('autocomplete', 'off')
+    expect(screen.getByLabelText('Confirmar DNI')).toHaveAttribute('autocomplete', 'off')
+  })
+
+  it('renders field errors with role=alert and links them via aria-describedby', async () => {
+    renderWithQueryClient(<Checkout />)
+
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.length).toBeGreaterThanOrEqual(1)
+    expect(alerts[0]).toHaveTextContent(/el nombre es obligatorio/i)
+    expect(screen.getByLabelText(/nombre completo/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText(/nombre completo/i)).toHaveAttribute('aria-describedby', 'purchaserName-error')
+  })
+
+  it('shows a step progress indicator on the reservation form', () => {
+    renderWithQueryClient(<Checkout />)
+
+    expect(screen.getByText(/paso 1 de 2/i)).toBeInTheDocument()
+  })
+
+  it('shows a non-color warning cue when the countdown is low', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation({
+      expiresAt: new Date('2026-07-13T12:00:25Z').toISOString(),
+    })
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('timer')).toHaveTextContent('00:25')
+    expect(screen.getByText(/quedan pocos segundos/i)).toBeInTheDocument()
   })
 })

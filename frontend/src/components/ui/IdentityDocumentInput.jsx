@@ -17,6 +17,8 @@ export default function IdentityDocumentInput({
   id,
   disabled = false,
   className = '',
+  error,
+  errorId,
   ...inputProps
 }) {
   const [focused, setFocused] = useState(false)
@@ -53,6 +55,16 @@ export default function IdentityDocumentInput({
 
   const inputId = id || 'identity-document'
   const hasValue = value.trim().length > 0
+  const hasExternalError = Boolean(error)
+  const hasInternalError = hasValue && !result.valid && result.error
+
+  const externalErrorId = errorId || `${inputId}-error`
+  const internalErrorId = `${inputId}-internal-error`
+  const describedBy = [
+    hasExternalError ? externalErrorId : null,
+    hasInternalError ? internalErrorId : null,
+  ].filter(Boolean).join(' ') || undefined
+  const isInvalid = hasExternalError || hasInternalError
 
   return (
     <div>
@@ -74,8 +86,8 @@ export default function IdentityDocumentInput({
           aria-label="País del documento"
           className="px-3 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
             text-text-1 text-sm
-            focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-            transition-all duration-200 disabled:opacity-50"
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
+            transition-[border-color,box-shadow] duration-200 disabled:opacity-50"
         >
           {COUNTRY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -95,19 +107,30 @@ export default function IdentityDocumentInput({
           onBlur={handleBlur}
           disabled={disabled}
           placeholder={country === 'AR' ? '12.345.678' : '1.234.567-8'}
+          aria-invalid={isInvalid ? 'true' : undefined}
+          aria-describedby={describedBy}
           className={`flex-1 px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
             text-text-1 placeholder:text-text-muted
-            focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
-            transition-all duration-200 disabled:opacity-50
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
+            transition-[border-color,box-shadow] duration-200 disabled:opacity-50
             ${className}`}
           {...inputProps}
         />
       </div>
 
-      {/* Inline validation error */}
-      {hasValue && !result.valid && result.error && (
+      {/* External error (e.g. from the parent form's submit validation) */}
+      {hasExternalError && (
         <div className="mt-1.5">
-          <Badge variant="error" className="px-4 py-1 text-xs">
+          <p id={externalErrorId} role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        </div>
+      )}
+
+      {/* Inline validation error */}
+      {hasInternalError && !hasExternalError && (
+        <div className="mt-1.5">
+          <Badge id={internalErrorId} variant="error" className="px-4 py-1 text-xs" role="alert">
             {result.error}
           </Badge>
         </div>

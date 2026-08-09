@@ -7,7 +7,9 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
 import AddTicketsModal from '../components/AddTicketsModal.jsx'
+import { useDialog } from '../hooks/useDialog.js'
 import { fadeIn } from '../lib/motion.js'
 
 function formatDate(dateString) {
@@ -45,27 +47,29 @@ function roleBadgeVariant(role) {
 }
 
 function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) {
+  const dialogRef = useDialog({ onClose: onCancel })
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5"
+      ref={dialogRef}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5 overscroll-contain"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-dialog-title"
     >
       <div className="glass-surface p-8 max-w-md w-full shadow-xl text-left rounded-[--radius-glass]">
         <h2 id="delete-dialog-title" className="text-xl font-display font-semibold text-text-1 mb-3">
-          Confirmar eliminacion
+          Confirmar Eliminación
         </h2>
         <p className="text-text-2 mb-6 leading-relaxed">
           Estas seguro que deseas eliminar el evento <strong>{eventName}</strong>?
           Esta accion no se puede deshacer.
         </p>
         <div className="flex gap-3 justify-end">
-          <Button variant="secondary" onClick={onCancel} disabled={deleting}>
+          <Button variant="secondary" onClick={onCancel} disabled={deleting} className="min-h-[44px]">
             Cancelar
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={deleting}>
-            {deleting ? 'Eliminando...' : 'Eliminar'}
+          <Button variant="danger" onClick={onConfirm} disabled={deleting} className="min-h-[44px]">
+            {deleting ? 'Eliminando…' : 'Eliminar'}
           </Button>
         </div>
       </div>
@@ -198,13 +202,13 @@ export default function AdminPanel() {
     if (!formData.email.trim()) {
       errors.email = 'El email es obligatorio'
     } else if (!isValidEmail(formData.email.trim())) {
-      errors.email = 'El email no es valido'
+      errors.email = 'El email no es válido'
     }
 
     if (!formData.password) {
-      errors.password = 'La contrasena es obligatoria'
+      errors.password = 'La contraseña es obligatoria'
     } else if (formData.password.length < 8) {
-      errors.password = 'La contrasena debe tener al menos 8 caracteres'
+      errors.password = 'La contraseña debe tener al menos 8 caracteres'
     }
 
     if (!formData.role) {
@@ -252,7 +256,7 @@ export default function AdminPanel() {
     <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <header className="mb-8">
         <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
-          Panel de administracion
+          Panel de administración
         </h1>
         <p className="text-text-2 text-center">Gestiona todos los eventos y usuarios del sistema</p>
       </header>
@@ -271,8 +275,12 @@ export default function AdminPanel() {
       )}
 
       {loading ? (
-        <GlassCard className="text-center py-12">
-          <p className="text-text-muted">Cargando panel de administracion...</p>
+        <GlassCard className="py-12">
+          <div className="flex flex-col items-center gap-4" role="status" aria-label="Cargando panel de administración…">
+            <Skeleton width="240px" height="18px" />
+            <Skeleton width="180px" height="18px" />
+            <Skeleton width="120px" height="18px" />
+          </div>
         </GlassCard>
       ) : error ? (
         <GlassCard className="text-center py-12" role="alert">
@@ -293,12 +301,12 @@ export default function AdminPanel() {
               <p className="text-text-2 text-center py-8">No hay eventos en el sistema.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
+                <table className="admin-table w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b-2 border-border">
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ubicacion</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ubicación</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Organizador</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
                     </tr>
@@ -308,7 +316,7 @@ export default function AdminPanel() {
                       <tr key={event.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
                         <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{event.name}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(event.date)}</td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ubicacion">{event.location || '\u2014'}</td>
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ubicación">{event.location || '\u2014'}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Organizador">
                           {getOrganizerEmail(event.organizerId)}
                         </td>
@@ -319,6 +327,7 @@ export default function AdminPanel() {
                               size="sm"
                               onClick={() => setAddTicketsTarget(event)}
                               aria-label={`Agregar entradas a ${event.name}`}
+                              className="min-h-[44px]"
                             >
                               Agregar entradas
                             </Button>
@@ -327,6 +336,7 @@ export default function AdminPanel() {
                               size="sm"
                               onClick={() => navigate(`/organizer/events/${event.id}`)}
                               aria-label={`Editar ${event.name}`}
+                              className="min-h-[44px]"
                             >
                               Editar
                             </Button>
@@ -335,6 +345,7 @@ export default function AdminPanel() {
                               size="sm"
                               onClick={() => handleDeleteClick(event)}
                               aria-label={`Eliminar ${event.name}`}
+                              className="min-h-[44px]"
                             >
                               Eliminar
                             </Button>
@@ -358,7 +369,7 @@ export default function AdminPanel() {
               <p className="text-text-2 text-center py-8">No hay usuarios registrados.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
+                <table className="admin-table w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b-2 border-border">
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Email</th>
@@ -437,7 +448,7 @@ export default function AdminPanel() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="new-user-password">Contrasena</label>
+                <label htmlFor="new-user-password">Contraseña</label>
                 <PasswordInput
                   id="new-user-password"
                   value={formData.password}
@@ -468,7 +479,7 @@ export default function AdminPanel() {
               </div>
 
               <Button type="submit" variant="primary" disabled={creating}>
-                {creating ? 'Creando...' : 'Crear usuario'}
+                {creating ? 'Creando…' : 'Crear usuario'}
               </Button>
             </form>
           </GlassCard>

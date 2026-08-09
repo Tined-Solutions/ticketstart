@@ -135,7 +135,7 @@ describe('AdminPanel', () => {
     expect(workshopRow).toBeTruthy()
 
     // Should have "—" for location
-    const locationCell = within(workshopRow).getByText('—', { selector: '[data-label="Ubicacion"]' })
+    const locationCell = within(workshopRow).getByText('—', { selector: '[data-label="Ubicación"]' })
     expect(locationCell).toBeInTheDocument()
   })
 
@@ -215,7 +215,7 @@ describe('AdminPanel', () => {
     await userEvent.click(deleteBtn)
 
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText(/confirmar eliminacion/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/confirmar eliminación/i)).toBeInTheDocument()
     expect(within(dialog).getByText(/feria de emprendedores/i)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: /cancelar/i })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: /^eliminar$/i })).toBeInTheDocument()
@@ -308,8 +308,8 @@ describe('AdminPanel', () => {
 
     render(<AdminPanel />)
 
-    expect(screen.getByRole('heading', { name: /panel de administracion/i })).toBeInTheDocument()
-    expect(screen.getByText(/cargando panel de administracion/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /panel de administración/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('status').length).toBeGreaterThan(0)
   })
 
   // ── 27.1: Error state ────────────────────────────────────────────
@@ -538,7 +538,7 @@ describe('AdminPanel', () => {
 
       expect(screen.getByLabelText('Nombre')).toBeInTheDocument()
       expect(screen.getByLabelText('Email')).toBeInTheDocument()
-      expect(screen.getByLabelText('Contrasena')).toBeInTheDocument()
+      expect(screen.getByLabelText('Contraseña')).toBeInTheDocument()
       expect(screen.getByLabelText('Rol')).toBeInTheDocument()
 
       const roleSelect = screen.getByLabelText('Rol')
@@ -564,7 +564,7 @@ describe('AdminPanel', () => {
 
       expect(screen.getByText(/el nombre es obligatorio/i)).toBeInTheDocument()
       expect(screen.getByText(/el email es obligatorio/i)).toBeInTheDocument()
-      expect(screen.getByText(/la contrasena es obligatoria/i)).toBeInTheDocument()
+      expect(screen.getByText(/la contraseña es obligatoria/i)).toBeInTheDocument()
       expect(screen.getByText(/debes seleccionar un rol/i)).toBeInTheDocument()
       expect(mockPost).not.toHaveBeenCalled()
     })
@@ -581,7 +581,7 @@ describe('AdminPanel', () => {
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
 
-      expect(screen.getByText(/email no es valido/i)).toBeInTheDocument()
+      expect(screen.getByText(/email no es válido/i)).toBeInTheDocument()
       expect(mockPost).not.toHaveBeenCalled()
     })
 
@@ -592,7 +592,7 @@ describe('AdminPanel', () => {
         expect(screen.getByRole('heading', { name: /crear usuario/i })).toBeInTheDocument()
       })
 
-      const passwordInput = screen.getByLabelText('Contrasena')
+      const passwordInput = screen.getByLabelText('Contraseña')
       await userEvent.type(passwordInput, '1234567')
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
@@ -615,7 +615,7 @@ describe('AdminPanel', () => {
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Nuevo Usuario')
       await userEvent.type(screen.getByLabelText('Email'), 'nuevo@example.com')
-      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.type(screen.getByLabelText('Contraseña'), 'password123')
       await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
@@ -647,7 +647,7 @@ describe('AdminPanel', () => {
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Duplicado')
       await userEvent.type(screen.getByLabelText('Email'), 'existe@example.com')
-      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.type(screen.getByLabelText('Contraseña'), 'password123')
       await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
@@ -670,7 +670,7 @@ describe('AdminPanel', () => {
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Test')
       await userEvent.type(screen.getByLabelText('Email'), 'test@example.com')
-      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.type(screen.getByLabelText('Contraseña'), 'password123')
       await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
@@ -697,7 +697,7 @@ describe('AdminPanel', () => {
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Test')
       await userEvent.type(screen.getByLabelText('Email'), 'test@example.com')
-      await userEvent.type(screen.getByLabelText('Contrasena'), 'password123')
+      await userEvent.type(screen.getByLabelText('Contraseña'), 'password123')
       await userEvent.selectOptions(screen.getByLabelText('Rol'), 'Staff')
 
       await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }))
@@ -705,7 +705,7 @@ describe('AdminPanel', () => {
       expect(screen.getByRole('button', { name: /creando/i })).toBeDisabled()
       expect(screen.getByLabelText('Nombre')).toBeDisabled()
       expect(screen.getByLabelText('Email')).toBeDisabled()
-      expect(screen.getByLabelText('Contrasena')).toBeDisabled()
+      expect(screen.getByLabelText('Contraseña')).toBeDisabled()
       expect(screen.getByLabelText('Rol')).toBeDisabled()
 
       resolvePost({ status: 201, data: {} })
