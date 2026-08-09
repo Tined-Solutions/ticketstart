@@ -1,7 +1,7 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useEvents } from '../hooks/useEvents.js'
-import { formatEventDate } from '../lib/format.js'
+import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
@@ -9,28 +9,31 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
 import { staggerContainer, staggerItem } from '../lib/motion.js'
 
-function EventCard({ event, onClick }) {
+function EventCard({ event }) {
   const ticketRange = event.ticketTypes?.length
     ? (() => {
         const prices = event.ticketTypes.map((t) => t.price).filter(Boolean)
         if (prices.length === 0) return null
         const min = Math.min(...prices)
         const max = Math.max(...prices)
-        return min === max ? `$${min}` : `$${min} — $${max}`
+        return min === max
+          ? formatCurrency(min)
+          : `${formatCurrency(min)} — ${formatCurrency(max)}`
       })()
     : null
 
   return (
-    <motion.button
-      type="button"
-      variants={staggerItem}
-      whileHover={{ y: -6, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.2, ease: [0.2, 0.6, 0.2, 1] }}
-      onClick={onClick}
-          aria-label={`Ver detalle de ${event.name}`}
-      className="text-left w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 rounded-[--radius-glass]"
+    <Link
+      to={`/events/${event.id}`}
+      aria-label={`Ver detalle de ${event.name}`}
+      className="block w-full text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 rounded-[--radius-glass]"
     >
+      <motion.div
+        variants={staggerItem}
+        whileHover={{ y: -6, scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ duration: 0.2, ease: [0.2, 0.6, 0.2, 1] }}
+      >
       <GlassCard className="overflow-hidden p-0 h-full flex flex-col">
         {/* Event image */}
         <div className="relative aspect-[16/10] overflow-hidden">
@@ -39,6 +42,8 @@ function EventCard({ event, onClick }) {
               src={event.imageUrl}
               alt={event.name}
               loading="lazy"
+              width="640"
+              height="400"
               className="w-full h-full object-cover"
             />
           ) : (
@@ -65,23 +70,19 @@ function EventCard({ event, onClick }) {
           )}
         </div>
       </GlassCard>
-    </motion.button>
+      </motion.div>
+    </Link>
   )
 }
 
 export default function EventList() {
-  const navigate = useNavigate()
   const { data: events = [], isLoading, isError, error, refetch } = useEvents()
 
   const errorMessage = isError
     ? error?.response?.data?.error?.message ||
       error?.response?.data?.message ||
-      'Ocurrio un error al cargar los eventos'
+      'Ocurrió un error al cargar los eventos'
     : ''
-
-  const handleEventClick = (eventId) => () => {
-    navigate(`/events/${eventId}`)
-  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
@@ -96,7 +97,7 @@ export default function EventList() {
           Eventos
         </h1>
         <p className="text-text-2 text-lg max-w-xl mx-auto">
-          Descubri los mejores eventos y compra tus entradas
+          Descubrí los mejores eventos y compra tus entradas
         </p>
       </motion.header>
 
@@ -152,7 +153,6 @@ export default function EventList() {
             <EventCard
               key={event.id}
               event={event}
-              onClick={handleEventClick(event.id)}
             />
           ))}
         </motion.div>

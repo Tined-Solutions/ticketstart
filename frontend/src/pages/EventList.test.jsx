@@ -4,12 +4,14 @@ import userEvent from '@testing-library/user-event'
 import EventList from './EventList.jsx'
 import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
-const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 
 vi.mock('react-router-dom', () => ({
-  Link: ({ to, children }) => <a href={to}>{children}</a>,
-  useNavigate: () => mockNavigate,
+  Link: ({ to, children, ...props }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }))
 
 vi.mock('../api/client.js', () => ({
@@ -48,7 +50,6 @@ describe('EventList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
-    mockNavigate.mockReset()
   })
 
   it('renders event cards from API data', async () => {
@@ -66,6 +67,9 @@ describe('EventList', () => {
       'src',
       'https://example.com/rock.jpg'
     )
+    expect(
+      screen.getByText(/\$\s*15\.000 — \$\s*25\.000/)
+    ).toBeInTheDocument()
   })
 
   it('shows loading state while fetching', () => {
@@ -107,7 +111,7 @@ describe('EventList', () => {
     expect(screen.getByRole('link', { name: /volver al inicio/i })).toHaveAttribute('href', '/')
   })
 
-  it('navigates to event detail when clicking a card', async () => {
+  it('links each card to its event detail page', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
     renderWithQueryClient(<EventList />)
@@ -116,32 +120,13 @@ describe('EventList', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByText(/recital de rock nacional/i))
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/events/event-1')
-    })
+    const rockCard = screen.getByRole('link', { name: /ver detalle de recital de rock nacional/i })
+    expect(rockCard).toHaveAttribute('href', '/events/event-1')
+    const feriaCard = screen.getByRole('link', { name: /ver detalle de feria de emprendedores/i })
+    expect(feriaCard).toHaveAttribute('href', '/events/event-2')
   })
 
-  it('navigates to event detail when pressing Enter on a card', async () => {
-    mockGet.mockResolvedValue({ data: mockEvents })
-
-    renderWithQueryClient(<EventList />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
-    })
-
-    const card = screen.getByRole('button', { name: /ver detalle de feria de emprendedores/i })
-    card.focus()
-    await userEvent.keyboard('{Enter}')
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/events/event-2')
-    })
-  })
-
-  it('event cards are native <button> elements', async () => {
+  it('event cards are native <a> links', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
     renderWithQueryClient(<EventList />)
@@ -150,13 +135,7 @@ describe('EventList', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    const cards = screen.getAllByRole('button')
-    // At least one card is a button
-    const eventCard = cards.find((btn) =>
-      btn.getAttribute('aria-label')?.includes('Ver detalle de')
-    )
-    expect(eventCard).toBeTruthy()
-    // It must be a native <button>, not an article with role=button
-    expect(eventCard.tagName).toBe('BUTTON')
+    const eventCard = screen.getByRole('link', { name: /ver detalle de recital de rock nacional/i })
+    expect(eventCard.tagName).toBe('A')
   })
 })

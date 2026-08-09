@@ -65,10 +65,10 @@ describe('EventDetail', () => {
       expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/\$\s*15\.000,00/)).toBeInTheDocument()
+    expect(screen.getByText(/\$\s*15\.000/)).toBeInTheDocument()
     expect(screen.getByText(/80 disponibles de 100/i)).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /campo/i })).toBeInTheDocument()
-    expect(screen.getByText(/\$\s*25\.000,00/)).toBeInTheDocument()
+    expect(screen.getByText(/\$\s*25\.000/)).toBeInTheDocument()
     expect(screen.getByText(/150 disponibles de 200/i)).toBeInTheDocument()
   })
 
@@ -86,7 +86,7 @@ describe('EventDetail', () => {
     renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByText(/el evento no existe o no esta disponible/i)).toBeInTheDocument()
+      expect(screen.getByText(/el evento no existe o no est[aá] disponible/i)).toBeInTheDocument()
     })
   })
 
@@ -120,7 +120,7 @@ describe('EventDetail', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
 
-    const selectedRow = screen.getByRole('radio', { name: /platea/i }).closest('.ticket-type-row')
+    const selectedRow = screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
     const [decreaseButton, increaseButton] = selectedRow.querySelectorAll('button')
     const quantityDisplay = selectedRow.querySelector('span[aria-live="polite"]')
 
@@ -152,7 +152,7 @@ describe('EventDetail', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: /vip/i }))
 
-    const selectedRow = screen.getByRole('radio', { name: /vip/i }).closest('.ticket-type-row')
+    const selectedRow = screen.getByRole('heading', { name: /vip/i }).closest('.ticket-type-row')
     const [, increaseButton] = selectedRow.querySelectorAll('button')
 
     await userEvent.click(increaseButton)
@@ -172,7 +172,7 @@ describe('EventDetail', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
 
-    const selectedRow = screen.getByRole('radio', { name: /platea/i }).closest('.ticket-type-row')
+    const selectedRow = screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
     const [, increaseButton] = selectedRow.querySelectorAll('button')
     await userEvent.click(increaseButton)
     await userEvent.click(increaseButton)
@@ -220,7 +220,7 @@ describe('EventDetail', () => {
     renderWithQueryClient(<EventDetail />)
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /volver al catalogo/i })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: /volver al cat[aá]logo/i })).toHaveAttribute(
         'href',
         '/events'
       )

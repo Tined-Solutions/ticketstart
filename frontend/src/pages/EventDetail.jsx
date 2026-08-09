@@ -13,28 +13,31 @@ function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange })
   const isSoldOut = available <= 0
 
   return (
-    <GlassCard
-      className={`ticket-type-row cursor-pointer transition-all border-2 ${
-        isSelected
-          ? 'border-brand-1 bg-brand-1/5 ticket-type-row-selected'
-          : 'border-transparent hover:border-white/10'
-      }`}
-      onClick={() => !isSoldOut && onSelect(ticketType.id)}
-    >
-      <div className="flex items-center gap-4">
-        {/* Hidden radio input for accessibility + test compatibility */}
-        <input
-          type="radio"
-          name="ticket-type"
-          id={`ticket-type-${ticketType.id}`}
-          value={ticketType.id}
-          checked={isSelected}
-          onChange={() => onSelect(ticketType.id)}
-          disabled={isSoldOut}
-          aria-label={`Seleccionar ${ticketType.name}`}
-          className="sr-only peer"
-        />
-        {/* Visual radio indicator */}
+    <>
+      {/* Hidden radio input for accessibility + test compatibility. Kept as a
+          preceding sibling of the card so `peer-focus-visible` on the card
+          shows a visible focus ring when the radio is focused via keyboard. */}
+      <input
+        type="radio"
+        name="ticket-type"
+        id={`ticket-type-${ticketType.id}`}
+        value={ticketType.id}
+        checked={isSelected}
+        onChange={() => onSelect(ticketType.id)}
+        disabled={isSoldOut}
+        aria-label={`Seleccionar ${ticketType.name}`}
+        className="sr-only peer"
+      />
+      <GlassCard
+        className={`ticket-type-row peer-focus-visible:ring-2 peer-focus-visible:ring-brand-1 cursor-pointer transition-all border-2 ${
+          isSelected
+            ? 'border-brand-1 bg-brand-1/5 ticket-type-row-selected'
+            : 'border-transparent hover:border-white/10'
+        }`}
+        onClick={() => !isSoldOut && onSelect(ticketType.id)}
+      >
+        <div className="flex items-center gap-4">
+          {/* Visual radio indicator */}
         <label
           htmlFor={`ticket-type-${ticketType.id}`}
           className="sr-only"
@@ -77,7 +80,7 @@ function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange })
               aria-label={`Disminuir cantidad de ${ticketType.name}`}
               onClick={() => onChange(Math.max(1, quantity - 1))}
               disabled={quantity <= 1}
-              className="w-9 h-9 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="w-11 h-11 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               −
             </button>
@@ -92,7 +95,7 @@ function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange })
               aria-label={`Aumentar cantidad de ${ticketType.name}`}
               onClick={() => onChange(Math.min(available, quantity + 1))}
               disabled={quantity >= available}
-              className="w-9 h-9 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="w-11 h-11 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               +
             </button>
@@ -102,8 +105,9 @@ function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange })
         {isSoldOut && (
           <Badge variant="error">Agotado</Badge>
         )}
-      </div>
-    </GlassCard>
+        </div>
+      </GlassCard>
+    </>
   )
 }
 
@@ -148,10 +152,10 @@ export default function EventDetail() {
 
   const errorMessage = isError
     ? error?.response?.status === 404
-      ? 'El evento no existe o no esta disponible'
+      ? 'El evento no existe o no está disponible'
       : error?.response?.data?.error?.message ||
         error?.response?.data?.message ||
-        'Ocurrio un error al cargar el evento'
+        'Ocurrió un error al cargar el evento'
     : ''
 
   const handleSelectTicketType = (ticketTypeId) => {
@@ -199,7 +203,7 @@ export default function EventDetail() {
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <p className="px-4 py-8 text-text-2">Cargando evento...</p>
+        <p className="px-4 py-8 text-text-2">Cargando evento…</p>
         <DetailSkeleton />
       </div>
     )
@@ -211,7 +215,7 @@ export default function EventDetail() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <Link to="/events" className="inline-block text-text-2 hover:text-text-1 mb-6 transition-colors">
-          ← Volver al catalogo
+          ← Volver al catálogo
         </Link>
         <GlassCard className="py-12">
           <p className="text-text-1 mb-4">{errorMessage}</p>
@@ -229,7 +233,7 @@ export default function EventDetail() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <Link to="/events" className="inline-block text-text-2 hover:text-text-1 mb-6 transition-colors">
-          ← Volver al catalogo
+          ← Volver al catálogo
         </Link>
         <p className="text-text-1 text-lg">El evento no esta disponible.</p>
       </div>
@@ -245,7 +249,7 @@ export default function EventDetail() {
         to="/events"
         className="inline-flex items-center gap-1 text-text-2 hover:text-text-1 px-4 pt-6 transition-colors"
       >
-        ← Volver al catalogo
+        ← Volver al catálogo
       </Link>
 
       {/* Hero section */}
@@ -260,6 +264,8 @@ export default function EventDetail() {
           <img
             src={event.imageUrl}
             alt={event.name}
+            width="1280"
+            height="384"
             className="w-full h-72 md:h-96 object-cover"
           />
         ) : (
@@ -287,10 +293,10 @@ export default function EventDetail() {
       {/* Description */}
       <section className="px-4 mb-10">
         <h2 className="text-xl font-heading font-semibold text-text-1 mb-3">
-          Descripcion
+          Descripción
         </h2>
         <p className="text-text-2 leading-relaxed">
-          {event.description || 'Sin descripcion'}
+          {event.description || 'Sin descripción'}
         </p>
       </section>
 

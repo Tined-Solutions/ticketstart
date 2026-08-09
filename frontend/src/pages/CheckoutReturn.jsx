@@ -19,11 +19,11 @@ const statusConfig = {
       </svg>
     ),
     title: '¡Pago confirmado!',
-    message: 'Si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada.',
+    message: 'Si la compra fue exitosa, recibirás un email con tus entradas en la casilla indicada.',
     badgeVariant: 'success',
     badgeLabel: 'Exitoso',
     linkTo: '/events',
-    linkLabel: '← Volver al catalogo',
+    linkLabel: '← Volver al catálogo',
   },
   pending: {
     icon: (
@@ -44,7 +44,7 @@ const statusConfig = {
     badgeVariant: 'warning',
     badgeLabel: 'Pendiente',
     linkTo: '/events',
-    linkLabel: '← Volver al catalogo',
+    linkLabel: '← Volver al catálogo',
   },
   error: {
     icon: (
@@ -66,7 +66,7 @@ const statusConfig = {
     badgeVariant: 'error',
     badgeLabel: 'Rechazado',
     linkTo: '/events',
-    linkLabel: '← Volver al catalogo',
+    linkLabel: '← Volver al catálogo',
   },
   unknown: {
     icon: (
@@ -84,11 +84,11 @@ const statusConfig = {
       </motion.svg>
     ),
     title: 'Resultado del pago',
-    message: 'No pudimos determinar el estado del pago. Si ya pagaste, tus entradas seran enviadas a tu email en los proximos minutos.',
+    message: 'No pudimos determinar el estado del pago. Si ya pagaste, tus entradas serán enviadas a tu email en los próximos minutos.',
     badgeVariant: 'info',
     badgeLabel: 'Desconocido',
     linkTo: '/events',
-    linkLabel: '← Volver al catalogo',
+    linkLabel: '← Volver al catálogo',
   },
 }
 
@@ -127,19 +127,21 @@ export default function CheckoutReturn() {
           {config.icon}
         </motion.div>
 
-        <div className="mb-3">
-          <Badge variant={config.badgeVariant}>
-            {config.badgeLabel}
-          </Badge>
+        <div role="status">
+          <div className="mb-3">
+            <Badge variant={config.badgeVariant}>
+              {config.badgeLabel}
+            </Badge>
+          </div>
+
+          <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
+            {config.title}
+          </h1>
+
+          <p className="text-text-2 mb-6 max-w-sm mx-auto text-sm leading-relaxed">
+            {config.message}
+          </p>
         </div>
-
-        <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
-          {config.title}
-        </h1>
-
-        <p className="text-text-2 mb-6 max-w-sm mx-auto text-sm leading-relaxed">
-          {config.message}
-        </p>
 
         {paymentId && (
           <p className="text-text-muted text-xs mb-1 font-mono">
@@ -153,7 +155,7 @@ export default function CheckoutReturn() {
         )}
 
         <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
-          Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los codigos QR.
+          Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
         </p>
 
         <Link to={config.linkTo}>

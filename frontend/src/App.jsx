@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { MotionConfig } from 'framer-motion'
 import Layout from './components/layout/Layout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
@@ -22,7 +23,8 @@ import NotFound from './pages/NotFound.jsx'
 function App() {
   return (
     <ErrorBoundary>
-      <Layout>
+      <MotionConfig reducedMotion="user">
+        <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -99,7 +101,8 @@ function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Layout>
+        </Layout>
+      </MotionConfig>
     </ErrorBoundary>
   )
 }

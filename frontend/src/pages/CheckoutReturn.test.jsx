@@ -26,12 +26,12 @@ describe('CheckoutReturn', () => {
 
     expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
     expect(
-      screen.getByText(/si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada/i)
+      screen.getByText(/si la compra fue exitosa, recibir[aá]s un email con tus entradas en la casilla indicada/i)
     ).toBeInTheDocument()
     expect(screen.getByText(/revisá tu casilla de correo/i)).toBeInTheDocument()
     expect(screen.getByText('pay-123')).toBeInTheDocument()
     expect(screen.getByText('res-456')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /volver al catalogo/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /volver al cat[aá]logo/i })).toHaveAttribute(
       'href',
       '/events'
     )
@@ -44,7 +44,7 @@ describe('CheckoutReturn', () => {
 
     expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
     expect(
-      screen.getByText(/si la compra fue exitosa, recibiras un email con tus entradas en la casilla indicada/i)
+      screen.getByText(/si la compra fue exitosa, recibir[aá]s un email con tus entradas en la casilla indicada/i)
     ).toBeInTheDocument()
   })
 

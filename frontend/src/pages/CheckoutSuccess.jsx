@@ -59,12 +59,12 @@ function ErrorIcon() {
 const stateConfig = {
   confirming: {
     icon: <ClockIcon />,
-    title: 'Confirmando tu pago...',
+    title: 'Confirmando tu pago…',
     message: 'Espera un momento mientras verificamos tu pago.',
   },
   confirmed: {
     icon: <CheckmarkIcon />,
-    title: 'Pago confirmado!',
+    title: '¡Pago confirmado!',
     message: 'Tus entradas fueron enviadas a tu email.',
     badgeVariant: 'success',
     badgeLabel: 'Confirmado',
@@ -79,7 +79,7 @@ const stateConfig = {
   error: {
     icon: <ErrorIcon />,
     title: 'No pudimos confirmar el pago',
-    message: 'Ocurrio un error al verificar tu pago.',
+    message: 'Ocurrió un error al verificar tu pago.',
     badgeVariant: 'error',
     badgeLabel: 'Error',
   },
@@ -113,7 +113,7 @@ export default function CheckoutSuccess() {
       }
     } catch {
       setState('error')
-      setErrorMsg('No se pudo conectar con el servidor.')
+      setErrorMsg('No se pudo conectar con el servidor. Reintentá o volvé a intentar en unos minutos.')
     }
   }, [preferenceId, queryClient])
 
@@ -147,22 +147,24 @@ export default function CheckoutSuccess() {
           {config.icon}
         </motion.div>
 
-        {config.badgeVariant && (
-          <div className="mb-3">
-            <Badge variant={config.badgeVariant}>{config.badgeLabel}</Badge>
-          </div>
-        )}
+        <div role="status">
+          {config.badgeVariant && (
+            <div className="mb-3">
+              <Badge variant={config.badgeVariant}>{config.badgeLabel}</Badge>
+            </div>
+          )}
 
-        <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
-          {config.title}
-        </h1>
+          <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
+            {config.title}
+          </h1>
 
-        <p className="text-text-2 mb-4 max-w-sm mx-auto text-sm leading-relaxed">
-          {config.message}
-        </p>
+          <p className="text-text-2 mb-4 max-w-sm mx-auto text-sm leading-relaxed">
+            {config.message}
+          </p>
+        </div>
 
         {errorMsg && (
-          <p className="text-text-muted text-xs mb-4 max-w-xs mx-auto">
+          <p role="alert" className="text-text-muted text-xs mb-4 max-w-xs mx-auto">
             {errorMsg}
           </p>
         )}
@@ -177,14 +179,14 @@ export default function CheckoutSuccess() {
 
         {state === 'confirmed' && (
           <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
-            Revisa tu casilla de correo (incluyendo spam) para encontrar tus entradas con los codigos QR.
+            Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
           </p>
         )}
 
         <div className="flex flex-col gap-3 items-center">
           <Link to="/events">
             <Button variant={state === 'confirmed' ? 'gradient' : 'secondary'}>
-              Volver al catalogo
+              Volver al catálogo
             </Button>
           </Link>
           <Link to="/tickets/lookup">
