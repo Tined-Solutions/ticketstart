@@ -53,9 +53,9 @@ describe('formatCurrency', () => {
     expect(result).toContain('15.000')
   })
 
-  it('formats a decimal number with two decimal places', () => {
+  it('rounds decimal amounts to whole pesos (no centavos)', () => {
     const result = formatCurrency(99.5)
-    expect(result).toContain('99,50')
+    expect(result).toContain('100')
   })
 
   it('formats zero correctly', () => {

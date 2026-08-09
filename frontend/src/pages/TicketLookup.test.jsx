@@ -378,7 +378,7 @@ describe('TicketLookup', () => {
       expect(screen.getByText(/platea/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/\$ 15\.000,00/)).toBeInTheDocument()
+    expect(screen.getByText(/\$ 15\.000/)).toBeInTheDocument()
   })
 
   it('displays ticket quantity when present', async () => {

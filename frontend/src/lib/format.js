@@ -20,7 +20,8 @@ export function formatEventDate(dateString) {
 }
 
 /**
- * Formats a numeric amount as an ARS currency string.
+ * Formats a numeric amount as an ARS currency string (whole pesos — ARS/UYU
+ * convention does not show centavos).
  * Returns "$ --" for null or undefined values.
  *
  * @param {number|null|undefined} amount
@@ -29,7 +30,7 @@ export function formatEventDate(dateString) {
 export function formatCurrency(amount) {
   if (amount === undefined || amount === null) return '$ --'
   return `$ ${Number(amount).toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   })}`
 }

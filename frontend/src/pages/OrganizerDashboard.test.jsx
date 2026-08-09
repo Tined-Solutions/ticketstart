@@ -73,7 +73,7 @@ describe('OrganizerDashboard', () => {
 
     // Check metrics are displayed for first event
     expect(screen.getByText('120')).toBeInTheDocument()
-    expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument()
+    expect(screen.getByText('$ 1.800.000')).toBeInTheDocument()
     expect(screen.getByText('30')).toBeInTheDocument()
     expect(screen.getByText('45')).toBeInTheDocument()
   })
@@ -290,7 +290,7 @@ describe('OrganizerDashboard', () => {
 
     const zeroCells = within(workshopRow).getAllByText('0')
     expect(zeroCells.length).toBeGreaterThanOrEqual(2) // sold=0, scanned=0
-    expect(within(workshopRow).getByText('$ 0,00')).toBeInTheDocument() // revenue
+    expect(within(workshopRow).getByText('$ 0')).toBeInTheDocument() // revenue
   })
 
   it('formats currency correctly for revenue', async () => {
@@ -302,7 +302,7 @@ describe('OrganizerDashboard', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument()
+    expect(screen.getByText('$ 1.800.000')).toBeInTheDocument()
   })
 
   it('renders create button even while loading', () => {

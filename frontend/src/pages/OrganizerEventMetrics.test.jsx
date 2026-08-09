@@ -56,7 +56,7 @@ describe('OrganizerEventMetrics', () => {
 
     // Check all metric fields are displayed
     expect(screen.getByText('120')).toBeInTheDocument() // ticketsSold
-    expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument() // totalRevenue
+    expect(screen.getByText('$ 1.800.000')).toBeInTheDocument() // totalRevenue
     expect(screen.getByText('30')).toBeInTheDocument() // remainingInventory
     expect(screen.getByText('45')).toBeInTheDocument() // ticketsScanned
 
@@ -134,7 +134,7 @@ describe('OrganizerEventMetrics', () => {
     render(<OrganizerEventMetrics />)
 
     await waitFor(() => {
-      expect(screen.getByText('$ 1.800.000,00')).toBeInTheDocument()
+      expect(screen.getByText('$ 1.800.000')).toBeInTheDocument()
     })
   })
 
@@ -160,8 +160,8 @@ describe('OrganizerEventMetrics', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    // Zero values should render as "0" and "$ 0,00"
-    expect(screen.getByText('$ 0,00')).toBeInTheDocument()
+    // Zero values should render as "0" and "$ 0"
+    expect(screen.getByText('$ 0')).toBeInTheDocument()
 
     // Check zero numeric displays - the metrics grid shows three zeros
     const zeroElements = screen.getAllByText('0')

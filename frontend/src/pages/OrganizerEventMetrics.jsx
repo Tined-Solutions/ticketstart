@@ -6,6 +6,7 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import { fadeIn } from '../lib/motion.js'
+import { formatCurrency } from '../lib/format.js'
 
 function getErrorMessage(error) {
   if (!error) return 'Ocurrio un error inesperado'
@@ -38,14 +39,6 @@ function formatDate(dateString) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  })
-}
-
-function formatCurrency(amount) {
-  return Number(amount).toLocaleString('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    minimumFractionDigits: 2,
   })
 }
 
