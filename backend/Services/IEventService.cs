@@ -68,6 +68,23 @@ public interface IEventService
     Task<string> UploadEventImageAsync(Stream imageStream, string fileName, string contentType);
 
     /// <summary>
+    /// Replaces an event's image: uploads the new image to R2, updates the event's
+    /// ImageUrl, then best-effort deletes the previous image object from R2 so it
+    /// does not stay orphaned. Ownership validation mirrors <see cref="UpdateEventAsync"/>.
+    /// </summary>
+    /// <param name="eventId">ID of the event owning the image</param>
+    /// <param name="userId">ID of the user attempting the replacement</param>
+    /// <param name="userRole">Role of the user attempting the replacement</param>
+    /// <param name="imageStream">Stream containing the image data</param>
+    /// <param name="fileName">Original filename of the image</param>
+    /// <param name="contentType">MIME type of the image</param>
+    /// <returns>The public URL of the newly uploaded image in R2 storage</returns>
+    /// <exception cref="KeyNotFoundException">Event not found.</exception>
+    /// <exception cref="UnauthorizedAccessException">User is not the owner and not an Admin.</exception>
+    /// <exception cref="ArgumentException">Image validation fails (invalid type or size).</exception>
+    Task<string> ReplaceEventImageAsync(Guid eventId, Guid userId, UserRole userRole, Stream imageStream, string fileName, string contentType);
+
+    /// <summary>
     /// Increments an existing TicketType.Quantity under SELECT...FOR UPDATE. Mirrors ReservationService.
     /// </summary>
     /// <param name="eventId">ID of the event owning the ticket type</param>
@@ -133,7 +150,12 @@ public class UpdateEventRequest
     public string Description { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public string Location { get; set; } = string.Empty;
-    public string ImageUrl { get; set; } = string.Empty;
+    /// <summary>
+    /// Image URL semantics: null (omitted) preserves the existing image,
+    /// an empty string clears it, a value replaces it. Never wipe the image
+    /// just because a text edit did not include it.
+    /// </summary>
+    public string? ImageUrl { get; set; }
 }
 
 /// <summary>

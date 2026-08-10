@@ -153,6 +153,9 @@ export default function EventForm({
           date: payload.date,
           location: payload.location,
           description: payload.description,
+          // Send the current image so a plain text edit never wipes it; replacing
+          // the image is handled by POST /events/{id}/image below.
+          imageUrl: initialData?.imageUrl || '',
         })
         setFeedback({ type: 'success', message: 'Evento actualizado correctamente' })
       }

@@ -401,12 +401,17 @@ public class EventService : IEventService
         if (request.Date <= DateTime.UtcNow)
             throw new ArgumentException("Event date must be in the future", nameof(request.Date));
 
-        // Update event properties
+        // Update event properties. ImageUrl is special: null (omitted) preserves
+        // the existing image so a plain text edit never wipes it; "" clears it
+        // explicitly; a value replaces it.
         eventEntity.Name = request.Name;
         eventEntity.Description = request.Description;
         eventEntity.Date = request.Date;
         eventEntity.Location = request.Location;
-        eventEntity.ImageUrl = request.ImageUrl;
+        if (request.ImageUrl != null)
+        {
+            eventEntity.ImageUrl = request.ImageUrl;
+        }
         eventEntity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -553,6 +558,55 @@ public class EventService : IEventService
             _logger.LogError(ex, "Unexpected error while uploading image to R2");
             throw new InvalidOperationException("Failed to upload image to R2", ex);
         }
+    }
+
+    /// <summary>
+    /// Replaces an event's image: uploads the new image to R2, updates the event's
+    /// ImageUrl, then best-effort deletes the previous image object from R2 so it
+    /// does not stay orphaned. Ownership validation mirrors <see cref="UpdateEventAsync"/>.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">Event not found.</exception>
+    /// <exception cref="UnauthorizedAccessException">User is not the owner and not an Admin.</exception>
+    /// <exception cref="ArgumentException">Image validation fails (invalid type or size).</exception>
+    public async Task<string> ReplaceEventImageAsync(Guid eventId, Guid userId, UserRole userRole, Stream imageStream, string fileName, string contentType)
+    {
+        _logger.LogInformation("User {UserId} replacing image for event {EventId}", userId, eventId);
+
+        var eventEntity = await _context.Events.FindAsync(eventId);
+
+        if (eventEntity == null)
+        {
+            _logger.LogWarning("Event {EventId} not found for image replacement", eventId);
+            throw new KeyNotFoundException($"Event with ID {eventId} not found");
+        }
+
+        if (eventEntity.OrganizerId != userId && userRole != UserRole.Admin)
+        {
+            _logger.LogWarning("User {UserId} unauthorized to replace image for event {EventId} owned by {OrganizerId}",
+                userId, eventId, eventEntity.OrganizerId);
+            throw new UnauthorizedAccessException("You do not have permission to update this event");
+        }
+
+        var previousImageUrl = eventEntity.ImageUrl;
+
+        var newImageUrl = await UploadEventImageAsync(imageStream, fileName, contentType);
+
+        eventEntity.ImageUrl = newImageUrl;
+        eventEntity.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // Best-effort cleanup: the old object is orphaned once the event points at
+        // the new URL. Failure must not fail the request (mirrors DeleteEventAsync).
+        if (!string.IsNullOrWhiteSpace(previousImageUrl))
+        {
+            var imageDeleted = await DeleteImageAsync(previousImageUrl);
+            if (!imageDeleted)
+            {
+                _logger.LogWarning("Failed to delete previous image for event {EventId}; new image is already in place", eventId);
+            }
+        }
+
+        return newImageUrl;
     }
 
     /// <summary>

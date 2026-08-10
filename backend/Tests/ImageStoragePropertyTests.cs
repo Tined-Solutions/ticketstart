@@ -716,4 +716,196 @@ public class ImageStoragePropertyTests : IDisposable
     }
 
     #endregion
+
+    #region Event Image Replacement
+
+    /// <summary>
+    /// Replacing an event image uploads the new object and deletes the previous
+    /// one from R2 so it does not stay orphaned.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceEventImage_WithExistingImage_UploadsNewAndDeletesPrevious()
+    {
+        // Arrange
+        var uploadedKeys = new List<string>();
+        var deletedKeys = new List<string>();
+        var mockS3Client = new Mock<IAmazonS3>();
+
+        mockS3Client
+            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((request, ct) => uploadedKeys.Add(request.Key))
+            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+
+        mockS3Client
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
+            .Callback<DeleteObjectRequest, CancellationToken>((request, ct) => deletedKeys.Add(request.Key))
+            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object);
+
+        var organizerId = Guid.NewGuid();
+        var organizer = new User
+        {
+            Id = organizerId,
+            Email = "organizer@example.com",
+            PasswordHash = "dummy-hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        await _context.SaveChangesAsync();
+
+        var previousImageUrl = "https://pub-test.r2.dev/events/old-guid.jpg";
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Event with Image",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = previousImageUrl,
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+
+        // Act
+        var newImageUrl = await eventService.ReplaceEventImageAsync(
+            eventEntity.Id, organizerId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg");
+
+        // Assert - event points at the new image
+        Assert.NotNull(newImageUrl);
+        Assert.Contains("https://pub-test.r2.dev/events/", newImageUrl);
+
+        var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.NotNull(updatedEvent);
+        Assert.Equal(newImageUrl, updatedEvent.ImageUrl);
+
+        // Assert - the previous object was removed from R2 (no orphans)
+        Assert.Single(deletedKeys);
+        Assert.Equal("events/old-guid.jpg", deletedKeys[0]);
+
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+    }
+
+    /// <summary>
+    /// Replacing an image on an event without a previous image never calls R2 delete.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceEventImage_WithoutExistingImage_DoesNotDeleteFromR2()
+    {
+        // Arrange
+        var mockS3Client = new Mock<IAmazonS3>();
+        mockS3Client
+            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object);
+
+        var organizerId = Guid.NewGuid();
+        var organizer = new User
+        {
+            Id = organizerId,
+            Email = "organizer@example.com",
+            PasswordHash = "dummy-hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        await _context.SaveChangesAsync();
+
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Event without Image",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = string.Empty,
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+
+        // Act
+        var newImageUrl = await eventService.ReplaceEventImageAsync(
+            eventEntity.Id, organizerId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg");
+
+        // Assert
+        Assert.NotNull(newImageUrl);
+
+        var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.NotNull(updatedEvent);
+        Assert.Equal(newImageUrl, updatedEvent.ImageUrl);
+
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+    }
+
+    /// <summary>
+    /// A non-owner (non-admin) cannot replace an event image.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceEventImage_ByNonOwner_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var mockS3Client = new Mock<IAmazonS3>();
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object);
+
+        var organizerId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Event",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = "https://pub-test.r2.dev/events/some.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            eventService.ReplaceEventImageAsync(eventEntity.Id, otherUserId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
+
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+    }
+
+    /// <summary>
+    /// Replacing an image on a missing event throws and never touches R2.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceEventImage_OnMissingEvent_ThrowsKeyNotFoundException()
+    {
+        // Arrange
+        var mockS3Client = new Mock<IAmazonS3>();
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object);
+        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            eventService.ReplaceEventImageAsync(Guid.NewGuid(), Guid.NewGuid(), UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
+
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+    }
+
+    #endregion
 }

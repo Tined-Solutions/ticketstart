@@ -181,18 +181,7 @@ public class EventController : TicketeraControllerBase
         try
         {
             using var stream = image.OpenReadStream();
-            var imageUrl = await _eventService.UploadEventImageAsync(stream, image.FileName, image.ContentType);
-
-            var updateRequest = new UpdateEventRequest
-            {
-                Name = eventDetails.Name,
-                Description = eventDetails.Description,
-                Date = eventDetails.Date,
-                Location = eventDetails.Location,
-                ImageUrl = imageUrl
-            };
-
-            await _eventService.UpdateEventAsync(id, updateRequest, userId, userRole);
+            var imageUrl = await _eventService.ReplaceEventImageAsync(id, userId, userRole, stream, image.FileName, image.ContentType);
 
             return Ok(new { imageUrl });
         }

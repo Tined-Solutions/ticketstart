@@ -472,6 +472,9 @@ describe('EventForm — edit mode', () => {
       date: expect.any(String),
       location: 'Estadio Luna Park, Buenos Aires',
       description: 'Un gran recital',
+      // Regression: a plain text edit must send the current image so the
+      // backend never wipes it (contract: null preserves, "" clears).
+      imageUrl: 'https://example.com/rock.jpg',
     })
     // Verify the date is a valid ISO string
     const dateArg = mockPut.mock.calls[0][1].date

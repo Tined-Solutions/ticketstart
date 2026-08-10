@@ -474,6 +474,83 @@ public class EventServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateEventAsync_WhenImageUrlOmitted_PreservesExistingImage()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/original.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // ImageUrl deliberately omitted — a plain text edit must not wipe the image
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(60),
+            Location = "Updated Location"
+        };
+
+        // Act
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("https://test.r2.dev/events/original.jpg", result.ImageUrl);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_WhenImageUrlExplicitlyEmpty_ClearsImage()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/original.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // Explicit empty string is the "remove image" signal
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(60),
+            Location = "Updated Location",
+            ImageUrl = string.Empty
+        };
+
+        // Act
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(string.Empty, result.ImageUrl);
+    }
+
+    [Fact]
     public async Task UpdateEventAsync_ByNonOwner_ThrowsUnauthorizedAccessException()
     {
         // Arrange
