@@ -983,4 +983,352 @@ public class TicketServiceTests : IDisposable
     }
 
     #endregion
+
+    #region Refunded tickets (APR-005/006/009)
+
+    [Fact]
+    public async Task CreateTicketsAsync_SetsReservationId_OnEveryTicket()
+    {
+        // Arrange — APR-009: tickets created after this change carry their ReservationId
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = DateTime.UtcNow
+        };
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            Quantity = 2,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Confirmed,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Reservations.Add(reservation);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var tickets = await _ticketService.CreateTicketsAsync(reservation.Id, "buyer@test.com", "12345678");
+
+        // Assert — every ticket is precisely linked to its reservation
+        var ticketList = tickets.ToList();
+        Assert.Equal(2, ticketList.Count);
+        Assert.All(ticketList, t => Assert.Equal(reservation.Id, t.ReservationId));
+    }
+
+    [Fact]
+    public async Task ValidateQRCodeAsync_RefundedTicket_ReturnsInvalidWithEntradaReembolsada()
+    {
+        // Arrange — APR-006: a refunded ticket must be rejected with "Entrada reembolsada"
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var purchaseDate = DateTime.UtcNow.AddDays(-1);
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(7),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = purchaseDate,
+            UpdatedAt = purchaseDate
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = purchaseDate
+        };
+        var ticketId = Guid.NewGuid();
+        var validTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var dataToSign = $"{ticketId}:{validTimestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, TestHmacKey);
+        var qrCodeData = $"{dataToSign}:{signature}";
+
+        var ticket = new Ticket
+        {
+            Id = ticketId,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = qrCodeData,
+            IsUsed = false,
+            IsRefunded = true,
+            RefundedAt = DateTime.UtcNow.AddDays(-2),
+            CreatedAt = purchaseDate
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _ticketService.ValidateQRCodeAsync(qrCodeData, eventEntity.Id);
+
+        // Assert — invalid, the exact Spanish message, and the ticket attached
+        Assert.False(result.IsValid);
+        Assert.Equal("Entrada reembolsada", result.Error);
+        Assert.NotNull(result.Ticket);
+        Assert.Equal(ticketId, result.Ticket!.Id);
+    }
+
+    [Fact]
+    public async Task LookupTicketsByEmailAsync_ExcludesRefundedTickets()
+    {
+        // Arrange — one valid + one refunded ticket for the same email (APR-005)
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            IsRefunded = true,
+            RefundedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var responses = await _ticketService.LookupTicketsByEmailAsync("buyer@test.com");
+
+        // Assert — only the non-refunded ticket is summarized
+        var response = Assert.Single(responses);
+        Assert.Equal(1, response.Quantity);
+    }
+
+    [Fact]
+    public async Task LookupActiveTicketsByEmailAndDniAsync_ExcludesRefundedTickets()
+    {
+        // Arrange — one active + one refunded ticket for the same email/DNI (APR-005)
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            IsRefunded = true,
+            RefundedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var responses = await _ticketService.LookupActiveTicketsByEmailAndDniAsync("buyer@test.com", "12345678");
+
+        // Assert — only the non-refunded ticket is summarized
+        var response = Assert.Single(responses);
+        Assert.Equal(1, response.Quantity);
+    }
+
+    [Fact]
+    public async Task ResendTicketsByEmailAsync_ExcludesRefundedTickets()
+    {
+        // Arrange — APR-005: refunded tickets are not re-sent
+        var emailServiceMock = new Mock<IEmailService>();
+        emailServiceMock
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()))
+            .ReturnsAsync(new EmailResult { Success = true });
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);
+        var ticketService = new TicketService(
+            _context, _configuration, _mockLogger.Object, serviceCollection.BuildServiceProvider());
+
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "buyer@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = false,
+            IsRefunded = true,
+            RefundedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("buyer@test.com");
+
+        // Assert — success returned and the email got only the non-refunded ticket
+        Assert.True(result);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            "buyer@test.com",
+            It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1 && tickets.All(t => !t.IsRefunded)),
+            It.IsAny<Event>()), Times.Once);
+    }
+
+    #endregion
 }

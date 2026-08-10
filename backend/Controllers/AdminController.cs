@@ -18,6 +18,7 @@ public class AdminController : TicketeraControllerBase
     private readonly IAuthService _authService;
     private readonly IAuditLogService _auditLogService;
     private readonly IEventService _eventService;
+    private readonly IAdminPurchaseService _adminPurchaseService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
@@ -25,13 +26,15 @@ public class AdminController : TicketeraControllerBase
         IAuthService authService,
         IAuditLogService auditLogService,
         ILogger<AdminController> logger,
-        IEventService eventService)
+        IEventService eventService,
+        IAdminPurchaseService adminPurchaseService)
     {
         _adminService = adminService;
         _authService = authService;
         _auditLogService = auditLogService;
         _logger = logger;
         _eventService = eventService;
+        _adminPurchaseService = adminPurchaseService;
     }
 
     /// <summary>
@@ -220,6 +223,78 @@ public class AdminController : TicketeraControllerBase
         catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (UnauthorizedAccessException) { return Forbid(); }
         catch (Exception ex) { _logger.LogError(ex, "Error adding ticket type"); return StatusCode(500, new { error = "An error occurred while adding the ticket type" }); }
+    }
+
+    /// <summary>
+    /// Lists an event's confirmed purchases with masked buyer data and per-event
+    /// totalRefunded (APR-002). Admin-only via the class-level RequireAdminRole policy.
+    /// </summary>
+    /// <param name="eventId">Event whose purchases are listed</param>
+    /// <returns>200 with the listing, or 404 when the event does not exist</returns>
+    [HttpGet("events/{eventId:guid}/purchases")]
+    public async Task<IActionResult> GetPurchases(Guid eventId)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var result = await _adminPurchaseService.GetPurchasesAsync(eventId);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "Event not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing purchases for event {EventId}", eventId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while listing purchases" });
+        }
+    }
+
+    /// <summary>
+    /// Refunds an unused full purchase atomically (APR-003/004): marks its tickets
+    /// refunded and flips the Approved Transaction to Refunded — no MP money movement,
+    /// no email, no motivo (APR-008). Audits RefundPurchase/Payment after commit.
+    /// </summary>
+    /// <param name="eventId">Event owning the purchase (used in the audit detail)</param>
+    /// <param name="reservationId">Confirmed reservation to refund</param>
+    /// <returns>200 on success; 404 when the reservation is missing; 409 when the
+    /// purchase has no Approved transaction, is already refunded or a ticket IsUsed</returns>
+    [HttpPost("events/{eventId:guid}/purchases/{reservationId:guid}/refund")]
+    public async Task<IActionResult> RefundPurchase(Guid eventId, Guid reservationId)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            await _adminPurchaseService.RefundPurchaseAsync(reservationId, adminId);
+
+            // APR-007: audit AFTER the transaction commits, best-effort, no motivo.
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.RefundPurchase,
+                AuditResourceType.Payment,
+                reservationId,
+                Truncate($"Admin refunded purchase {reservationId} for event {eventId}", 1000)));
+
+            return Ok(new { message = "Purchase refunded successfully" });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "Reservation not found" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refunding purchase {ReservationId} for event {EventId}", reservationId, eventId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while refunding the purchase" });
+        }
     }
 
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)

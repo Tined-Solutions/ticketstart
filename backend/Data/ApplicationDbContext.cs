@@ -112,10 +112,12 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(t => t.Id);
             entity.HasIndex(t => t.EventId);
             entity.HasIndex(t => t.QRCodeData).IsUnique();
+            entity.HasIndex(t => t.ReservationId);
             entity.Property(t => t.PurchaserEmail).IsRequired().HasMaxLength(255);
             entity.Property(t => t.PurchaserDNI).IsRequired().HasMaxLength(50);
             entity.Property(t => t.QRCodeData).IsRequired().HasMaxLength(500);
             entity.Property(t => t.IsUsed).IsRequired();
+            entity.Property(t => t.IsRefunded).IsRequired();
             entity.Property(t => t.CreatedAt).IsRequired();
 
             entity.HasOne(t => t.Event)
@@ -126,6 +128,13 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(t => t.TicketType)
                 .WithMany()
                 .HasForeignKey(t => t.TicketTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // APR-009: nullable link from ticket to its confirmed purchase. Restrict
+            // (not Cascade) so refunds never cascade-delete tickets.
+            entity.HasOne(t => t.Reservation)
+                .WithMany()
+                .HasForeignKey(t => t.ReservationId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

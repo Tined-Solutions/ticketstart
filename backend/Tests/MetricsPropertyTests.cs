@@ -654,4 +654,66 @@ public class MetricsPropertyTests : IDisposable
             UpdatedAt = now
         };
     }
+
+    #region Refunded tickets excluded (APR-005)
+
+    [Fact]
+    public async Task GetEventMetrics_RefundedTickets_ExcludedFromSoldAndRevenue()
+    {
+        // Arrange — 5 tickets, 2 used, 1 refunded (APR-005: refunded stops counting)
+        var organizerId = Guid.NewGuid();
+        var organizer = new User
+        {
+            Id = organizerId,
+            Email = "organizer@example.com",
+            PasswordHash = "dummy-hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+
+        var eventEntity = CreateEvent(organizerId, "Refunded Event");
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General",
+            Price = 50,
+            Quantity = 100,
+            CreatedAt = DateTime.UtcNow
+        };
+        eventEntity.TicketTypes.Add(ticketType);
+        _context.Events.Add(eventEntity);
+
+        for (var i = 0; i < 5; i++)
+        {
+            _context.Tickets.Add(new Ticket
+            {
+                Id = Guid.NewGuid(),
+                EventId = eventEntity.Id,
+                TicketTypeId = ticketType.Id,
+                PurchaserEmail = $"buyer{i}@example.com",
+                PurchaserDNI = $"DNI{i}",
+                QRCodeData = $"QR-{Guid.NewGuid()}",
+                IsUsed = i < 2,
+                IsRefunded = i == 4,
+                RefundedAt = i == 4 ? DateTime.UtcNow.AddDays(-1) : null,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        // Act
+        var metrics = await _metricsService.GetEventMetricsAsync(eventEntity.Id);
+
+        // Assert — sold = 4 (refunded excluded), revenue = 4 × 50, scanned = 2 (unchanged)
+        Assert.NotNull(metrics);
+        Assert.Equal(4, metrics.TicketsSold);
+        Assert.Equal(200m, metrics.TotalRevenue);
+        Assert.Equal(2, metrics.TicketsScanned);
+        // 100 inventory - 4 sold - 0 reservations = 96 remaining
+        Assert.Equal(96, metrics.RemainingInventory);
+    }
+
+    #endregion
 }

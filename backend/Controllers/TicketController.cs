@@ -137,7 +137,9 @@ public class TicketController : TicketeraControllerBase
                     TicketTypeName = result.Ticket.TicketType.Name,
                     PurchaserEmail = result.Ticket.PurchaserEmail,
                     IsUsed = result.Ticket.IsUsed,
-                    UsedAt = result.Ticket.UsedAt
+                    UsedAt = result.Ticket.UsedAt,
+                    IsRefunded = result.Ticket.IsRefunded, // APR-006: StaffScan renders "Entrada reembolsada"
+                    RefundedAt = result.Ticket.RefundedAt
                 };
             }
 

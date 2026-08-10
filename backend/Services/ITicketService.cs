@@ -179,4 +179,6 @@ public class TicketValidationDetails
     public string PurchaserEmail { get; set; } = string.Empty;
     public bool IsUsed { get; set; }
     public DateTime? UsedAt { get; set; }
+    public bool IsRefunded { get; set; }
+    public DateTime? RefundedAt { get; set; }
 }

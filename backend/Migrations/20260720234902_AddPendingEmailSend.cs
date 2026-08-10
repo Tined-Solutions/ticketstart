@@ -45,10 +45,12 @@ namespace TicketeraOnline.Api.Migrations
                 table: "pending_email_send",
                 column: "ReservationId");
 
-            // Composite index on (status, created_at) for efficient retry queries
+            // Composite index on (Status, CreatedAt) for efficient retry queries.
+            // Columns are PascalCase quoted by EF (e.g. "Status"); unquoted lowercase
+            // identifiers fold to lowercase in PostgreSQL and would miss the columns.
             migrationBuilder.Sql(@"
                 CREATE INDEX IF NOT EXISTS idx_pending_email_send_status_created_at
-                    ON pending_email_send (status, created_at ASC);
+                    ON pending_email_send (""Status"", ""CreatedAt"" ASC);
             ");
 
             // RLS policy: enable row-level security, allow service_role full access

@@ -779,4 +779,42 @@ public class ReservationServiceTests : IDisposable
     }
 
     #endregion
+
+    #region Refunded tickets excluded from sold count (APR-005)
+
+    [Fact]
+    public async Task CreateReservationAsync_RefundedTickets_DoNotCountAsSold()
+    {
+        // Arrange — 100 capacity, 20 sold tickets of which 10 refunded (APR-005)
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+
+        for (var i = 0; i < 20; i++)
+        {
+            _context.Tickets.Add(new Ticket
+            {
+                Id = Guid.NewGuid(),
+                EventId = eventEntity.Id,
+                TicketTypeId = ticketType.Id,
+                PurchaserEmail = $"buyer{i}@test.com",
+                PurchaserDNI = $"12345678{i}",
+                QRCodeData = $"QR{Guid.NewGuid()}",
+                IsUsed = false,
+                IsRefunded = i < 10,
+                RefundedAt = i < 10 ? DateTime.UtcNow.AddDays(-1) : null,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        // Act — only 10 non-refunded tickets count as sold → 90 available
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 91, TestPurchaserDNI));
+
+        // The full 90 (100 - 10 non-refunded sold) can be reserved
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 90, TestPurchaserDNI);
+        Assert.NotNull(reservation);
+        Assert.Equal(90, reservation.Quantity);
+    }
+
+    #endregion
 }

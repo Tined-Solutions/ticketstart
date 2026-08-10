@@ -181,7 +181,7 @@ public class EventService : IEventService
         var now = DateTime.UtcNow;
 
         var soldByType = await _context.Tickets
-            .Where(t => ticketTypeIds.Contains(t.TicketTypeId))
+            .Where(t => ticketTypeIds.Contains(t.TicketTypeId) && !t.IsRefunded) // APR-005
             .GroupBy(t => t.TicketTypeId)
             .Select(g => new { TicketTypeId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.TicketTypeId, x => x.Count);

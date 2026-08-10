@@ -68,10 +68,12 @@ public class MetricsService : IMetricsService
 
         var eventIds = events.Select(e => e.Id).ToList();
 
-        // Single GroupBy query: ticket aggregates (sold, revenue, scanned) per event
+        // Single GroupBy query: ticket aggregates (sold, revenue, scanned) per event.
+        // Refunded tickets are excluded from sold/revenue (APR-005); TicketsScanned is
+        // unchanged because a refund is blocked when IsUsed (no overlap).
         var ticketAggregates = await _context.Tickets
             .AsNoTracking()
-            .Where(t => eventIds.Contains(t.EventId))
+            .Where(t => eventIds.Contains(t.EventId) && !t.IsRefunded)
             .GroupBy(t => t.EventId)
             .Select(g => new
             {
@@ -153,15 +155,17 @@ public class MetricsService : IMetricsService
     {
         var eventId = eventEntity.Id;
 
-        // Total tickets sold: confirmed tickets in the database for this event
+        // Total tickets sold: confirmed tickets in the database for this event.
+        // Refunded tickets do not count (APR-005).
         var ticketsSold = await _context.Tickets
             .AsNoTracking()
-            .CountAsync(t => t.EventId == eventId);
+            .CountAsync(t => t.EventId == eventId && !t.IsRefunded);
 
-        // Total revenue: sum of ticket type prices for each sold ticket
+        // Total revenue: sum of ticket type prices for each sold ticket.
+        // Refunded tickets do not count (APR-005).
         var totalRevenue = await _context.Tickets
             .AsNoTracking()
-            .Where(t => t.EventId == eventId)
+            .Where(t => t.EventId == eventId && !t.IsRefunded)
             .Join(
                 _context.TicketTypes.AsNoTracking(),
                 ticket => ticket.TicketTypeId,

@@ -80,7 +80,8 @@ public enum AuditActionType
     ProcessWebhook,
     ValidateQr,
     AddTicketStock,   // NEW (ATS-005) — ActionType varchar(100), no migration
-    AddTicketType     // NEW (ATS-005)
+    AddTicketType,    // NEW (ATS-005)
+    RefundPurchase    // NEW (APR-007) — varchar-stored, no migration
 }
 
 /// <summary>

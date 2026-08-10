@@ -192,4 +192,67 @@ public class MetricsConsolidationTests : IDisposable
             UpdatedAt = now
         };
     }
+
+    /// <summary>
+    /// APR-005: refunded tickets must not count toward TicketsSold / TotalRevenue in the
+    /// consolidated GetOrganizerMetricsAsync path (pre-GroupBy exclusion).
+    /// </summary>
+    [Fact]
+    public async Task GetOrganizerMetricsAsync_RefundedTickets_ExcludedFromSoldAndRevenue()
+    {
+        // Arrange — event with 5 tickets: 2 used, 1 refunded
+        var organizerId = Guid.NewGuid();
+        var organizer = new User
+        {
+            Id = organizerId,
+            Email = "org-refund@example.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+
+        var eventEntity = CreateEvent(organizerId, "Refunded Event");
+        _context.Events.Add(eventEntity);
+
+        var tt = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General",
+            Price = 50,
+            Quantity = 100,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.TicketTypes.Add(tt);
+
+        for (var i = 0; i < 5; i++)
+        {
+            _context.Tickets.Add(new Ticket
+            {
+                Id = Guid.NewGuid(),
+                EventId = eventEntity.Id,
+                TicketTypeId = tt.Id,
+                PurchaserEmail = $"buyer{i}@example.com",
+                PurchaserDNI = $"DNI{i}",
+                QRCodeData = $"QR-{Guid.NewGuid()}",
+                IsUsed = i < 2,
+                IsRefunded = i == 4,
+                RefundedAt = i == 4 ? DateTime.UtcNow.AddDays(-1) : null,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        // Act
+        var metricsService = new MetricsService(_context, _logger);
+        var metrics = (await metricsService.GetOrganizerMetricsAsync(organizerId)).ToList();
+
+        // Assert — sold = 4, revenue = 4 × 50 = 200, scanned = 2 (unchanged)
+        var metric = Assert.Single(metrics);
+        Assert.Equal(4, metric.TicketsSold);
+        Assert.Equal(200m, metric.TotalRevenue);
+        Assert.Equal(2, metric.TicketsScanned);
+        Assert.Equal(100 - 4 - 0, metric.RemainingInventory); // no active reservations
+    }
 }

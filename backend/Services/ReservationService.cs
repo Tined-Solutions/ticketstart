@@ -127,8 +127,9 @@ public class ReservationService : IReservationService
                 }
 
                 // Mathematical availability: no stock counter involved.
+                // Refunded tickets do not count as sold (APR-005).
                 var soldTickets = await _context.Tickets
-                    .CountAsync(t => t.TicketTypeId == ticketTypeId);
+                    .CountAsync(t => t.TicketTypeId == ticketTypeId && !t.IsRefunded);
 
                 var activeReservations = await _context.Reservations
                     .Where(r => r.TicketTypeId == ticketTypeId &&

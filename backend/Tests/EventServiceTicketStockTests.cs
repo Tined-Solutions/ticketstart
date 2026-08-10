@@ -442,4 +442,39 @@ public class EventServiceTicketStockTests : IDisposable
     }
 
     #endregion
+
+    #region Refunded tickets excluded from availability (APR-005)
+
+    [Fact]
+    public async Task GetEventByIdAsync_RefundedTickets_DoNotCountAsSold()
+    {
+        // Arrange — capacity 10, 3 sold tickets of which 1 refunded (APR-005)
+        var (eventEntity, ticketType, _) = await CreateTestEventWithTicketType(10);
+        await AddSoldTicketsAsync(eventEntity.Id, ticketType.Id, 2);
+
+        var refunded = new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "refunded@test.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = $"qr-{Guid.NewGuid():N}",
+            IsUsed = false,
+            IsRefunded = true,
+            RefundedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Tickets.Add(refunded);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
+
+        // Assert — sold = 2 (refunded excluded) → available = 10 - 2 = 8
+        var tt = Assert.Single(result!.TicketTypes);
+        Assert.Equal(8, tt.Available);
+    }
+
+    #endregion
 }

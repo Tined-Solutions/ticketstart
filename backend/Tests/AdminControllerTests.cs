@@ -36,7 +36,8 @@ public class AdminControllerTests
             _mockAuthService.Object,
             _mockAuditLogService.Object,
             _mockLogger.Object,
-            _mockEventService.Object)
+            _mockEventService.Object,
+            new Mock<IAdminPurchaseService>().Object)
         {
             ControllerContext = new ControllerContext
             {

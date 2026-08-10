@@ -83,6 +83,7 @@ public class TicketService : ITicketService
                 Id = ticketId,
                 EventId = reservation.EventId,
                 TicketTypeId = reservation.TicketTypeId,
+                ReservationId = reservationId, // APR-009: precise purchase→ticket link
                 PurchaserEmail = purchaserEmail,
                 PurchaserDNI = purchaserDNI,
                 QRCodeData = qrCodeData,
@@ -350,6 +351,20 @@ public class TicketService : ITicketService
                 };
             }
 
+            // Step 5b: Check if ticket has been refunded (APR-006)
+            if (ticket.IsRefunded)
+            {
+                _logger.LogWarning("Ticket {TicketId} was refunded at {RefundedAt}; scan rejected",
+                    ticketId, ticket.RefundedAt);
+                await transaction.RollbackAsync();
+                return new QRCodeValidationResult
+                {
+                    IsValid = false,
+                    Error = "Entrada reembolsada",
+                    Ticket = ticket
+                };
+            }
+
             // Step 6: Check event association
             if (ticket.EventId != eventId)
             {
@@ -424,7 +439,7 @@ public class TicketService : ITicketService
         var tickets = await _context.Tickets
             .Include(t => t.Event)
             .Include(t => t.TicketType)
-            .Where(t => t.PurchaserEmail == email)
+            .Where(t => t.PurchaserEmail == email && !t.IsRefunded) // APR-005
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
@@ -476,9 +491,10 @@ public class TicketService : ITicketService
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
-        // Filter in memory: DNI matched by digits only, and only unused (active) tickets
+        // Filter in memory: DNI matched by digits only, and only unused (active) tickets.
+        // Refunded tickets are excluded too (APR-005).
         var activeTickets = tickets
-            .Where(t => NormalizeDocument(t.PurchaserDNI) == dniKey && !t.IsUsed)
+            .Where(t => NormalizeDocument(t.PurchaserDNI) == dniKey && !t.IsUsed && !t.IsRefunded)
             .ToList();
 
         if (activeTickets.Count == 0)
@@ -534,7 +550,7 @@ public class TicketService : ITicketService
             var tickets = await _context.Tickets
                 .Include(t => t.Event)
                 .Include(t => t.TicketType)
-                .Where(t => t.PurchaserEmail == email)
+                .Where(t => t.PurchaserEmail == email && !t.IsRefunded) // APR-005: refunded tickets are not re-sent
                 .ToListAsync();
 
             if (tickets.Count == 0)
