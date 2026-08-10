@@ -18,6 +18,7 @@ import OrganizerEventNew from './pages/OrganizerEventNew.jsx'
 import OrganizerEventDetail from './pages/OrganizerEventDetail.jsx'
 import OrganizerEventMetrics from './pages/OrganizerEventMetrics.jsx'
 import AdminPanel from './pages/AdminPanel.jsx'
+import AdminPurchases from './pages/AdminPurchases.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 function App() {
@@ -94,6 +95,17 @@ function App() {
               <ProtectedRoute>
                 <RoleGuard allowedRoles={['Admin']}>
                   <AdminPanel />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/events/:id/purchases"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Admin']}>
+                  <AdminPurchases />
                 </RoleGuard>
               </ProtectedRoute>
             }

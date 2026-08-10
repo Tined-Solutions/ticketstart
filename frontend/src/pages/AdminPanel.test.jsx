@@ -202,6 +202,18 @@ describe('AdminPanel', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-1')
   })
 
+  it('compras button navigates to the purchases page (APR-010)', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const comprasBtn = screen.getByRole('button', { name: /compras de recital de rock nacional/i })
+    await userEvent.click(comprasBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/events/event-1/purchases')
+  })
+
   // ── 27.1: Delete button and dialog ───────────────────────────────
 
   it('delete button opens confirmation dialog', async () => {

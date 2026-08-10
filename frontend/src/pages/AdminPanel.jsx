@@ -334,6 +334,15 @@ export default function AdminPanel() {
                             <Button
                               variant="secondary"
                               size="sm"
+                              onClick={() => navigate(`/admin/events/${event.id}/purchases`)}
+                              aria-label={`Compras de ${event.name}`}
+                              className="min-h-[44px]"
+                            >
+                              Compras
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
                               onClick={() => navigate(`/organizer/events/${event.id}`)}
                               aria-label={`Editar ${event.name}`}
                               className="min-h-[44px]"
