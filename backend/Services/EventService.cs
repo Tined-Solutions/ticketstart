@@ -17,6 +17,7 @@ public class EventService : IEventService
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
     private readonly IAmazonS3 _s3Client;
+    private readonly IEventNotificationQueue _notificationQueue;
 
     // Allowed image MIME types
     private static readonly HashSet<string> AllowedImageTypes = new()
@@ -33,12 +34,13 @@ public class EventService : IEventService
     private const int MaxAdditionalStock = 1000;
     private const int MaxTicketQuantityPerOperation = 1000;
 
-    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client)
+    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
         _s3Client = s3Client;
+        _notificationQueue = notificationQueue;
     }
 
     /// <summary>
@@ -404,6 +406,8 @@ public class EventService : IEventService
         // Update event properties. ImageUrl is special: null (omitted) preserves
         // the existing image so a plain text edit never wipes it; "" clears it
         // explicitly; a value replaces it.
+        var oldDate = eventEntity.Date;
+
         eventEntity.Name = request.Name;
         eventEntity.Description = request.Description;
         eventEntity.Date = request.Date;
@@ -417,6 +421,48 @@ public class EventService : IEventService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Event {EventId} updated successfully by user {UserId}", eventId, userId);
+
+        // EDC-001 / EDC-007: single extensible condition block for change detection.
+        // Future location/time changes can be added as additional conditions here.
+        var dateChanged = oldDate != request.Date;
+        if (dateChanged)
+        {
+            // EDC-002: query distinct non-refunded buyer emails
+            var buyerEmails = await _context.Tickets
+                .Where(t => t.EventId == eventId && !t.IsRefunded)
+                .Select(t => t.PurchaserEmail)
+                .Distinct()
+                .ToListAsync();
+
+            // EDC-005: zero buyers → silent no-op
+            if (buyerEmails.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Date change detected for event {EventId}: {OldDate} → {NewDate}. " +
+                    "Enqueueing {BuyerCount} notifications.",
+                    eventId, oldDate, request.Date, buyerEmails.Count);
+
+                var now = DateTime.UtcNow;
+                foreach (var email in buyerEmails)
+                {
+                    var notification = new EventNotification
+                    {
+                        EventId = eventId,
+                        EventName = eventEntity.Name,
+                        NotificationType = "DateChange",
+                        OldDate = oldDate,
+                        NewDate = request.Date,
+                        RecipientEmail = email,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    };
+
+                    // EDC-004: enqueue and return immediately — email failure
+                    // does NOT rollback the event update.
+                    await _notificationQueue.EnqueueAsync(notification);
+                }
+            }
+        }
 
         return eventEntity;
     }

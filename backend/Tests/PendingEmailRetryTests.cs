@@ -106,13 +106,41 @@ public class PendingEmailRetryTests : IDisposable
     public async Task RetryPendingEmailsAsync_ResendsAndUpdatesStatus()
     {
         var reservationId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+
+        _context.Events.Add(new Event
+        {
+            Id = eventId, Name = "Test", Description = "D",
+            Date = DateTime.UtcNow.AddDays(1), Location = "L",
+            OrganizerId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        _context.TicketTypes.Add(new TicketType
+        {
+            Id = ticketTypeId, EventId = eventId, Name = "GA",
+            Price = 50m, Quantity = 100, CreatedAt = DateTime.UtcNow
+        });
+        _context.Reservations.Add(new Reservation
+        {
+            Id = reservationId, EventId = eventId, TicketTypeId = ticketTypeId,
+            Quantity = 1, PurchaserDNI = "111", ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active, CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = ticketId, EventId = eventId, TicketTypeId = ticketTypeId,
+            ReservationId = reservationId, PurchaserEmail = "retry@test.com",
+            PurchaserDNI = "111", QRCodeData = "qr1", IsRefunded = false,
+            CreatedAt = DateTime.UtcNow
+        });
         _context.PendingEmailSends.Add(new PendingEmailSend
         {
             Id = Guid.NewGuid(),
             ReservationId = reservationId,
             PaymentId = "pay-retry",
             RecipientEmail = "retry@test.com",
-            TicketIds = [Guid.NewGuid()],
+            TicketIds = [ticketId],
             Attempts = 1,
             MaxAttempts = 5,
             Status = "pending",
@@ -138,13 +166,41 @@ public class PendingEmailRetryTests : IDisposable
     {
         // TRIANGULATION: row at max-1 attempts, send fails → becomes exhausted
         var reservationId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+
+        _context.Events.Add(new Event
+        {
+            Id = eventId, Name = "Test", Description = "D",
+            Date = DateTime.UtcNow.AddDays(1), Location = "L",
+            OrganizerId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        _context.TicketTypes.Add(new TicketType
+        {
+            Id = ticketTypeId, EventId = eventId, Name = "GA",
+            Price = 50m, Quantity = 100, CreatedAt = DateTime.UtcNow
+        });
+        _context.Reservations.Add(new Reservation
+        {
+            Id = reservationId, EventId = eventId, TicketTypeId = ticketTypeId,
+            Quantity = 1, PurchaserDNI = "222", ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active, CreatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = ticketId, EventId = eventId, TicketTypeId = ticketTypeId,
+            ReservationId = reservationId, PurchaserEmail = "exhaust@test.com",
+            PurchaserDNI = "222", QRCodeData = "qr2", IsRefunded = false,
+            CreatedAt = DateTime.UtcNow
+        });
         _context.PendingEmailSends.Add(new PendingEmailSend
         {
             Id = Guid.NewGuid(),
             ReservationId = reservationId,
             PaymentId = "pay-exhaust",
             RecipientEmail = "exhaust@test.com",
-            TicketIds = [Guid.NewGuid()],
+            TicketIds = [ticketId],
             Attempts = 4,
             MaxAttempts = 5,
             Status = "pending",

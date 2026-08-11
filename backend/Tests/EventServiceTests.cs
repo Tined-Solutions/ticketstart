@@ -23,6 +23,7 @@ public class EventServiceTests : IDisposable
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
     private readonly Mock<IAmazonS3> _s3ClientMock;
+    private readonly Mock<IEventNotificationQueue> _mockNotificationQueue;
 
     public EventServiceTests()
     {
@@ -45,9 +46,10 @@ public class EventServiceTests : IDisposable
             .Build();
         
         // Mock S3 client
+        _mockNotificationQueue = new Mock<IEventNotificationQueue>();
         _s3ClientMock = new Mock<IAmazonS3>();
         
-        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object);
+        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object);
     }
 
     public void Dispose()

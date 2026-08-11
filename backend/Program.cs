@@ -51,6 +51,8 @@ builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.AddHttpClient<IResendClient, ResendClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEventNotificationQueue, EventNotificationQueue>();
+builder.Services.AddScoped<IRetryableEmailSender, RetryableEmailSender>();
 
 // Configure Cloudflare Turnstile
 builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.SectionName));
@@ -72,6 +74,7 @@ if (builder.Environment.IsProduction() &&
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
+builder.Services.AddHostedService<EventNotificationDispatchService>();
 
 // Configure Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Transaction> Transactions { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<PendingEmailSend> PendingEmailSends { get; set; }
+    public DbSet<EventNotification> EventNotifications { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -203,6 +204,29 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Reservation)
                 .WithMany()
                 .HasForeignKey(e => e.ReservationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // EventNotification entity configuration
+        modelBuilder.Entity<EventNotification>(entity =>
+        {
+            entity.ToTable("event_notifications");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.EventId);
+            entity.HasIndex(e => new { e.Status, e.CreatedAt });
+            entity.Property(e => e.EventName).IsRequired().HasMaxLength(255).HasDefaultValue(string.Empty);
+            entity.Property(e => e.NotificationType).IsRequired().HasMaxLength(50).HasDefaultValue("DateChange");
+            entity.Property(e => e.RecipientEmail).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasDefaultValue("pending");
+            entity.Property(e => e.Attempts).IsRequired().HasDefaultValue(0);
+            entity.Property(e => e.MaxAttempts).IsRequired().HasDefaultValue(5);
+            entity.Property(e => e.LastError).HasMaxLength(1000);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+
+            entity.HasOne(e => e.Event)
+                .WithMany()
+                .HasForeignKey(e => e.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

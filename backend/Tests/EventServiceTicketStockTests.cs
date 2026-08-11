@@ -57,7 +57,7 @@ public class EventServiceTicketStockTests : IDisposable
             _context,
             new TestLogger<EventService>(),
             configuration,
-            new Mock<IAmazonS3>().Object);
+            new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object);
     }
 
     public void Dispose()
@@ -300,7 +300,7 @@ public class EventServiceTicketStockTests : IDisposable
                 concurrentContext,
                 new TestLogger<EventService>(),
                 configuration,
-                new Mock<IAmazonS3>().Object);
+                new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object);
             await service.AddTicketStockAsync(eventId, ticketTypeId, 5);
         });
 

@@ -243,4 +243,41 @@ public class EmailService : IEmailService
             Error = lastException?.Message ?? "Email delivery failed after maximum retry attempts"
         };
     }
+
+    /// <inheritdoc />
+    public async Task<EmailResult> SendEventDateChangeNotificationAsync(
+        string recipientEmail, string eventName, DateTime oldDate, DateTime newDate)
+    {
+        _logger.LogInformation(
+            "Sending event date change notification to {Recipient} for event '{EventName}'",
+            recipientEmail, eventName);
+
+        var refundContactEmail = _options.FromEmail;
+        var html = EventDateChangeTemplate.Render(eventName, oldDate, newDate, refundContactEmail);
+
+        var request = new ResendEmailRequest
+        {
+            From = ResolvedFrom,
+            To = recipientEmail,
+            Subject = $"Cambio de fecha: {eventName}",
+            Html = html
+        };
+
+        var result = await SendWithRetryAsync(request);
+
+        if (result.Success)
+        {
+            _logger.LogInformation(
+                "Event date change notification sent to {Recipient} for event '{EventName}'",
+                recipientEmail, eventName);
+        }
+        else
+        {
+            _logger.LogError(
+                "Failed to send event date change notification to {Recipient} for event '{EventName}': {Error}",
+                recipientEmail, eventName, result.Error);
+        }
+
+        return result;
+    }
 }

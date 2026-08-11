@@ -37,6 +37,18 @@ public interface IEmailService
     /// <param name="reason">Human-readable refund reason</param>
     /// <returns>Email delivery result</returns>
     Task<EmailResult> SendRefundNotificationAsync(string recipientEmail, decimal amount, string reason);
+
+    /// <summary>
+    /// Sends an event date change notification email to a ticket buyer.
+    /// Includes the event name, old date, new date, and refund-request contact.
+    /// Validates: Requirement EDC-003
+    /// </summary>
+    /// <param name="recipientEmail">Buyer email address</param>
+    /// <param name="eventName">Name of the event whose date changed</param>
+    /// <param name="oldDate">Previous event date</param>
+    /// <param name="newDate">Updated event date</param>
+    /// <returns>Email delivery result</returns>
+    Task<EmailResult> SendEventDateChangeNotificationAsync(string recipientEmail, string eventName, DateTime oldDate, DateTime newDate);
 }
 
 /// <summary>

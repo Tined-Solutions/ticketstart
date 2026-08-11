@@ -7,7 +7,7 @@ namespace TicketeraOnline.Api.Models;
 /// Created by the webhook handler when SendTicketEmailAsync fails
 /// after a successful payment commit. Retried via the admin endpoint.
 /// </summary>
-public class PendingEmailSend
+public class PendingEmailSend : IRetryableEmailRow
 {
     public Guid Id { get; set; }
 
