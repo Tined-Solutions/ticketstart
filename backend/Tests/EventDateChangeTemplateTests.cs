@@ -121,4 +121,39 @@ public class EventDateChangeTemplateTests
         Assert.Contains("<html>", html, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("</html>", html, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// The notification must reassure buyers that their already-issued QR
+    /// remains valid for the new date.
+    /// </summary>
+    [Fact]
+    public void Render_ContainsQrValidityMessage()
+    {
+        var html = EventDateChangeTemplate.Render(
+            "Rock Fest",
+            new DateTime(2026, 10, 15),
+            new DateTime(2026, 11, 1),
+            "reembolsos@ticketera.com");
+
+        Assert.Contains(
+            "QR ya emitido continúa siendo válido",
+            html,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The signature reads "equipo de Ticketera" without the leading article.
+    /// </summary>
+    [Fact]
+    public void Render_SignatureOmitsLeadingArticle()
+    {
+        var html = EventDateChangeTemplate.Render(
+            "Rock Fest",
+            new DateTime(2026, 10, 15),
+            new DateTime(2026, 11, 1),
+            "reembolsos@ticketera.com");
+
+        Assert.Contains("equipo de Ticketera", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("El equipo", html, StringComparison.OrdinalIgnoreCase);
+    }
 }

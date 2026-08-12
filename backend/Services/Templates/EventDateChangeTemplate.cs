@@ -51,6 +51,8 @@ public static class EventDateChangeTemplate
         html.AppendLine($"<p><strong>Nueva fecha:</strong> {newDate.ToUniversalTime():dd/MM/yyyy HH:mm}</p>");
         html.AppendLine("</div>");
 
+        html.AppendLine("<p><strong>Tu QR ya emitido continúa siendo válido para la nueva fecha.</strong></p>");
+
         html.AppendLine($"<p>Lamentamos las molestias. Si la nueva fecha no te funciona, podés solicitar un reembolso.</p>");
 
         html.AppendLine("<div class='refund'>");
@@ -59,7 +61,7 @@ public static class EventDateChangeTemplate
         html.AppendLine("</div>");
 
         html.AppendLine("<p>Gracias por tu comprensión.</p>");
-        html.AppendLine("<p>— El equipo de Ticketera</p>");
+        html.AppendLine("<p>— equipo de Ticketera</p>");
         html.AppendLine("</div>");
         html.AppendLine("</body>");
         html.AppendLine("</html>");
