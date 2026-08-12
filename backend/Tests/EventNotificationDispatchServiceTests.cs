@@ -34,6 +34,13 @@ public class EventNotificationDispatchServiceTests : IDisposable
         _mockEmailService = new Mock<IEmailService>();
         _mockLogger = new Mock<ILogger<EventNotificationDispatchService>>();
 
+        // Default: email delivery succeeds. Tests that exercise the failure path
+        // re-setup this mock with Success = false.
+        _mockEmailService
+            .Setup(e => e.SendEventDateChangeNotificationAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(new EmailResult { Success = true });
+
         var services = new ServiceCollection();
         // Create fresh contexts sharing the same InMemory database name.
         services.AddTransient<ApplicationDbContext>(_ =>
@@ -75,7 +82,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         var service = new EventNotificationDispatchService(
-            _serviceProvider, _mockEmailService.Object, _mockLogger.Object);
+            _serviceProvider, _mockLogger.Object);
 
         await service.ProcessPendingAsync(CancellationToken.None);
 
@@ -118,7 +125,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         var service = new EventNotificationDispatchService(
-            _serviceProvider, _mockEmailService.Object, _mockLogger.Object);
+            _serviceProvider, _mockLogger.Object);
 
         await service.ProcessPendingAsync(CancellationToken.None);
 
@@ -155,7 +162,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         var service = new EventNotificationDispatchService(
-            _serviceProvider, _mockEmailService.Object, _mockLogger.Object);
+            _serviceProvider, _mockLogger.Object);
 
         await service.ProcessPendingAsync(CancellationToken.None);
 
@@ -210,7 +217,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
                 (rows, sendFunc, ct) => capturedSendFunc = sendFunc);
 
         var service = new EventNotificationDispatchService(
-            _serviceProvider, _mockEmailService.Object, _mockLogger.Object);
+            _serviceProvider, _mockLogger.Object);
 
         // Act
         await service.ProcessPendingAsync(CancellationToken.None);
@@ -227,5 +234,54 @@ public class EventNotificationDispatchServiceTests : IDisposable
                 oldDate,
                 newDate),
             Times.Once);
+    }
+
+    /// <summary>
+    /// EDC-004: an email delivery failure must surface as an exception so the
+    /// IRetryableEmailSender state machine records attempts/LastError and retries
+    /// (or exhausts) the row — instead of silently marking it "sent".
+    /// </summary>
+    [Fact]
+    public async Task ProcessPendingAsync_EmailFailure_ThrowsToRetryStateMachine()
+    {
+        _mockEmailService
+            .Setup(e => e.SendEventDateChangeNotificationAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(new EmailResult { Success = false, Error = "Resend rejected recipient" });
+
+        var notification = new EventNotification
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            EventName = "Rock Fest 2026",
+            NotificationType = "DateChange",
+            RecipientEmail = "buyer@test.com",
+            NewDate = DateTime.UtcNow.AddDays(1),
+            Attempts = 0,
+            MaxAttempts = 5,
+            Status = "pending",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.EventNotifications.Add(notification);
+        await _context.SaveChangesAsync();
+
+        Func<EventNotification, CancellationToken, Task>? capturedSendFunc = null;
+        _mockSender
+            .Setup(s => s.ProcessAsync(
+                It.IsAny<IEnumerable<EventNotification>>(),
+                It.IsAny<Func<EventNotification, CancellationToken, Task>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<EventNotification>, Func<EventNotification, CancellationToken, Task>, CancellationToken>(
+                (rows, sendFunc, ct) => capturedSendFunc = sendFunc);
+
+        var service = new EventNotificationDispatchService(
+            _serviceProvider, _mockLogger.Object);
+
+        await service.ProcessPendingAsync(CancellationToken.None);
+
+        Assert.NotNull(capturedSendFunc);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => capturedSendFunc!(notification, CancellationToken.None));
     }
 }

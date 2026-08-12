@@ -17,7 +17,6 @@ namespace TicketeraOnline.Api.Services;
 public class EventNotificationDispatchService : IHostedService, IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly IEmailService _emailService;
     private readonly ILogger<EventNotificationDispatchService> _logger;
     private Task? _executeTask;
     private CancellationTokenSource? _cts;
@@ -27,11 +26,9 @@ public class EventNotificationDispatchService : IHostedService, IDisposable
 
     public EventNotificationDispatchService(
         IServiceProvider serviceProvider,
-        IEmailService emailService,
         ILogger<EventNotificationDispatchService> logger)
     {
         _serviceProvider = serviceProvider;
-        _emailService = emailService;
         _logger = logger;
     }
 
@@ -90,6 +87,7 @@ public class EventNotificationDispatchService : IHostedService, IDisposable
             using var scope = _serviceProvider.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var retryableSender = scope.ServiceProvider.GetRequiredService<IRetryableEmailSender>();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
             var pending = await context.EventNotifications
                 .Where(n => n.Status == "pending")
@@ -110,11 +108,21 @@ public class EventNotificationDispatchService : IHostedService, IDisposable
                 pending,
                 async (notification, ct) =>
                 {
-                    await _emailService.SendEventDateChangeNotificationAsync(
+                    var result = await emailService.SendEventDateChangeNotificationAsync(
                         notification.RecipientEmail,
                         notification.EventName,
                         notification.OldDate ?? notification.CreatedAt,
                         notification.NewDate ?? DateTime.UtcNow);
+
+                    // Surface delivery failure as an exception so the shared
+                    // IRetryableEmailSender state machine records attempts/LastError
+                    // and retries (or exhausts) the row. EmailService returns a result
+                    // object instead of throwing, so it must be translated here.
+                    if (!result.Success)
+                    {
+                        throw new InvalidOperationException(
+                            result.Error ?? "Event date change notification failed to send");
+                    }
                 },
                 stoppingToken);
 
