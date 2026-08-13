@@ -69,6 +69,7 @@ public class AuthCookieApiFactory : WebApplicationFactory<Program>
 
 #region B6.1 — Auth Cookie Integration Tests
 
+[Collection("EnvConfigTests")]
 public class AuthCookieIntegrationTests : IClassFixture<AuthCookieApiFactory>
 {
     private readonly AuthCookieApiFactory _factory;
@@ -367,6 +368,7 @@ public class AuthRateLimitApiFactory : WebApplicationFactory<Program>
     }
 }
 
+[Collection("EnvConfigTests")]
 public class AuthRateLimitIntegrationTests : IClassFixture<AuthRateLimitApiFactory>
 {
     private readonly AuthRateLimitApiFactory _factory;

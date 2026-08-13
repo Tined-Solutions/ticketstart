@@ -19,7 +19,7 @@ public class TicketeraApiFactory : WebApplicationFactory<Program>
     {
         var backendRoot = Path.GetFullPath(
             Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
-                "..", "..", "..", ".."));
+                "..", "..", ".."));
         builder.UseContentRoot(backendRoot);
 
         // Provide minimal non-placeholder values via environment variables so the
@@ -64,6 +64,7 @@ public class TicketeraApiFactory : WebApplicationFactory<Program>
 /// Integration tests verifying that scaffold/template endpoints and controllers
 /// have been removed from the application (JD-C7).
 /// </summary>
+[Collection("EnvConfigTests")]
 public class ScaffoldRemovalTests : IClassFixture<TicketeraApiFactory>
 {
     private readonly HttpClient _client;

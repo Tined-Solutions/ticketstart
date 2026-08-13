@@ -66,6 +66,7 @@ public class AdminUserCreationApiFactory : WebApplicationFactory<Program>
 /// <summary>
 /// Integration tests for the admin-only user creation endpoint (Batch 2, JD-C1).
 /// </summary>
+[Collection("EnvConfigTests")]
 public class AdminUserCreationIntegrationTests : IClassFixture<AdminUserCreationApiFactory>
 {
     private readonly AdminUserCreationApiFactory _factory;

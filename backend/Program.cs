@@ -61,6 +61,20 @@ builder.Services.AddHttpClient<ITurnstileService, TurnstileService>();
 // Configure reservation HMAC token for guest checkout IDOR protection
 builder.Services.Configure<ReservationTokenOptions>(builder.Configuration.GetSection(ReservationTokenOptions.SectionName));
 
+// Configure HideExpiredEvents feature flag (EHE-009, ADR-4). The section is
+// REQUIRED at startup — a missing key fails fast so the flag can never be
+// silently absent. Within the section, Enabled defaults to true.
+var hideExpiredSection = builder.Configuration.GetSection(HideExpiredEventsOptions.SectionName);
+if (!hideExpiredSection.Exists())
+    throw new InvalidOperationException("HideExpiredEvents configuration section is required");
+builder.Services.Configure<HideExpiredEventsOptions>(hideExpiredSection);
+
+// Single shared clock (ADR-3): services read "now" exclusively through the
+// injected TimeProvider so tests can freeze/advance time with FakeTimeProvider.
+// TimeProvider.System.GetUtcNow() is DateTime.UtcNow semantically.
+builder.Services.AddSingleton(TimeProvider.System);
+
+
 var resendSettings = builder.Configuration.GetSection("Resend");
 var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
 var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");

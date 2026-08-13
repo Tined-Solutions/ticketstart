@@ -27,7 +27,7 @@ public class ConfigurableApiFactory : WebApplicationFactory<Program>
     {
         var backendRoot = Path.GetFullPath(
             Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
-                "..", "..", "..", ".."));
+                "..", "..", ".."));
         builder.UseContentRoot(backendRoot);
 
         // Background services try to connect to the real database; remove them
@@ -48,6 +48,7 @@ public class ConfigurableApiFactory : WebApplicationFactory<Program>
 /// and error-log redaction introduced in Batch 1 (JD-S1, JD-S7, JD-S8,
 /// JD-W16, JD-W18, JD-SG15).
 /// </summary>
+[Collection("EnvConfigTests")]
 public class ConfigValidationTests : IDisposable
 {
     private readonly Dictionary<string, string?> _originalValues = new();
