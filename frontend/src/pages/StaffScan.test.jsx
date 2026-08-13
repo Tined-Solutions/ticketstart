@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, act, within } from '@testing-library/react'
+import { screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import StaffScan from './StaffScan.jsx'
+import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 // ---------------------------------------------------------------------------
 // Module-level state for html5-qrcode mock
@@ -193,7 +194,7 @@ function simulateQrScan(qrData = 'ticket-001:1750000000:abc123sig') {
 }
 
 async function startScanning(user) {
-  const select = await screen.findByLabelText(/evento/i)
+  const select = await screen.findByLabelText(/^evento$/i)
   await user.selectOptions(select, eventId)
   await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 }
@@ -206,8 +207,8 @@ describe('StaffScan', () => {
   // -- Event selector & data fetching ------------------------------------
 
   it('renders the event selector with fetched events', async () => {
-    render(<StaffScan />)
-    const select = await screen.findByLabelText(/evento/i)
+    renderWithQueryClient(<StaffScan />)
+    const select = await screen.findByLabelText(/^evento$/i)
     expect(select).toBeInTheDocument()
 
     const options = Array.from(select.options)
@@ -217,11 +218,27 @@ describe('StaffScan', () => {
     expect(options[1].textContent).toMatch(/Estadio Monumental/)
     expect(options[2].textContent).toMatch(/Jazz Night/)
     expect(options[2].textContent).toMatch(/Teatro Colon/)
+
+    // The option must include the event time in 24h local format so staff can
+    // tell apart same-day events. Computed dynamically so the assertion is
+    // timezone-robust (the API returns UTC and the browser renders local time).
+    const expectedTime1 = new Date('2026-08-15T21:00:00Z').toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    const expectedTime2 = new Date('2026-09-20T20:00:00Z').toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    expect(options[1].textContent).toContain(expectedTime1)
+    expect(options[2].textContent).toContain(expectedTime2)
   })
 
   it('the UUID is never displayed to the user', async () => {
-    render(<StaffScan />)
-    const select = await screen.findByLabelText(/evento/i)
+    renderWithQueryClient(<StaffScan />)
+    const select = await screen.findByLabelText(/^evento$/i)
     const options = Array.from(select.options)
     for (const opt of options) {
       if (opt.value) {
@@ -234,14 +251,15 @@ describe('StaffScan', () => {
 
   it('shows loading state initially', () => {
     mockGet.mockImplementation(() => new Promise(() => {}))
-    render(<StaffScan />)
-    expect(screen.getByText(/cargando eventos/i)).toBeInTheDocument()
-    expect(screen.queryByLabelText(/evento/i)).not.toBeInTheDocument()
+    renderWithQueryClient(<StaffScan />)
+    // Spinner renders a screen-reader-only span plus the visible text
+    expect(screen.getAllByText(/cargando eventos/i).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText(/^evento$/i)).not.toBeInTheDocument()
   })
 
   it('shows error when fetch fails', async () => {
     mockGet.mockRejectedValueOnce(new Error('Network error'))
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     await waitFor(() => {
       expect(screen.getByText(/no se pudieron cargar los eventos/i)).toBeInTheDocument()
     })
@@ -250,46 +268,46 @@ describe('StaffScan', () => {
   // -- Rendering ----------------------------------------------------------
 
   it('renders the page with heading and event selector', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     expect(screen.getByRole('heading', { name: /escanear qr/i })).toBeInTheDocument()
-    expect(await screen.findByLabelText(/evento/i)).toBeInTheDocument()
+    expect(await screen.findByLabelText(/^evento$/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /iniciar escaneo/i })).toBeInTheDocument()
   })
 
   it('does not show history when there are no scans', async () => {
-    render(<StaffScan />)
-    await screen.findByLabelText(/evento/i)
+    renderWithQueryClient(<StaffScan />)
+    await screen.findByLabelText(/^evento$/i)
     expect(screen.queryByRole('heading', { name: /historial/i })).not.toBeInTheDocument()
   })
 
   // -- Validation ---------------------------------------------------------
 
   it('shows an error when trying to scan without selecting an event', async () => {
-    render(<StaffScan />)
-    await screen.findByLabelText(/evento/i)
+    renderWithQueryClient(<StaffScan />)
+    await screen.findByLabelText(/^evento$/i)
     await userEvent.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
     expect(screen.getByText(/debe seleccionar un evento/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('clears the validation error when the user selects an event', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
-    await screen.findByLabelText(/evento/i)
+    await screen.findByLabelText(/^evento$/i)
 
     await userEvent.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
     expect(screen.getByText(/debe seleccionar un evento/i)).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText(/evento/i), eventId)
+    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
     expect(screen.queryByText(/debe seleccionar un evento/i)).not.toBeInTheDocument()
   })
 
   // -- Selecting an event enables the scan button -------------------------
 
   it('selecting an event enables the scan button', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
-    const select = await screen.findByLabelText(/evento/i)
+    const select = await screen.findByLabelText(/^evento$/i)
     await user.selectOptions(select, eventId)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
     expect(screen.getByRole('button', { name: /detener escaneo/i })).toBeInTheDocument()
@@ -298,7 +316,7 @@ describe('StaffScan', () => {
   // -- Scanning lifecycle -------------------------------------------------
 
   it('starts the camera and shows the stop button when event is selected', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
     expect(screen.getByRole('button', { name: /detener escaneo/i })).toBeInTheDocument()
@@ -306,7 +324,7 @@ describe('StaffScan', () => {
 
   it('shows a camera error message when camera access is denied', async () => {
     shouldFailCamera = true
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
     await waitFor(() => {
@@ -315,7 +333,7 @@ describe('StaffScan', () => {
   })
 
   it('stops the scanner when the stop button is clicked', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
     expect(screen.getByRole('button', { name: /detener escaneo/i })).toBeInTheDocument()
@@ -329,7 +347,7 @@ describe('StaffScan', () => {
 
   it('calls the validation API and shows a success result with audio beep', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -358,7 +376,7 @@ describe('StaffScan', () => {
 
   it('shows the "Escanear Otro" button after a scan result', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -373,7 +391,7 @@ describe('StaffScan', () => {
 
   it('shows an error result when the ticket is already used', async () => {
     mockPost.mockResolvedValueOnce(alreadyUsedResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -391,7 +409,7 @@ describe('StaffScan', () => {
 
   it('shows an error result when the QR signature is invalid', async () => {
     mockPost.mockResolvedValueOnce(invalidSignatureResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -408,7 +426,7 @@ describe('StaffScan', () => {
 
   it('shows a connection error when the API call fails', async () => {
     mockPost.mockRejectedValueOnce(new Error('Network error'))
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -427,7 +445,7 @@ describe('StaffScan', () => {
     mockPost.mockRejectedValueOnce({
       response: { data: { error: { message: 'No hay entradas para este evento' } } },
     })
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -446,7 +464,7 @@ describe('StaffScan', () => {
     mockPost.mockRejectedValueOnce({
       response: { data: { error: 'QRCodeData is required' } },
     })
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -469,7 +487,7 @@ describe('StaffScan', () => {
       .mockResolvedValueOnce(alreadyUsedResponse)
       .mockResolvedValueOnce(invalidSignatureResponse)
 
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -483,7 +501,7 @@ describe('StaffScan', () => {
 
     // Click "Escanear Otro" and re-start scanning
     await user.click(screen.getByRole('button', { name: /escanear otro/i }))
-    await user.selectOptions(screen.getByLabelText(/evento/i), eventId)
+    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 
     // Second scan — already used
@@ -496,7 +514,7 @@ describe('StaffScan', () => {
 
     // Click "Escanear Otro" again
     await user.click(screen.getByRole('button', { name: /escanear otro/i }))
-    await user.selectOptions(screen.getByLabelText(/evento/i), eventId)
+    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 
     // Third scan — invalid signature
@@ -526,7 +544,7 @@ describe('StaffScan', () => {
 
   it('resets the result display when a different event is selected after a scan', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -537,24 +555,27 @@ describe('StaffScan', () => {
     expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
 
     // Select a different event — result should clear
-    await user.selectOptions(screen.getByLabelText(/evento/i), mockEvents[1].id)
-    expect(screen.queryByText(/ticket válido/i)).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText(/^evento$/i), mockEvents[1].id)
+    // The overlay exits via AnimatePresence — wait for the exit animation to finish
+    await waitFor(() => {
+      expect(screen.queryByText(/ticket válido/i)).not.toBeInTheDocument()
+    })
     expect(screen.getByRole('button', { name: /iniciar escaneo/i })).toBeInTheDocument()
   })
 
   // -- Event selector disabled during scanning ----------------------------
 
   it('disables the event selector while scanning is active', async () => {
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
-    expect(screen.getByLabelText(/evento/i)).toBeDisabled()
+    expect(screen.getByLabelText(/^evento$/i)).toBeDisabled()
   })
 
   // -- sessionStorage scan history ----------------------------------------
   it('persists scan history to sessionStorage', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -591,15 +612,15 @@ describe('StaffScan — Visual Regression', () => {
   })
 
   it('renders glass-surface on the controls panel', async () => {
-    render(<StaffScan />)
-    await screen.findByLabelText(/evento/i)
+    renderWithQueryClient(<StaffScan />)
+    await screen.findByLabelText(/^evento$/i)
     const glassElements = document.querySelectorAll('.glass-surface')
     expect(glassElements.length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders Badge components in scan history after a scan', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -617,7 +638,7 @@ describe('StaffScan — Visual Regression', () => {
 
   it('result overlay appears after scan with animated entry', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
 
@@ -632,9 +653,13 @@ describe('StaffScan — Visual Regression', () => {
 
   it('result overlay clears when rescanning', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
-    render(<StaffScan />)
+    renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
     await startScanning(user)
+
+    await act(async () => {
+      simulateQrScan()
+    })
 
     await screen.findByText(/ticket válido/i)
 

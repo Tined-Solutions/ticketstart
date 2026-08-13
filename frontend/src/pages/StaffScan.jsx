@@ -292,7 +292,7 @@ export default function StaffScan() {
               <option value="" disabled>Seleccionar evento...</option>
               {events.map((event) => (
                 <option key={event.id} value={event.id}>
-                  {event.name} — {new Date(event.date).toLocaleDateString('es-AR')} — {event.location}
+                  {event.name} — {new Date(event.date).toLocaleDateString('es-AR')} — {new Date(event.date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })} — {event.location}
                 </option>
               ))}
             </select>
