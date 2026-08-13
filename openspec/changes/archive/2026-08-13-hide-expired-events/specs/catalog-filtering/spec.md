@@ -24,7 +24,7 @@ Buyers MUST NOT see expired events in the public catalog. The system applies a s
 - WHEN `IsExpired(2026-08-12T12:00:00Z)` is called
 - THEN the result is `true`
 
-#### Scenario: Event at exact start instant is expired (strict less-than)
+#### Scenario: Event at exact start instant is **not** expired (strict less-than: `Date == asOf` → `false`)
 
 - GIVEN an event with `Date = 2026-08-12T14:00:00Z`
 - WHEN `IsExpired(2026-08-12T14:00:00Z)` is called
