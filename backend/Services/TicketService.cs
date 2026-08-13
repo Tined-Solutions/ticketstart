@@ -20,6 +20,13 @@ public class TicketService : ITicketService
     private readonly IServiceProvider _serviceProvider;
     private readonly string _hmacSecretKey;
 
+    /// <summary>
+    /// QR validation window: a QR timestamp is only valid until the event date
+    /// plus this many hours (see ValidateQRCodeAsync). Also consumed by the staff
+    /// scan chooser (EventService.GetScannableEventsAsync) so the two stay in sync.
+    /// </summary>
+    public const int ValidationWindowHours = 24;
+
     public TicketService(
         ApplicationDbContext context,
         IConfiguration configuration,
@@ -309,7 +316,7 @@ public class TicketService : ITicketService
             }
 
             // Validate: timestamp <= event.EndDate + 24h
-            var maxValidDate = ticket.Event.Date.AddHours(24);
+            var maxValidDate = ticket.Event.Date.AddHours(ValidationWindowHours);
             if (qrDateTime > maxValidDate)
             {
                 _logger.LogWarning("QR timestamp {QrTimestamp} is after event end + 24h {MaxDate} for ticket {TicketId}",

@@ -347,26 +347,34 @@ public class EventControllerTests
     }
 
     [Fact]
-    public async Task Staff_ManagementList_IncludesExpired()
+    public async Task Staff_ManagementList_IncludesScannableOnly()
     {
-        // EHE-007: staff scan chooser (GET /api/events/manage) lists past AND
-        // active events, unfiltered.
+        // Staff scan chooser (GET /api/events/manage): only scannable events are
+        // listed — future events plus events ended within the QR validation window
+        // (24h). Events ended beyond that window cannot validate QR codes anymore.
         using var factory = new EventCatalogApiFactory();
         var staffId = factory.SeedStaff();
-        var pastId = factory.SeedEvent("Past", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-1), factory.SeedOrganizer());
         var futureId = factory.SeedEvent("Future", factory.Clock.GetUtcNow().UtcDateTime.AddDays(1), factory.SeedOrganizer());
+        var recentId = factory.SeedEvent("Recent", factory.Clock.GetUtcNow().UtcDateTime.AddHours(-2), factory.SeedOrganizer());
+        var oldId = factory.SeedEvent("Old", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), factory.SeedOrganizer());
         var cookie = await factory.LoginAndGetCookieAsync(staffId);
         using var client = factory.CreateClientWithCookie(cookie);
 
         // Act
         var response = await client.GetAsync("/api/events/manage");
 
-        // Assert — both events present (200 also proves the route resolves, not 404/405)
+        // Assert — future + recently-ended appear; the old event is filtered out
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<List<EventWithAvailability>>();
         Assert.NotNull(body);
-        Assert.Contains(body, e => e.Id == pastId);
         Assert.Contains(body, e => e.Id == futureId);
+        Assert.Contains(body, e => e.Id == recentId);
+        Assert.DoesNotContain(body, e => e.Id == oldId);
+
+        // Ordering: future events first, recently-ended events after them.
+        var futureIndex = body.FindIndex(e => e.Id == futureId);
+        var recentIndex = body.FindIndex(e => e.Id == recentId);
+        Assert.True(futureIndex < recentIndex, "Future event must come before the recently-ended event");
     }
 
     [Fact]

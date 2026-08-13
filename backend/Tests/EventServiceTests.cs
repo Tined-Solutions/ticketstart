@@ -1128,6 +1128,113 @@ public class EventServiceTests : IDisposable
     }
 
     #endregion
+
+    #region GetScannableEventsAsync Tests
+
+    [Fact]
+    public async Task GetScannableEvents_IncludesFutureAndRecentlyEnded_ExcludesOlderThan24h()
+    {
+        // Scanner chooser: future events plus events ended within the 24h QR
+        // validation window (TicketService.ValidationWindowHours) are listed;
+        // anything older cannot validate QR codes and is filtered out.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var future = CreateEventEntity(organizerId, "Future", now.AddDays(1));
+        var recent = CreateEventEntity(organizerId, "Recent", now.AddHours(-2));
+        var old = CreateEventEntity(organizerId, "Old", now.AddDays(-2));
+        _context.Events.AddRange(future, recent, old);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert — only future + recently-ended are scannable
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(future.Id, ids);
+        Assert.Contains(recent.Id, ids);
+        Assert.DoesNotContain(old.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetScannableEvents_ExcludesEventEndedExactlyAtWindowBoundary()
+    {
+        // Borderline: an event that ended exactly 24h ago sits at the edge of the
+        // window (Date > cutoff is strict). This mirrors QR validation, which also
+        // rejects a timestamp equal to Date + 24h.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var boundary = CreateEventEntity(Guid.NewGuid(), "Boundary", now.AddHours(-TicketService.ValidationWindowHours));
+        _context.Events.Add(boundary);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert
+        Assert.DoesNotContain(result, e => e.Id == boundary.Id);
+    }
+
+    [Fact]
+    public async Task GetScannableEvents_OrdersFutureAscendingThenEndedDescending()
+    {
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var futureLater = CreateEventEntity(organizerId, "Future Later", now.AddDays(5));
+        var futureSoon = CreateEventEntity(organizerId, "Future Soon", now.AddDays(1));
+        var endedRecent = CreateEventEntity(organizerId, "Ended Recent", now.AddHours(-2));
+        var endedOlder = CreateEventEntity(organizerId, "Ended Older", now.AddHours(-10));
+        _context.Events.AddRange(endedOlder, futureLater, endedRecent, futureSoon); // interleaved
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = (await service.GetScannableEventsAsync()).ToList();
+
+        // Assert — future events ascending first, then ended events descending (most recent first)
+        var order = result.Select(e => e.Id).ToList();
+        Assert.Equal(new[] { futureSoon.Id, futureLater.Id, endedRecent.Id, endedOlder.Id }, order);
+    }
+
+    [Fact]
+    public async Task GetScannableEvents_IndependentOfHideExpiredFlag()
+    {
+        // The scanner window is a hard technical rule, not a product toggle: even
+        // with HideExpiredEvents.Enabled=false the 24h scannable window still applies.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = false });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var future = CreateEventEntity(organizerId, "Future", now.AddDays(1));
+        var recent = CreateEventEntity(organizerId, "Recent", now.AddHours(-2));
+        var old = CreateEventEntity(organizerId, "Old", now.AddDays(-2));
+        _context.Events.AddRange(future, recent, old);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert — the window applies regardless of the flag
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(future.Id, ids);
+        Assert.Contains(recent.Id, ids);
+        Assert.DoesNotContain(old.Id, ids);
+    }
+
+    #endregion
 }
 
 /// <summary>

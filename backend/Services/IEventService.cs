@@ -33,13 +33,19 @@ public interface IEventService
     /// <summary>
     /// Retrieves all published events with ticket availability calculations.
     /// </summary>
-    /// <param name="includeExpired">
-    /// When false (default), expired events are excluded from the public catalog
-    /// (EHE-002). Pass true from the staff-gated management list so past events
-    /// stay available for scanning (EHE-007).
-    /// </param>
     /// <returns>List of all events with availability information</returns>
-    Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync(bool includeExpired = false);
+    Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync();
+
+    /// <summary>
+    /// Retrieves the events the staff QR scanner can validate tickets for
+    /// (EHE-007): future events plus events that ended within the QR validation
+    /// window (<see cref="TicketService.ValidationWindowHours"/> hours). Ordered
+    /// with future events first (ascending by date), then ended events descending
+    /// (most recently ended first). This is a hard technical rule independent of
+    /// the HideExpiredEvents feature flag.
+    /// </summary>
+    /// <returns>List of scannable events with availability information</returns>
+    Task<IEnumerable<EventWithAvailability>> GetScannableEventsAsync();
 
     /// <summary>
     /// Updates an event with ownership validation.
