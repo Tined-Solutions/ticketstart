@@ -5,6 +5,7 @@ import apiClient from '../api/client.js'
 import Badge from '../components/ui/Badge.jsx'
 import Spinner from '../components/Spinner.jsx'
 import { fadeInScale } from '../lib/motion.js'
+import { useManagementEvents } from '../hooks/useManagementEvents.js'
 
 // ---------------------------------------------------------------------------
 // Audio helpers
@@ -101,38 +102,15 @@ export default function StaffScan() {
   const [result, setResult] = useState(null) // { type: 'success'|'error', message, ticket }
   const [history, setHistory] = useState(() => loadHistoryFromStorage()) // Initialize from sessionStorage
   const [error, setError] = useState('')
-  const [events, setEvents] = useState([])
-  const [eventsLoading, setEventsLoading] = useState(true)
-  const [eventsError, setEventsError] = useState('')
   const scannerRef = useRef(null)
 
-  // -----------------------------------------------------------------------
-  // Fetch events on mount
-  // -----------------------------------------------------------------------
-
-  useEffect(() => {
-    let cancelled = false
-    async function fetchEvents() {
-      try {
-        setEventsLoading(true)
-        setEventsError('')
-        const response = await apiClient.get('/events')
-        if (!cancelled) {
-          setEvents(response.data)
-        }
-      } catch {
-        if (!cancelled) {
-          setEventsError('No se pudieron cargar los eventos. Intente recargar la pagina.')
-        }
-      } finally {
-        if (!cancelled) {
-          setEventsLoading(false)
-        }
-      }
-    }
-    fetchEvents()
-    return () => { cancelled = true }
-  }, [])
+  // Event chooser loads via the role-gated management endpoint so past
+  // events remain selectable for scanning (EHE-007). The public catalog
+  // hides expired events.
+  const { data: events = [], isLoading: eventsLoading, isError: eventsIsError } = useManagementEvents()
+  const eventsError = eventsIsError
+    ? 'No se pudieron cargar los eventos. Intente recargar la pagina.'
+    : ''
 
   // -----------------------------------------------------------------------
   // Scanner lifecycle

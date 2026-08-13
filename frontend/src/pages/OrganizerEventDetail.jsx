@@ -2,7 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import EventForm from '../components/EventForm.jsx'
-import { useEvent } from '../hooks/useEvent.js'
+import { useManagementEvent } from '../hooks/useManagementEvent.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { queryKeys } from '../lib/queryKeys.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
@@ -14,15 +14,17 @@ export default function OrganizerEventDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data: eventData, isLoading, isError, error } = useEvent(id)
+  const { data: eventData, isLoading, isError, error } = useManagementEvent(id)
 
   const errorMessage = isError ? getErrorMessage(error) : ''
 
   function handleSuccess() {
     // Event edited → details/stock may have changed → invalidate the catalog
-    // and this event's detail before returning to the dashboard.
+    // and this event's detail (both public and management variants) before
+    // returning to the dashboard.
     queryClient.invalidateQueries({ queryKey: queryKeys.events })
     queryClient.invalidateQueries({ queryKey: queryKeys.event(id) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.managementEvent(id) })
     navigate('/organizer/dashboard', { replace: true })
   }
 
