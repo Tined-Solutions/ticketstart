@@ -48,7 +48,8 @@ public class EventImageUploadTests : IDisposable
         _mockNotificationQueue = new Mock<IEventNotificationQueue>();
         _s3ClientMock = new Mock<IAmazonS3>();
         
-        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System);
+        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System,
+            Microsoft.Extensions.Options.Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()

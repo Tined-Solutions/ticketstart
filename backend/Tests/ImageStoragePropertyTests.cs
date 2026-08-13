@@ -3,6 +3,7 @@ using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -79,7 +80,7 @@ public class ImageStoragePropertyTests : IDisposable
             })
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Test with multiple image uploads to verify uniqueness
         var imageUploadCount = 50;
@@ -136,7 +137,7 @@ public class ImageStoragePropertyTests : IDisposable
             })
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Act - Upload images concurrently
         var concurrentUploadCount = 20;
@@ -189,7 +190,7 @@ public class ImageStoragePropertyTests : IDisposable
             })
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Act - Upload the same filename multiple times
         var sameFilename = "duplicate-name.jpg";
@@ -242,7 +243,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var fileContent = "fake-file-content";
         var fileStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(fileContent));
@@ -279,7 +280,7 @@ public class ImageStoragePropertyTests : IDisposable
             .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var imageContent = "valid-image-content";
         var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(imageContent));
@@ -306,7 +307,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create a stream larger than 5MB
         var oversizedContent = new byte[6 * 1024 * 1024]; // 6MB
@@ -343,7 +344,7 @@ public class ImageStoragePropertyTests : IDisposable
             .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var validContent = new byte[fileSize];
         var validStream = new MemoryStream(validContent);
@@ -373,7 +374,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var imageContent = "some-content";
         var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(imageContent));
@@ -417,7 +418,7 @@ public class ImageStoragePropertyTests : IDisposable
             })
             .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create organizer and event with image
         var organizerId = Guid.NewGuid();
@@ -484,7 +485,7 @@ public class ImageStoragePropertyTests : IDisposable
             })
             .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create organizer
         var organizerId = Guid.NewGuid();
@@ -563,7 +564,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create organizer and event WITHOUT image
         var organizerId = Guid.NewGuid();
@@ -616,7 +617,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
         var organizer = new User
@@ -671,7 +672,7 @@ public class ImageStoragePropertyTests : IDisposable
             .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
             .ThrowsAsync(new AmazonS3Exception("Simulated S3 failure"));
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
         var organizer = new User
@@ -741,7 +742,7 @@ public class ImageStoragePropertyTests : IDisposable
             .Callback<DeleteObjectRequest, CancellationToken>((request, ct) => deletedKeys.Add(request.Key))
             .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
         var organizer = new User
@@ -805,7 +806,7 @@ public class ImageStoragePropertyTests : IDisposable
             .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
             .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
 
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
         var organizer = new User
@@ -859,7 +860,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
@@ -896,7 +897,7 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var mockS3Client = new Mock<IAmazonS3>();
-        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
         var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
 
         // Act & Assert

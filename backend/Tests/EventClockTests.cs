@@ -1,6 +1,7 @@
 using Amazon.S3;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using TicketeraOnline.Api.Data;
@@ -55,7 +56,8 @@ public class EventClockTests : IDisposable
         _configuration,
         new Mock<IAmazonS3>().Object,
         new Mock<IEventNotificationQueue>().Object,
-        clock);
+        clock,
+        Options.Create(new HideExpiredEventsOptions()));
 
     private static CreateEventRequest CreateRequest(DateTime date) => new()
     {

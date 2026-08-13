@@ -6,6 +6,8 @@ using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using System.Net;
 using Xunit;
@@ -49,7 +51,8 @@ public class EventServiceTests : IDisposable
         _mockNotificationQueue = new Mock<IEventNotificationQueue>();
         _s3ClientMock = new Mock<IAmazonS3>();
         
-        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System);
+        _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()
@@ -955,6 +958,147 @@ public class EventServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         return (evt, tt);
+    }
+
+    #endregion
+
+    #region EHE-002/003 — Expired-event filtering (catalog + detail)
+
+    /// <summary>
+    /// Builds an EventService over the shared InMemory context with a frozen clock
+    /// and the HideExpiredEvents flag bound to the given options (ADR-3/ADR-4).
+    /// </summary>
+    private EventService CreateServiceWithClockAndOptions(TimeProvider clock, HideExpiredEventsOptions options) => new(
+        _context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, clock,
+        Options.Create(options));
+
+    private static Event CreateEventEntity(Guid organizerId, string name, DateTime date) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = name,
+        Description = "Description",
+        Date = date,
+        Location = "Location",
+        OrganizerId = organizerId,
+        CreatedAt = date,
+        UpdatedAt = date
+    };
+
+    [Fact]
+    public async Task GetAllPublished_FlagEnabled_ExcludesExpired()
+    {
+        // EHE-002: flag ON — the public list must not surface expired events.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var organizerId = Guid.NewGuid();
+        var future = CreateEventEntity(organizerId, "Future", fake.GetUtcNow().UtcDateTime.AddDays(1));
+        var past = CreateEventEntity(organizerId, "Past", fake.GetUtcNow().UtcDateTime.AddDays(-1));
+        _context.Events.AddRange(future, past);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetAllPublishedEventsAsync();
+
+        // Assert — only the future-dated event is visible
+        var ids = result.Select(e => e.Id).ToList();
+        Assert.Contains(future.Id, ids);
+        Assert.DoesNotContain(past.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetAllPublished_AllExpired_Empty()
+    {
+        // EHE-002: all events expired → empty list.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var organizerId = Guid.NewGuid();
+        _context.Events.Add(CreateEventEntity(organizerId, "Past A", fake.GetUtcNow().UtcDateTime.AddHours(-2)));
+        _context.Events.Add(CreateEventEntity(organizerId, "Past B", fake.GetUtcNow().UtcDateTime.AddDays(-10)));
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetAllPublishedEventsAsync();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetAllPublished_MixOrderIndependent()
+    {
+        // EHE-002: interleaved past/future dates — only future-dated events come
+        // back regardless of insertion order.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var a = CreateEventEntity(organizerId, "A past", now.AddDays(-5));
+        var b = CreateEventEntity(organizerId, "B future", now.AddDays(1));
+        var c = CreateEventEntity(organizerId, "C past", now.AddDays(-1));
+        var d = CreateEventEntity(organizerId, "D future", now.AddDays(10));
+        var e = CreateEventEntity(organizerId, "E past", now.AddHours(-3));
+        _context.Events.AddRange(a, c, e, b, d); // deliberately interleaved insertion order
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetAllPublishedEventsAsync();
+
+        // Assert — set equality, order-independent
+        var ids = result.Select(x => x.Id).ToHashSet();
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(b.Id, ids);
+        Assert.Contains(d.Id, ids);
+        Assert.DoesNotContain(a.Id, ids);
+        Assert.DoesNotContain(c.Id, ids);
+        Assert.DoesNotContain(e.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetEventById_Public_Expired_Null()
+    {
+        // EHE-003: public detail (default includeExpired=false) hides expired
+        // events → null (the controller maps that to 404).
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var expired = CreateEventEntity(Guid.NewGuid(), "Expired", fake.GetUtcNow().UtcDateTime.AddDays(-1));
+        _context.Events.Add(expired);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetEventByIdAsync(expired.Id);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetEventById_ManagementIncludeExpired_200()
+    {
+        // EHE-003: the management variant (includeExpired:true) returns the event
+        // regardless of expiry — this is the call behind GET /api/events/{id}/manage.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var expired = CreateEventEntity(Guid.NewGuid(), "Expired", fake.GetUtcNow().UtcDateTime.AddDays(-1));
+        _context.Events.Add(expired);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetEventByIdAsync(expired.Id, includeExpired: true);
+
+        // Assert — non-null, full detail
+        Assert.NotNull(result);
+        Assert.Equal(expired.Id, result.Id);
+        Assert.Equal("Expired", result.Name);
     }
 
     #endregion

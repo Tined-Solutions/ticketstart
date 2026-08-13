@@ -21,14 +21,25 @@ public interface IEventService
     /// Availability = ticket type quantity - sold tickets.
     /// </summary>
     /// <param name="eventId">ID of the event to retrieve</param>
+    /// <param name="includeExpired">
+    /// When false (default), expired events are hidden from the caller — the query
+    /// filters to future-dated events (EHE-003). Pass true from role-gated
+    /// management paths (EventOwnership / RequireStaffRole) so organizers, staff
+    /// and admins keep full access to past events (EHE-006/007).
+    /// </param>
     /// <returns>The event with calculated ticket availability, or null if not found</returns>
-    Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId);
+    Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId, bool includeExpired = false);
 
     /// <summary>
     /// Retrieves all published events with ticket availability calculations.
     /// </summary>
+    /// <param name="includeExpired">
+    /// When false (default), expired events are excluded from the public catalog
+    /// (EHE-002). Pass true from the staff-gated management list so past events
+    /// stay available for scanning (EHE-007).
+    /// </param>
     /// <returns>List of all events with availability information</returns>
-    Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync();
+    Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync(bool includeExpired = false);
 
     /// <summary>
     /// Updates an event with ownership validation.

@@ -4,6 +4,7 @@ using TicketeraOnline.Api.Models;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace TicketeraOnline.Api.Services;
 
@@ -19,6 +20,7 @@ public class EventService : IEventService
     private readonly IAmazonS3 _s3Client;
     private readonly IEventNotificationQueue _notificationQueue;
     private readonly TimeProvider _clock;
+    private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
 
     // Allowed image MIME types
     private static readonly HashSet<string> AllowedImageTypes = new()
@@ -35,7 +37,7 @@ public class EventService : IEventService
     private const int MaxAdditionalStock = 1000;
     private const int MaxTicketQuantityPerOperation = 1000;
 
-    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider)
+    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider, IOptions<HideExpiredEventsOptions> hideExpiredOptions)
     {
         _context = context;
         _logger = logger;
@@ -43,6 +45,7 @@ public class EventService : IEventService
         _s3Client = s3Client;
         _notificationQueue = notificationQueue;
         _clock = timeProvider;
+        _hideExpiredOptions = hideExpiredOptions;
     }
 
     /// <summary>
@@ -122,12 +125,25 @@ public class EventService : IEventService
     /// Quantity - sold tickets (Tickets rows) - active unexpired reservations.
     /// There is no stock counter.
     /// </summary>
-    public async Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId)
+    public async Task<EventWithAvailability?> GetEventByIdAsync(Guid eventId, bool includeExpired = false)
     {
         _logger.LogInformation("Retrieving event {EventId} with availability", eventId);
 
-        var eventEntity = await _context.Events
-            .Include(e => e.TicketTypes)
+        IQueryable<Event> query = _context.Events
+            .Include(e => e.TicketTypes);
+
+        // EHE-003/ADR-2: public callers must not see expired events. The inline
+        // `e.Date > now` predicate keeps the filter translatable to a single SQL
+        // predicate — never call e.IsExpired(...) inside an IQueryable (EF Core
+        // cannot translate the method call and would client-evaluate). Management
+        // callers (EventOwnership/RequireStaffRole) pass includeExpired:true.
+        if (_hideExpiredOptions.Value.Enabled && !includeExpired)
+        {
+            var now = _clock.GetUtcNow().UtcDateTime;
+            query = query.Where(e => e.Date > now);
+        }
+
+        var eventEntity = await query
             .FirstOrDefaultAsync(e => e.Id == eventId);
 
         if (eventEntity == null)
@@ -147,12 +163,23 @@ public class EventService : IEventService
     /// Aggregations for all ticket types across all events run as two batched queries
     /// (one COUNT/GROUP BY, one SUM/GROUP BY) to avoid N+1.
     /// </summary>
-    public async Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync()
+    public async Task<IEnumerable<EventWithAvailability>> GetAllPublishedEventsAsync(bool includeExpired = false)
     {
         _logger.LogInformation("Retrieving all published events");
 
-        var events = await _context.Events
-            .Include(e => e.TicketTypes)
+        IQueryable<Event> query = _context.Events
+            .Include(e => e.TicketTypes);
+
+        // EHE-002/ADR-2: public catalog excludes expired events (inline,
+        // translatable predicate — see GetEventByIdAsync for the rationale).
+        // The staff-gated management list passes includeExpired:true (EHE-007).
+        if (_hideExpiredOptions.Value.Enabled && !includeExpired)
+        {
+            var now = _clock.GetUtcNow().UtcDateTime;
+            query = query.Where(e => e.Date > now);
+        }
+
+        var events = await query
             .ToListAsync();
 
         var allTicketTypeIds = events
