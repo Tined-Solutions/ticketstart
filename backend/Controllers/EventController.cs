@@ -43,6 +43,36 @@ public class EventController : TicketeraControllerBase
         return Ok(eventDetails);
     }
 
+    /// <summary>
+    /// Unfiltered event list for the staff scan chooser (EHE-007). Returns past
+    /// AND active events. Role-gated: Staff/Admin only.
+    /// </summary>
+    [HttpGet("manage")]
+    [Authorize(Policy = "RequireStaffRole")]
+    public async Task<IActionResult> GetAllEventsForManagement()
+    {
+        var events = await _eventService.GetAllPublishedEventsAsync(includeExpired: true);
+        return Ok(events);
+    }
+
+    /// <summary>
+    /// Unfiltered event detail for the organizer edit page (EHE-006). Returns the
+    /// event regardless of expiry. Role-gated: event owner or Admin only.
+    /// </summary>
+    [HttpGet("{id:guid}/manage")]
+    [Authorize(Policy = "EventOwnership")]
+    public async Task<IActionResult> GetEventForManagement(Guid id)
+    {
+        var eventDetails = await _eventService.GetEventByIdAsync(id, includeExpired: true);
+
+        if (eventDetails == null)
+        {
+            return NotFound(new { error = "Event not found" });
+        }
+
+        return Ok(eventDetails);
+    }
+
     [HttpPost]
     [Authorize(Policy = "RequireOrganizadorRole")]
     public async Task<IActionResult> CreateEvent([FromBody] CreateEventRequest request)
@@ -93,7 +123,9 @@ public class EventController : TicketeraControllerBase
         try
         {
             var updatedEvent = await _eventService.UpdateEventAsync(id, request, userId, userRole);
-            var eventDetails = await _eventService.GetEventByIdAsync(updatedEvent.Id);
+            // EHE-006: includeExpired — an organizer editing a PAST event must get
+            // the result back, not a null → 500. EventOwnership already gated access.
+            var eventDetails = await _eventService.GetEventByIdAsync(updatedEvent.Id, includeExpired: true);
 
             if (userRole == UserRole.Admin)
             {
@@ -172,7 +204,10 @@ public class EventController : TicketeraControllerBase
             return Unauthorized();
         }
 
-        var eventDetails = await _eventService.GetEventByIdAsync(id);
+        // EHE-006 (CRITICAL): includeExpired — past-event image upload/replacement
+        // is an existing organizer workflow; the default filter would 404 the
+        // existence check below. EventOwnership already gated access.
+        var eventDetails = await _eventService.GetEventByIdAsync(id, includeExpired: true);
         if (eventDetails == null)
         {
             return NotFound(new { error = "Event not found" });
