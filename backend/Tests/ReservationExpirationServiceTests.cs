@@ -30,6 +30,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole());
@@ -62,6 +63,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole());
@@ -95,6 +97,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
@@ -135,6 +138,7 @@ public class ReservationExpirationServiceTests
             options.UseInMemoryDatabase(dbName)
                 .ConfigureWarnings(x => x.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
@@ -270,6 +274,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}"));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
@@ -306,6 +311,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseInMemoryDatabase(dbName));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
@@ -412,6 +418,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlite(connection));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-key-minimum-32-characters-long!!");
         services.AddLogging(builder => builder.AddConsole());
@@ -456,6 +463,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlite(connection));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-key-minimum-32-characters-long!!");
         services.AddLogging(builder => builder.AddConsole());
@@ -533,6 +541,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlite(connection));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-key-minimum-32-characters-long!!");
         services.AddLogging(builder => builder.AddConsole());
@@ -607,6 +616,7 @@ public class ReservationExpirationServiceTests
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlite(connection));
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-key-minimum-32-characters-long!!");
         services.AddLogging(builder => builder.AddConsole());

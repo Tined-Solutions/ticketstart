@@ -18,6 +18,7 @@ public class EventService : IEventService
     private readonly IConfiguration _configuration;
     private readonly IAmazonS3 _s3Client;
     private readonly IEventNotificationQueue _notificationQueue;
+    private readonly TimeProvider _clock;
 
     // Allowed image MIME types
     private static readonly HashSet<string> AllowedImageTypes = new()
@@ -34,13 +35,14 @@ public class EventService : IEventService
     private const int MaxAdditionalStock = 1000;
     private const int MaxTicketQuantityPerOperation = 1000;
 
-    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue)
+    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
         _s3Client = s3Client;
         _notificationQueue = notificationQueue;
+        _clock = timeProvider;
     }
 
     /// <summary>
@@ -58,7 +60,7 @@ public class EventService : IEventService
         if (string.IsNullOrWhiteSpace(request.Location))
             throw new ArgumentException("Event location is required", nameof(request.Location));
         
-        if (request.Date <= DateTime.UtcNow)
+        if (request.Date <= _clock.GetUtcNow().UtcDateTime)
             throw new ArgumentException("Event date must be in the future", nameof(request.Date));
         
         if (request.TicketTypes == null || !request.TicketTypes.Any())
@@ -77,7 +79,7 @@ public class EventService : IEventService
                 throw new ArgumentException("Ticket quantity must be greater than zero");
         }
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         var eventEntity = new Event
         {
             Id = Guid.NewGuid(),
@@ -180,7 +182,7 @@ public class EventService : IEventService
             return (new Dictionary<Guid, int>(), new Dictionary<Guid, int>());
         }
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
 
         var soldByType = await _context.Tickets
             .Where(t => ticketTypeIds.Contains(t.TicketTypeId) && !t.IsRefunded) // APR-005
@@ -319,7 +321,7 @@ public class EventService : IEventService
                 if (quantity > MaxTicketQuantityPerOperation)
                     throw new ArgumentException($"Ticket quantity must not exceed {MaxTicketQuantityPerOperation}", nameof(quantity));
 
-                var now = DateTime.UtcNow;
+                var now = _clock.GetUtcNow().UtcDateTime;
                 var ticketType = new TicketType
                 {
                     Id = Guid.NewGuid(),
@@ -400,7 +402,7 @@ public class EventService : IEventService
         if (string.IsNullOrWhiteSpace(request.Location))
             throw new ArgumentException("Event location is required", nameof(request.Location));
         
-        if (request.Date <= DateTime.UtcNow)
+        if (request.Date <= _clock.GetUtcNow().UtcDateTime)
             throw new ArgumentException("Event date must be in the future", nameof(request.Date));
 
         // Update event properties. ImageUrl is special: null (omitted) preserves
@@ -416,7 +418,7 @@ public class EventService : IEventService
         {
             eventEntity.ImageUrl = request.ImageUrl;
         }
-        eventEntity.UpdatedAt = DateTime.UtcNow;
+        eventEntity.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
 
         await _context.SaveChangesAsync();
 
@@ -442,7 +444,7 @@ public class EventService : IEventService
                     "Enqueueing {BuyerCount} notifications.",
                     eventId, oldDate, request.Date, buyerEmails.Count);
 
-                var now = DateTime.UtcNow;
+                var now = _clock.GetUtcNow().UtcDateTime;
                 foreach (var email in buyerEmails)
                 {
                     var notification = new EventNotification
@@ -638,7 +640,7 @@ public class EventService : IEventService
         var newImageUrl = await UploadEventImageAsync(imageStream, fileName, contentType);
 
         eventEntity.ImageUrl = newImageUrl;
-        eventEntity.UpdatedAt = DateTime.UtcNow;
+        eventEntity.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
         await _context.SaveChangesAsync();
 
         // Best-effort cleanup: the old object is orphaned once the event points at

@@ -57,7 +57,7 @@ public class EventServiceTicketStockTests : IDisposable
             _context,
             new TestLogger<EventService>(),
             configuration,
-            new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object);
+            new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
     }
 
     public void Dispose()
@@ -300,7 +300,7 @@ public class EventServiceTicketStockTests : IDisposable
                 concurrentContext,
                 new TestLogger<EventService>(),
                 configuration,
-                new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object);
+                new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
             await service.AddTicketStockAsync(eventId, ticketTypeId, 5);
         });
 
@@ -315,7 +315,8 @@ public class EventServiceTicketStockTests : IDisposable
             var service = new ReservationService(
                 concurrentContext,
                 new TestLogger<ReservationService>(),
-                reservationServiceOptions);
+                reservationServiceOptions,
+                TimeProvider.System);
             await service.CreateReservationAsync(null, eventId, ticketTypeId, 8, "12345678");
         });
 

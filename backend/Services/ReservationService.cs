@@ -18,6 +18,7 @@ public class ReservationService : IReservationService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<ReservationService> _logger;
     private readonly ReservationTokenOptions _tokenOptions;
+    private readonly TimeProvider _clock;
 
     // Reservation expiration time: 10 minutes
     private const int ReservationExpirationMinutes = 10;
@@ -25,11 +26,13 @@ public class ReservationService : IReservationService
     public ReservationService(
         ApplicationDbContext context,
         ILogger<ReservationService> logger,
-        IOptions<ReservationTokenOptions> tokenOptions)
+        IOptions<ReservationTokenOptions> tokenOptions,
+        TimeProvider timeProvider)
     {
         _context = context;
         _logger = logger;
         _tokenOptions = tokenOptions.Value;
+        _clock = timeProvider;
     }
 
     /// <summary>
@@ -90,7 +93,7 @@ public class ReservationService : IReservationService
 
             try
             {
-                var now = DateTime.UtcNow;
+                var now = _clock.GetUtcNow().UtcDateTime;
                 var provider = _context.Database.ProviderName;
 
                 TicketType? ticketType;
@@ -198,7 +201,7 @@ public class ReservationService : IReservationService
 
         // Check if reservation is active and not expired
         var isValid = reservation.Status == ReservationStatus.Active &&
-                      reservation.ExpiresAt > DateTime.UtcNow;
+                      reservation.ExpiresAt > _clock.GetUtcNow().UtcDateTime;
 
         _logger.LogInformation("Reservation {ReservationId} validation result: {IsValid} (Status: {Status}, ExpiresAt: {ExpiresAt})",
             reservationId, isValid, reservation.Status, reservation.ExpiresAt);
@@ -216,7 +219,7 @@ public class ReservationService : IReservationService
     {
         _logger.LogInformation("Starting expired reservation release process");
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
 
         // Find all expired active reservations
         var expiredReservations = await _context.Reservations
@@ -273,7 +276,7 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException($"Reservation cannot be confirmed. Current status: {reservation.Status}");
         }
 
-        if (reservation.ExpiresAt <= DateTime.UtcNow)
+        if (reservation.ExpiresAt <= _clock.GetUtcNow().UtcDateTime)
         {
             _logger.LogWarning("Reservation {ReservationId} has expired and cannot be confirmed. Expired at: {ExpiresAt}",
                 reservationId, reservation.ExpiresAt);
@@ -374,7 +377,7 @@ public class ReservationService : IReservationService
             throw new InvalidOperationException($"Reservation cannot be updated. Current status: {reservation.Status}");
         }
 
-        if (reservation.ExpiresAt <= DateTime.UtcNow)
+        if (reservation.ExpiresAt <= _clock.GetUtcNow().UtcDateTime)
         {
             _logger.LogWarning("Reservation {ReservationId} has expired and cannot be updated", reservationId);
             throw new InvalidOperationException("Reservation has expired and cannot be updated");
@@ -422,7 +425,7 @@ public class ReservationService : IReservationService
         }
 
         var nonce = Guid.NewGuid().ToString("N")[..16];
-        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var timestamp = _clock.GetUtcNow().ToUnixTimeSeconds();
         var dataToSign = $"{nonce}:{timestamp}";
         var signature = HmacHelper.ComputeHmacSha256(dataToSign, _tokenOptions.TokenSecretKey);
         var token = $"{nonce}:{timestamp}:{signature}";
@@ -465,9 +468,9 @@ public class ReservationService : IReservationService
 
         // Check expiry
         var tokenTime = DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
-        if ((DateTime.UtcNow - tokenTime).TotalMinutes > expiryMinutes)
+        if ((_clock.GetUtcNow().UtcDateTime - tokenTime).TotalMinutes > expiryMinutes)
         {
-            _logger.LogWarning("Reservation token expired. Token time: {TokenTime}, Now: {Now}", tokenTime, DateTime.UtcNow);
+            _logger.LogWarning("Reservation token expired. Token time: {TokenTime}, Now: {Now}", tokenTime, _clock.GetUtcNow().UtcDateTime);
             return false;
         }
 

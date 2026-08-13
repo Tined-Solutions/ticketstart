@@ -66,7 +66,8 @@ public class PaymentPropertyTests : IDisposable
             _tokenOptions,
             _ticketService,
             _mockEmailService.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            TimeProvider.System);
     }
 
     public void Dispose()

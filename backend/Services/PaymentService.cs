@@ -19,6 +19,7 @@ public class PaymentService : IPaymentService
     private readonly ITicketService _ticketService;
     private readonly IEmailService _emailService;
     private readonly ILogger<PaymentService> _logger;
+    private readonly TimeProvider _clock;
 
     public PaymentService(
         ApplicationDbContext context,
@@ -27,7 +28,8 @@ public class PaymentService : IPaymentService
         IOptions<ReservationTokenOptions> tokenOptions,
         ITicketService ticketService,
         IEmailService emailService,
-        ILogger<PaymentService> logger)
+        ILogger<PaymentService> logger,
+        TimeProvider timeProvider)
     {
         _context = context;
         _mercadoPagoClient = mercadoPagoClient;
@@ -36,6 +38,7 @@ public class PaymentService : IPaymentService
         _ticketService = ticketService;
         _emailService = emailService;
         _logger = logger;
+        _clock = timeProvider;
     }
 
     /// <inheritdoc />
@@ -74,7 +77,7 @@ public class PaymentService : IPaymentService
 
         // Check token expiry (10 minutes)
         var tokenTime = DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime;
-        if ((DateTime.UtcNow - tokenTime).TotalMinutes > 10)
+        if ((_clock.GetUtcNow().UtcDateTime - tokenTime).TotalMinutes > 10)
         {
             _logger.LogWarning("Reservation token expired for reservation {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Reservation token has expired");
@@ -99,7 +102,7 @@ public class PaymentService : IPaymentService
             throw new KeyNotFoundException($"Reservation {reservationId} not found");
         }
 
-        if (reservation.Status != ReservationStatus.Active || reservation.ExpiresAt <= DateTime.UtcNow)
+        if (reservation.Status != ReservationStatus.Active || reservation.ExpiresAt <= _clock.GetUtcNow().UtcDateTime)
         {
             _logger.LogWarning("Reservation {ReservationId} is not active or has expired", reservationId);
             throw new InvalidOperationException("Reservation must be active and not expired to create a payment preference");

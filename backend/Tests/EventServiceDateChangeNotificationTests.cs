@@ -45,7 +45,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
             .AddInMemoryCollection(configData)
             .Build();
 
-        _eventService = new EventService(_context, _logger, _configuration, _mockS3.Object, _mockQueue.Object);
+        _eventService = new EventService(_context, _logger, _configuration, _mockS3.Object, _mockQueue.Object, TimeProvider.System);
     }
 
     public void Dispose()

@@ -50,7 +50,7 @@ public class ReservationStockTests : IDisposable
         {
             TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
         });
-        _reservationService = new ReservationService(_context, logger, tokenOptions);
+        _reservationService = new ReservationService(_context, logger, tokenOptions, TimeProvider.System);
     }
 
     public void Dispose()
@@ -272,7 +272,7 @@ public class ReservationStockTests : IDisposable
             {
                 TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
             });
-            var service = new ReservationService(concurrentContext, logger, tokenOpts);
+            var service = new ReservationService(concurrentContext, logger, tokenOpts, TimeProvider.System);
 
             try
             {

@@ -52,7 +52,7 @@ public class EventManagementPropertyTests : IDisposable
         var mockS3Client = new Mock<IAmazonS3>();
 
 
-        _eventService = new EventService(_context, logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object);
+        _eventService = new EventService(_context, logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System);
     }
 
     public void Dispose()
