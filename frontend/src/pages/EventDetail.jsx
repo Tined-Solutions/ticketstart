@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useEvent } from '../hooks/useEvent.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
@@ -289,6 +289,18 @@ export default function EventDetail() {
           </div>
         </div>
       </motion.div>
+
+      {/* Decorative-only banner (EHE-010): the backend is the enforcement
+          authority — this simply informs the visitor that the event has
+          started/ended. No effect on reservation flow. */}
+      {new Date(event.date) < new Date() && (
+        <div
+          role="status"
+          className="mx-4 mb-6 px-4 py-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-text-2 text-sm"
+        >
+          Este evento ya finalizó y sus entradas ya no están a la venta.
+        </div>
+      )}
 
       {/* Description */}
       <section className="px-4 mb-10">
