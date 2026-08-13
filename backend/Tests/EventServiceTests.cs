@@ -1060,6 +1060,32 @@ public class EventServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAllPublished_FlagDisabled_ReturnsExpired()
+    {
+        // EHE-009 runtime rollback (catalog side): with HideExpiredEvents.Enabled=false
+        // the Where filter is a no-op and the public list returns ALL events, expired
+        // included — identical to pre-change behavior.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = false });
+
+        var organizerId = Guid.NewGuid();
+        var future = CreateEventEntity(organizerId, "Future", fake.GetUtcNow().UtcDateTime.AddDays(1));
+        var past = CreateEventEntity(organizerId, "Past", fake.GetUtcNow().UtcDateTime.AddDays(-1));
+        _context.Events.AddRange(future, past);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetAllPublishedEventsAsync();
+
+        // Assert — both events visible: the filter must not apply when the flag is off
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(future.Id, ids);
+        Assert.Contains(past.Id, ids);
+    }
+
+    [Fact]
     public async Task GetEventById_Public_Expired_Null()
     {
         // EHE-003: public detail (default includeExpired=false) hides expired
