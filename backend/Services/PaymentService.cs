@@ -20,6 +20,7 @@ public class PaymentService : IPaymentService
     private readonly IEmailService _emailService;
     private readonly ILogger<PaymentService> _logger;
     private readonly TimeProvider _clock;
+    private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
 
     public PaymentService(
         ApplicationDbContext context,
@@ -29,7 +30,8 @@ public class PaymentService : IPaymentService
         ITicketService ticketService,
         IEmailService emailService,
         ILogger<PaymentService> logger,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IOptions<HideExpiredEventsOptions> hideExpiredOptions)
     {
         _context = context;
         _mercadoPagoClient = mercadoPagoClient;
@@ -39,6 +41,7 @@ public class PaymentService : IPaymentService
         _emailService = emailService;
         _logger = logger;
         _clock = timeProvider;
+        _hideExpiredOptions = hideExpiredOptions;
     }
 
     /// <inheritdoc />
@@ -106,6 +109,20 @@ public class PaymentService : IPaymentService
         {
             _logger.LogWarning("Reservation {ReservationId} is not active or has expired", reservationId);
             throw new InvalidOperationException("Reservation must be active and not expired to create a payment preference");
+        }
+
+        // EHE-005 purchase guard (defense-in-depth for the reservation-exists-but-event-expired
+        // race): reject payment preferences for expired events. The Event navigation is already
+        // loaded by the .Include(r => r.Event) above — no extra round-trip. Guard is a no-op
+        // when HideExpiredEvents.Enabled=false (EHE-009). IsExpired uses the injected clock so
+        // the 13:59→14:01 race is deterministic. ProcessApprovedPaymentAsync is NOT guarded
+        // (EHE-011 — confirmed payments must still produce tickets).
+        if (_hideExpiredOptions.Value.Enabled &&
+            reservation.Event.IsExpired(_clock.GetUtcNow().UtcDateTime))
+        {
+            _logger.LogWarning("Event {EventId} for reservation {ReservationId} has already started; payment preference rejected",
+                reservation.EventId, reservationId);
+            throw new EventExpiredException();
         }
 
         var request = new MercadoPagoPreferenceRequest

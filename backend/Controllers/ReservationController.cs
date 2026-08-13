@@ -102,6 +102,17 @@ public class ReservationController : ControllerBase
             _logger.LogWarning(ex, "Concurrency conflict creating reservation for user {UserId}", userId);
             return Conflict(new { error = ex.Message });
         }
+        catch (EventExpiredException ex)
+        {
+            // EHE-004/ADR-5: expired event → 409 RFC 7807 ProblemDetails.
+            // MUST stay ABOVE the generic catch below, otherwise it would be swallowed as a 500.
+            _logger.LogWarning(ex, "Event has already started for user {UserId}", userId);
+            return Problem(
+                detail: "This event has already started and is no longer purchasable.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already started",
+                type: "event-expired");
+        }
         catch (Exception ex)
         {
             // Unexpected errors

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Helpers;
@@ -67,7 +68,8 @@ public class PaymentServiceWebhookTests : IDisposable
             _ticketService,
             _mockEmailService.Object,
             _mockLogger.Object,
-            TimeProvider.System);
+            TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()
@@ -338,6 +340,216 @@ public class PaymentServiceWebhookTests : IDisposable
         Assert.Equal(0, pending.Attempts);
         Assert.Contains("SMTP failure", pending.LastError);
         Assert.Equal(reservation.Id, pending.ReservationId);
+    }
+
+    #endregion
+
+    #region EHE-005/EHE-011: Payment preference guard + webhook regression (Unit 3)
+
+    private PaymentService CreateService(TimeProvider clock, bool flagEnabled = true) => new(
+        _context, _mockMpClient.Object, _options, _tokenOptions, _ticketService,
+        _mockEmailService.Object, _mockLogger.Object, clock,
+        Options.Create(new HideExpiredEventsOptions { Enabled = flagEnabled }));
+
+    private static string GenerateReservationToken(Guid reservationId, DateTimeOffset now, string secret)
+    {
+        var nonce = Guid.NewGuid().ToString("N")[..16];
+        var timestamp = now.ToUnixTimeSeconds();
+        var dataToSign = $"{nonce}:{timestamp}";
+        var signature = HmacHelper.ComputeHmacSha256(dataToSign, secret);
+        return $"{nonce}:{timestamp}:{signature}";
+    }
+
+    /// <summary>
+    /// Seeded at a caller-chosen instant: Event.Date and reservation.ExpiresAt are both
+    /// expressed relative to `now` so the EHE-005 race scenario is deterministic.
+    /// </summary>
+    private async Task<(User User, Event Event, TicketType TicketType, Reservation Reservation)> SetupReservationAtAsync(
+        DateTime eventDate, DateTime now, int quantity = 2, int ticketQuantity = 10, decimal price = 50m)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "buyer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = now
+        };
+
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test",
+            Date = eventDate,
+            Location = "Test Location",
+            OrganizerId = user.Id,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = price,
+            Quantity = ticketQuantity,
+            CreatedAt = now
+        };
+
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            Quantity = quantity,
+            PurchaserDNI = "12345678",
+            ExpiresAt = now.AddMinutes(10),
+            Status = ReservationStatus.Active,
+            CreatedAt = now
+        };
+
+        _context.Users.Add(user);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Reservations.Add(reservation);
+        await _context.SaveChangesAsync();
+
+        return (user, eventEntity, ticketType, reservation);
+    }
+
+    /// <summary>
+    /// EHE-005 payment-preference-expired-rejected: expired event + valid active reservation
+    /// → EventExpiredException, and NO preference is created (MP client never called).
+    /// </summary>
+    [Fact]
+    public async Task CreatePaymentPreference_Expired_Throws()
+    {
+        // Arrange — frozen clock 14:01, event started 14:00 → expired; reservation still active (14:11)
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 14, 1, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, flagEnabled: true);
+        var (_, _, _, reservation) = await SetupReservationAtAsync(
+            new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc),
+            fake.GetUtcNow().UtcDateTime);
+        var token = GenerateReservationToken(reservation.Id, fake.GetUtcNow(), _tokenOptions.Value.TokenSecretKey);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<EventExpiredException>(() =>
+            service.CreatePaymentPreferenceAsync(reservation.Id, token));
+
+        // No payment preference is created — MP client must not be invoked
+        _mockMpClient.Verify(
+            c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// EHE-005 payment-preference-active-succeeds: active event + valid reservation → preference created.
+    /// </summary>
+    [Fact]
+    public async Task CreatePaymentPreference_Active_Succeeds()
+    {
+        // Arrange — frozen clock 13:59, event starts 14:00 → not expired; reservation active until 14:09
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 13, 59, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, flagEnabled: true);
+        var (_, _, _, reservation) = await SetupReservationAtAsync(
+            new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc),
+            fake.GetUtcNow().UtcDateTime);
+        var token = GenerateReservationToken(reservation.Id, fake.GetUtcNow(), _tokenOptions.Value.TokenSecretKey);
+
+        _mockMpClient
+            .Setup(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPreferenceResponse
+            {
+                Id = "pref-active-1",
+                InitPoint = "https://mp.test/checkout/pref-active-1"
+            });
+
+        // Act
+        var result = await service.CreatePaymentPreferenceAsync(reservation.Id, token);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("pref-active-1", result.PreferenceId);
+        _mockMpClient.Verify(
+            c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// EHE-005 race-payment-after-expiry: reservation at 13:59 for an event at 14:00;
+    /// payment preference attempted at 14:01 → rejected with EventExpiredException.
+    /// </summary>
+    [Fact]
+    public async Task CreatePaymentPreference_RaceAfterExpiry_Throws()
+    {
+        // Arrange — frozen clock 13:59, event starts 14:00, reservation active until 14:09
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 13, 59, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, flagEnabled: true);
+        var (_, _, _, reservation) = await SetupReservationAtAsync(
+            new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc),
+            fake.GetUtcNow().UtcDateTime);
+        var token = GenerateReservationToken(reservation.Id, fake.GetUtcNow(), _tokenOptions.Value.TokenSecretKey);
+
+        // Clock advances to 14:01 — event now expired
+        fake.Advance(TimeSpan.FromMinutes(2));
+
+        // Act & Assert — token still fresh (2 min old), reservation still active, guard fires
+        await Assert.ThrowsAsync<EventExpiredException>(() =>
+            service.CreatePaymentPreferenceAsync(reservation.Id, token));
+
+        _mockMpClient.Verify(
+            c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// EHE-011 approved-payment-expired-event-produces-tickets: a payment already approved by
+    /// Mercado Pago for an event whose Date has passed MUST still produce tickets. The webhook
+    /// path does NOT check event expiry (real-time reservation check only).
+    /// </summary>
+    [Fact]
+    public async Task ProcessApprovedPayment_ExpiredEvent_ProducesTickets()
+    {
+        // Arrange — event Date in the past (expired), reservation still active & unexpired
+        var (_, eventEntity, _, reservation) = await SetupReservationAsync(quantity: 2);
+        eventEntity.Date = DateTime.UtcNow.AddDays(-1);
+        reservation.ExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await _context.SaveChangesAsync();
+
+        var paymentId = "pay-expired-event";
+        _mockMpClient
+            .Setup(c => c.GetPaymentByIdAsync(paymentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = "approved",
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            });
+
+        var envelope = new MercadoPagoWebhookEnvelope
+        {
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = paymentId }
+        };
+
+        // Act
+        var result = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+
+        // Assert — tickets created despite the event being expired, email sent as normal
+        Assert.True(result.Success);
+        var tickets = await _context.Tickets.Where(t => t.EventId == eventEntity.Id).ToListAsync();
+        Assert.Equal(reservation.Quantity, tickets.Count);
+        _mockEmailService.Verify(
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()),
+            Times.Once);
     }
 
     #endregion

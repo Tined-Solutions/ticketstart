@@ -19,6 +19,7 @@ public class ReservationService : IReservationService
     private readonly ILogger<ReservationService> _logger;
     private readonly ReservationTokenOptions _tokenOptions;
     private readonly TimeProvider _clock;
+    private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
 
     // Reservation expiration time: 10 minutes
     private const int ReservationExpirationMinutes = 10;
@@ -27,12 +28,14 @@ public class ReservationService : IReservationService
         ApplicationDbContext context,
         ILogger<ReservationService> logger,
         IOptions<ReservationTokenOptions> tokenOptions,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IOptions<HideExpiredEventsOptions> hideExpiredOptions)
     {
         _context = context;
         _logger = logger;
         _tokenOptions = tokenOptions.Value;
         _clock = timeProvider;
+        _hideExpiredOptions = hideExpiredOptions;
     }
 
     /// <summary>
@@ -100,15 +103,26 @@ public class ReservationService : IReservationService
                 if (provider == "Npgsql.EntityFrameworkCore.PostgreSQL")
                 {
                     // Native PostgreSQL row lock: blocks concurrent reservations on the same row.
+                    // NOTE (EHE-004, design Open Question): the raw FOR UPDATE SQL is NOT
+                    // .Include-composable (PostgreSQL rejects FOR UPDATE in a subquery when EF
+                    // composes the JOIN), so for Npgsql only the Event navigation is loaded via a
+                    // second PK round-trip (FindAsync fallback, documented).
                     ticketType = await _context.TicketTypes
                         .FromSqlInterpolated($"SELECT * FROM \"TicketTypes\" WHERE \"Id\" = {ticketTypeId} AND \"EventId\" = {eventId} FOR UPDATE")
                         .FirstOrDefaultAsync();
+                    if (ticketType != null)
+                    {
+                        // Nullability: a missing Event is caught by the explicit null-check below.
+                        ticketType.Event = (await _context.Events.FindAsync(eventId))!;
+                    }
                 }
                 else if (provider == "Microsoft.EntityFrameworkCore.Sqlite")
                 {
                     // SQLite has no FOR UPDATE support. A no-op UPDATE on the row acquires the
                     // database write lock so the check-then-insert serializes against concurrent writers.
+                    // EHE-004: .Include(t => t.Event) loads the Event in the SAME round-trip.
                     ticketType = await _context.TicketTypes
+                        .Include(t => t.Event)
                         .FirstOrDefaultAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
                     if (ticketType != null)
                     {
@@ -119,7 +133,9 @@ public class ReservationService : IReservationService
                 else
                 {
                     // InMemory provider (tests): no native locking support.
+                    // EHE-004: .Include(t => t.Event) loads the Event in the SAME round-trip.
                     ticketType = await _context.TicketTypes
+                        .Include(t => t.Event)
                         .FirstOrDefaultAsync(tt => tt.Id == ticketTypeId && tt.EventId == eventId);
                 }
 
@@ -127,6 +143,24 @@ public class ReservationService : IReservationService
                 {
                     _logger.LogWarning("Ticket type {TicketTypeId} not found for event {EventId}", ticketTypeId, eventId);
                     throw new KeyNotFoundException($"Ticket type {ticketTypeId} not found for event {eventId}");
+                }
+
+                // EHE-004: the Event navigation must be present (loaded via Include above, or
+                // FindAsync fallback for Npgsql). A null Event means an orphaned ticket type.
+                if (ticketType.Event == null)
+                {
+                    _logger.LogWarning("Event {EventId} not found for ticket type {TicketTypeId}", eventId, ticketTypeId);
+                    throw new KeyNotFoundException($"Event {eventId} not found for ticket type {ticketTypeId}");
+                }
+
+                // EHE-004 purchase guard: reject reservations for expired events BEFORE the
+                // stock check. Guard is a no-op when HideExpiredEvents.Enabled=false (EHE-009).
+                // IsExpired uses the injected clock so the 13:59→14:01 race is deterministic.
+                if (_hideExpiredOptions.Value.Enabled &&
+                    ticketType.Event.IsExpired(_clock.GetUtcNow().UtcDateTime))
+                {
+                    _logger.LogWarning("Event {EventId} has already started; reservation rejected", eventId);
+                    throw new EventExpiredException();
                 }
 
                 // Mathematical availability: no stock counter involved.

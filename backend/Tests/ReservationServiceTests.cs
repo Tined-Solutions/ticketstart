@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -34,7 +35,8 @@ public class ReservationServiceTests : IDisposable
         {
             TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
         });
-        _reservationService = new ReservationService(_context, _logger, tokenOptions, TimeProvider.System);
+        _reservationService = new ReservationService(_context, _logger, tokenOptions, TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()
@@ -368,6 +370,156 @@ public class ReservationServiceTests : IDisposable
         // Assert
         Assert.NotNull(reservation);
         Assert.Equal(100, reservation.Quantity);
+    }
+
+    #endregion
+
+    #region EHE-004: Purchase guard rejects expired events (Unit 3)
+
+    private ReservationService CreateService(TimeProvider clock, HideExpiredEventsOptions options) => new(
+        _context, _logger,
+        Options.Create(new ReservationTokenOptions
+        {
+            TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
+        }),
+        clock, Options.Create(options));
+
+    private async Task<(Event Event, TicketType TicketType)> CreateTestEventWithTickets(DateTime eventDate, int ticketQuantity = 100)
+    {
+        var organizerId = Guid.NewGuid();
+        var user = new User
+        {
+            Id = organizerId,
+            Email = "organizer@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(user);
+
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = eventDate,
+            Location = "Test Location",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(eventEntity);
+
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 50.00m,
+            Quantity = ticketQuantity,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.TicketTypes.Add(ticketType);
+
+        await _context.SaveChangesAsync();
+
+        return (eventEntity, ticketType);
+    }
+
+    /// <summary>
+    /// EHE-004 scenario reservation-expired-rejected: event with Date &lt; now
+    /// must be rejected with EventExpiredException and NO reservation row persisted.
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_Expired_409()
+    {
+        // Arrange — frozen clock 14:01, event started at 14:00 → expired (strict <)
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 14, 1, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, new HideExpiredEventsOptions { Enabled = true });
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc));
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<EventExpiredException>(() =>
+            service.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, 2, TestPurchaserDNI));
+
+        Assert.Contains("started", ex.Message);
+        // No reservation row must be persisted
+        Assert.Equal(0, await _context.Reservations.CountAsync());
+    }
+
+    /// <summary>
+    /// EHE-004 scenario reservation-active-succeeds: event with Date &gt; now → reservation created.
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_Active_201()
+    {
+        // Arrange — frozen clock 13:59, event starts 14:00 → not expired
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 13, 59, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, new HideExpiredEventsOptions { Enabled = true });
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc));
+
+        // Act
+        var reservation = await service.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, 2, TestPurchaserDNI);
+
+        // Assert
+        Assert.NotNull(reservation);
+        Assert.Equal(ReservationStatus.Active, reservation.Status);
+        Assert.Equal(1, await _context.Reservations.CountAsync());
+    }
+
+    /// <summary>
+    /// EHE-004 scenario race-reservation-before-expiry: reservation at 13:59 succeeds,
+    /// second attempt at 14:01 (event started at 14:00) is rejected; first row remains valid.
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_Race_13_59_to_14_01_409()
+    {
+        // Arrange — frozen clock 13:59, event starts 14:00
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 13, 59, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, new HideExpiredEventsOptions { Enabled = true });
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc));
+
+        // Act — first attempt at 13:59: succeeds
+        var first = await service.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI);
+        Assert.NotNull(first);
+
+        // Advance the clock to 14:01 — event now expired
+        fake.Advance(TimeSpan.FromMinutes(2));
+
+        // Second attempt → rejected with EventExpiredException
+        await Assert.ThrowsAsync<EventExpiredException>(() =>
+            service.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI));
+
+        // First reservation (already persisted) remains valid — exactly one row
+        Assert.Equal(1, await _context.Reservations.CountAsync());
+        var stored = await _context.Reservations.SingleAsync();
+        Assert.Equal(first.Id, stored.Id);
+        Assert.Equal(ReservationStatus.Active, stored.Status);
+    }
+
+    /// <summary>
+    /// EHE-009 no-op: with HideExpiredEvents.Enabled=false the guard does not fire
+    /// and an expired event can still be reserved (runtime rollback).
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_FlagDisabled_Succeeds()
+    {
+        // Arrange — frozen clock 14:01, event started at 14:00 (expired), flag OFF
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2026, 8, 12, 14, 1, 0, DateTimeKind.Utc));
+        var service = CreateService(fake, new HideExpiredEventsOptions { Enabled = false });
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc));
+
+        // Act
+        var reservation = await service.CreateReservationAsync(null, eventEntity.Id, ticketType.Id, 2, TestPurchaserDNI);
+
+        // Assert — guard is a no-op, reservation created
+        Assert.NotNull(reservation);
+        Assert.Equal(ReservationStatus.Active, reservation.Status);
+        Assert.Equal(1, await _context.Reservations.CountAsync());
     }
 
     #endregion

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Data;
@@ -30,6 +31,7 @@ public class ReservationStockTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly ReservationStockTestDbContext _context;
     private readonly ReservationService _reservationService;
+    private readonly List<string> _executedCommands = new();
 
     private const string TestPurchaserDNI = "12345678";
 
@@ -40,6 +42,7 @@ public class ReservationStockTests : IDisposable
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlite(_connection)
+            .LogTo(message => _executedCommands.Add(message), new[] { RelationalEventId.CommandExecuted })
             .Options;
 
         _context = new ReservationStockTestDbContext(options);
@@ -50,7 +53,8 @@ public class ReservationStockTests : IDisposable
         {
             TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
         });
-        _reservationService = new ReservationService(_context, logger, tokenOptions, TimeProvider.System);
+        _reservationService = new ReservationService(_context, logger, tokenOptions, TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()
@@ -98,6 +102,43 @@ public class ReservationStockTests : IDisposable
         await _context.SaveChangesAsync();
         return (eventEntity, ticketType, user);
     }
+
+    #region EHE-004: Event loaded via Include — single round-trip (Unit 3, task 3.7)
+
+    /// <summary>
+    /// EHE-004 implementation invariant (task 3.7): the Event MUST be loaded via
+    /// .Include(t =&gt; t.Event) in the SAME round-trip as the TicketType — no second
+    /// Events query. Runs on SQLite (real relational provider) so the executed SQL is
+    /// observable; InMemory cannot prove this (no SQL), so the test lives here rather
+    /// than in ReservationServiceTests. Npgsql falls back to a second FindAsync
+    /// (documented provider limitation — design Open Question), which this SQLite
+    /// test deliberately does NOT assert.
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_EventLoadedViaInclude_SingleRoundTrip()
+    {
+        // Arrange — capture executed commands on the SQLite connection
+        var (eventEntity, ticketType, _) = await CreateTestEventWithTickets(10);
+        _executedCommands.Clear();
+
+        // Act
+        var reservation = await _reservationService.CreateReservationAsync(
+            null, ticketType.EventId, ticketType.Id, 3, TestPurchaserDNI);
+
+        // Assert — reservation created
+        Assert.NotNull(reservation);
+        Assert.Equal(eventEntity.Id, reservation.EventId);
+
+        // The TicketType load must JOIN the Events table in the same command
+        var ticketTypeCommand = _executedCommands.SingleOrDefault(c => c.Contains("FROM \"TicketTypes\""));
+        Assert.NotNull(ticketTypeCommand);
+        Assert.Contains("JOIN \"Events\"", ticketTypeCommand);
+
+        // No standalone Events SELECT (FindAsync fallback / second round-trip) may be issued
+        Assert.DoesNotContain(_executedCommands, c => c.Contains("FROM \"Events\""));
+    }
+
+    #endregion
 
     #region B3.2: Atomic Stock Reservation
 
@@ -272,7 +313,8 @@ public class ReservationStockTests : IDisposable
             {
                 TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters"
             });
-            var service = new ReservationService(concurrentContext, logger, tokenOpts, TimeProvider.System);
+            var service = new ReservationService(concurrentContext, logger, tokenOpts, TimeProvider.System,
+                Options.Create(new HideExpiredEventsOptions()));
 
             try
             {

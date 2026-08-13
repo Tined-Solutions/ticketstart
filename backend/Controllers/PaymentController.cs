@@ -78,6 +78,17 @@ public class PaymentController : TicketeraControllerBase
             _logger.LogWarning(ex, "Reservation {ReservationId} cannot be used for payment", request.ReservationId);
             return BadRequest(new { error = ex.Message });
         }
+        catch (EventExpiredException ex)
+        {
+            // EHE-005/ADR-5: expired event → 409 RFC 7807 ProblemDetails.
+            // MUST stay ABOVE the generic catch below, otherwise it would be swallowed as a 500.
+            _logger.LogWarning(ex, "Event has already started for reservation {ReservationId}", request.ReservationId);
+            return Problem(
+                detail: "This event has already started and is no longer purchasable.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already started",
+                type: "event-expired");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error creating preference for reservation {ReservationId}", request.ReservationId);

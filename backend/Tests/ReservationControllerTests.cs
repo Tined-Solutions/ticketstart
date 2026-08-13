@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Security.Claims;
@@ -36,6 +38,14 @@ public class ReservationControllerTests
         _mockReservationService
             .Setup(s => s.GenerateReservationToken(It.IsAny<Guid>()))
             .Returns((Guid id) => $"test-token-{id}");
+
+        // ProblemDetailsFactory is required by ControllerBase.Problem(...) (ADR-5).
+        // AddProblemDetails() alone does NOT register the MVC factory — register explicitly.
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.Configure<ApiBehaviorOptions>(_ => { });
+        services.AddSingleton<ProblemDetailsFactory, DefaultProblemDetailsFactory>();
+        _controller.ControllerContext.HttpContext.RequestServices = services.BuildServiceProvider();
     }
 
     #region CreateReservation Tests
@@ -149,6 +159,40 @@ public class ReservationControllerTests
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequestResult.StatusCode);
+    }
+
+    /// <summary>
+    /// EHE-004 / ADR-5: an expired event must surface as 409 Conflict with
+    /// RFC 7807 ProblemDetails (type "event-expired", title "Event has already started"),
+    /// via the catch (EventExpiredException) placed ABOVE the generic catch.
+    /// </summary>
+    [Fact]
+    public async Task CreateReservation_ExpiredEvent_Returns409ProblemDetails()
+    {
+        // Arrange
+        var request = new CreateReservationRequest
+        {
+            EventId = Guid.NewGuid(),
+            TicketTypeId = Guid.NewGuid(),
+            Quantity = 2,
+            PurchaserDNI = "12345678"
+        };
+
+        _mockReservationService
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI, null))
+            .ThrowsAsync(new EventExpiredException());
+
+        // Act
+        var result = await _controller.CreateReservation(request);
+
+        // Assert — 409 with spec-compliant ProblemDetails
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal("event-expired", problem.Type);
+        Assert.Equal("Event has already started", problem.Title);
+        Assert.Contains("no longer purchasable", problem.Detail);
     }
 
     [Fact]

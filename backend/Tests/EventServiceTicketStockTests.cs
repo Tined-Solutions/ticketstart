@@ -318,7 +318,8 @@ public class EventServiceTicketStockTests : IDisposable
                 concurrentContext,
                 new TestLogger<ReservationService>(),
                 reservationServiceOptions,
-                TimeProvider.System);
+                TimeProvider.System,
+                Options.Create(new HideExpiredEventsOptions()));
             await service.CreateReservationAsync(null, eventId, ticketTypeId, 8, "12345678");
         });
 

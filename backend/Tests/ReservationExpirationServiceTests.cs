@@ -33,6 +33,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole());
         
         var serviceProvider = services.BuildServiceProvider();
@@ -66,6 +67,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole());
         
         var serviceProvider = services.BuildServiceProvider();
@@ -100,6 +102,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -141,6 +144,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -277,6 +281,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();
@@ -314,6 +319,7 @@ public class ReservationExpirationServiceTests
         services.AddSingleton(TimeProvider.System);
         services.Configure<ReservationTokenOptions>(options =>
             options.TokenSecretKey = "test-reservation-token-secret-key-minimum-32-characters");
+        services.Configure<HideExpiredEventsOptions>(options => { });
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
         
         var serviceProvider = services.BuildServiceProvider();

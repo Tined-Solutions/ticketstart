@@ -197,6 +197,31 @@ public class ErrorHandlingPropertyTests
         Assert.Contains("An internal error occurred", body);
     }
 
+    /// <summary>
+    /// ADR-5 Option (a): the GlobalExceptionHandler fallback MUST produce the same
+    /// spec-compliant ProblemDetails as the controller catch — 409 with
+    /// type "event-expired" and title "Event has already started" (EHE-004/005).
+    /// </summary>
+    [Fact]
+    public void GlobalExceptionHandler_EventExpiredException_PayloadHasTypeEventExpired()
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/reservations", "POST");
+        var exception = new EventExpiredException();
+
+        var handled = handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Result;
+        var problem = ReadResponseBody<ProblemDetails>(context);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        Assert.NotNull(problem);
+        Assert.Equal(409, problem!.Status);
+        Assert.Equal("event-expired", problem.Type);
+        Assert.Equal("Event has already started", problem.Title);
+        Assert.Contains("no longer purchasable", problem.Detail);
+    }
+
     [Fact]
     public void Property47d_OperationCanceled_WithCancelledToken_ReturnsTrueWithoutWriting()
     {

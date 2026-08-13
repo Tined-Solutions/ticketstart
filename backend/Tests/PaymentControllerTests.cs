@@ -2,9 +2,12 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TicketeraOnline.Api.Controllers;
+using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
 
@@ -33,6 +36,14 @@ public class PaymentControllerTests
                 HttpContext = new DefaultHttpContext()
             }
         };
+
+        // ProblemDetailsFactory is required by ControllerBase.Problem(...) (ADR-5).
+        // AddProblemDetails() alone does NOT register the MVC factory — register explicitly.
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.Configure<ApiBehaviorOptions>(_ => { });
+        services.AddSingleton<ProblemDetailsFactory, DefaultProblemDetailsFactory>();
+        _controller.ControllerContext.HttpContext.RequestServices = services.BuildServiceProvider();
     }
 
     [Fact]
@@ -109,6 +120,31 @@ public class PaymentControllerTests
 
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(400, badRequestResult.StatusCode);
+    }
+
+    /// <summary>
+    /// EHE-005 / ADR-5: an expired event must surface as 409 Conflict with
+    /// RFC 7807 ProblemDetails (type "event-expired", title "Event has already started"),
+    /// via the catch (EventExpiredException) placed ABOVE the generic catch.
+    /// </summary>
+    [Fact]
+    public async Task CreatePreference_ExpiredEvent_Returns409ProblemDetails()
+    {
+        var reservationId = Guid.NewGuid();
+        var request = new CreatePaymentPreferenceRequest { ReservationId = reservationId, Token = "valid-token" };
+
+        _mockPaymentService.Setup(s => s.CreatePaymentPreferenceAsync(reservationId, request.Token))
+            .ThrowsAsync(new EventExpiredException());
+
+        var result = await _controller.CreatePreference(request);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal("event-expired", problem.Type);
+        Assert.Equal("Event has already started", problem.Title);
+        Assert.Contains("no longer purchasable", problem.Detail);
     }
 
     [Fact]

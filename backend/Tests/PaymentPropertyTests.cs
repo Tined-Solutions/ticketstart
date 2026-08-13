@@ -67,7 +67,8 @@ public class PaymentPropertyTests : IDisposable
             _ticketService,
             _mockEmailService.Object,
             _mockLogger.Object,
-            TimeProvider.System);
+            TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     public void Dispose()
