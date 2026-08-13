@@ -12,6 +12,14 @@ public class Event
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    /// <summary>
+    /// EHE-001: an event is expired when its start instant is strictly BEFORE
+    /// <paramref name="asOf"/>. At the exact start instant (Date == asOf) the event
+    /// is NOT expired — the predicate uses strict &lt;, not &lt;=. Pure function,
+    /// no side effects; unit-testable in isolation.
+    /// </summary>
+    public bool IsExpired(DateTime asOf) => Date < asOf;
+
     // Navigation properties
     public User Organizer { get; set; } = null!;
     public ICollection<TicketType> TicketTypes { get; set; } = new List<TicketType>();
