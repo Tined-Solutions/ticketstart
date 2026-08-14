@@ -7,12 +7,15 @@ namespace TicketeraOnline.Api.Services;
 /// <summary>
 /// Implementation of <see cref="IAdminPurchaseService"/>.
 ///
-/// Refund (APR-003/004): one EF Core transaction with an execution-strategy wrapper
-/// (mirroring <c>ReservationService.CreateReservationTransactionalAsync</c>). The
-/// reservation's tickets are row-locked (Npgsql SELECT ... FOR UPDATE / SQLite no-op
-/// UPDATE / InMemory plain), IsUsed is re-checked under the lock (scan-vs-refund race,
-/// APR-004), and the existing Approved Transaction row is FLIPPED to Refunded — never
-/// a second row, preserving the unique IX_Transactions_MercadoPagoId index.
+/// Refund (APR-003/004/012/013): one EF Core transaction with an execution-strategy
+/// wrapper (mirroring <c>ReservationService.CreateReservationTransactionalAsync</c>).
+/// The reservation's tickets are row-locked (Npgsql SELECT ... FOR UPDATE / SQLite
+/// no-op UPDATE / InMemory plain), IsUsed is re-checked under the lock (scan-vs-refund
+/// race, APR-004), and the K oldest non-refunded/non-used tickets are marked refunded
+/// (APR-013). Exactly one immutable <c>Refunds</c> ledger row is inserted per operation
+/// (APR-012, Amount = unit price × K — D7). The existing Approved Transaction row is
+/// FLIPPED to Refunded ONLY when zero active tickets remain (D2) — never a second row,
+/// preserving the unique IX_Transactions_MercadoPagoId index.
 /// </summary>
 public class AdminPurchaseService : IAdminPurchaseService
 {
@@ -69,10 +72,32 @@ public class AdminPurchaseService : IAdminPurchaseService
                 .Select(g => new { ReservationId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ReservationId, x => x.Count);
 
+        // Refunded tickets per reservation (APR-012 RefundedQuantity). Group query,
+        // no N+1 — parallel structure to linkedTicketCounts.
+        var refundedTicketCounts = reservationIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await _context.Tickets
+                .AsNoTracking()
+                .Where(t => t.ReservationId != null && reservationIds.Contains(t.ReservationId.Value) && t.IsRefunded)
+                .GroupBy(t => t.ReservationId!.Value)
+                .Select(g => new { ReservationId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ReservationId, x => x.Count);
+
+        // Σ Refunds.Amount per reservation (APR-012 RefundedAmount / TotalRefunded).
+        var refundsByRes = reservationIds.Count == 0
+            ? new Dictionary<Guid, decimal>()
+            : await _context.Refunds
+                .AsNoTracking()
+                .Where(r => reservationIds.Contains(r.ReservationId))
+                .GroupBy(r => r.ReservationId)
+                .Select(g => new { ReservationId = g.Key, Sum = g.Sum(x => x.Amount) })
+                .ToDictionaryAsync(x => x.ReservationId, x => x.Sum);
+
         var rows = reservations.Select(r =>
         {
             var tx = transactions.FirstOrDefault(t => t.ReservationId == r.Id);
             linkedTicketCounts.TryGetValue(r.Id, out var linkedTickets);
+            refundedTicketCounts.TryGetValue(r.Id, out var refundedQuantity);
 
             return new AdminPurchaseRow(
                 r.Id,
@@ -82,21 +107,22 @@ public class AdminPurchaseService : IAdminPurchaseService
                 r.Quantity,
                 tx?.Amount ?? 0m,
                 tx?.CreatedAt ?? r.CreatedAt,
-                tx?.Status == TransactionStatus.Refunded,
+                refundedQuantity,
+                refundsByRes.GetValueOrDefault(r.Id),
+                refundedQuantity >= r.Quantity,   // derived fully-refunded flag (APR-012)
                 linkedTickets == 0);
         }).ToList();
 
-        var totalRefunded = transactions
-            .Where(t => t.Status == TransactionStatus.Refunded)
-            .Sum(t => t.Amount);
+        // APR-012: TotalRefunded = Σ Refunds.Amount across the event's reservations.
+        var totalRefunded = refundsByRes.Values.Sum();
 
         return new AdminPurchasesResponse(eventId, eventEntity.Name, rows, totalRefunded);
     }
 
     /// <inheritdoc />
-    public async Task RefundPurchaseAsync(Guid reservationId, Guid adminId)
+    public async Task RefundPurchaseAsync(Guid reservationId, int quantity, Guid adminId)
     {
-        _logger.LogInformation("Admin {AdminId} refunding reservation {ReservationId}", adminId, reservationId);
+        _logger.LogInformation("Admin {AdminId} refunding {Quantity} tickets of reservation {ReservationId}", adminId, quantity, reservationId);
 
         var strategy = _context.Database.CreateExecutionStrategy();
 
@@ -106,7 +132,10 @@ public class AdminPurchaseService : IAdminPurchaseService
 
             try
             {
+                // D7: unit price comes from the reservation's TicketType (canonical,
+                // stable decimal(18,2); Amount = Price × K is exact).
                 var reservation = await _context.Reservations
+                    .Include(r => r.TicketType)
                     .FirstOrDefaultAsync(r => r.Id == reservationId);
 
                 if (reservation == null)
@@ -116,33 +145,10 @@ public class AdminPurchaseService : IAdminPurchaseService
                 }
 
                 var now = DateTime.UtcNow;
-                var provider = _context.Database.ProviderName;
 
                 // Row-lock the reservation's tickets (APR-004): the same three-provider
                 // lock trio used by ReservationService/EventService.
-                List<Ticket> tickets;
-                if (provider == "Npgsql.EntityFrameworkCore.PostgreSQL")
-                {
-                    tickets = await _context.Tickets
-                        .FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"ReservationId\" = {reservationId} FOR UPDATE")
-                        .ToListAsync();
-                }
-                else if (provider == "Microsoft.EntityFrameworkCore.Sqlite")
-                {
-                    // SQLite has no FOR UPDATE: a no-op UPDATE on each row acquires the
-                    // database write lock so the check-then-write serializes.
-                    tickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
-                    foreach (var ticket in tickets)
-                    {
-                        await _context.Database.ExecuteSqlInterpolatedAsync(
-                            $"UPDATE \"Tickets\" SET \"CreatedAt\" = \"CreatedAt\" WHERE \"Id\" = {ticket.Id}");
-                    }
-                }
-                else
-                {
-                    // InMemory provider (tests): no native locking support.
-                    tickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
-                }
+                var tickets = await AcquireTicketLocksAsync(reservationId);
 
                 // Re-check under the lock (APR-004): if a concurrent staff scan marked a
                 // ticket used after the refund read its state, the refund must abort.
@@ -152,21 +158,18 @@ public class AdminPurchaseService : IAdminPurchaseService
                     throw new InvalidOperationException("Cannot refund a purchase with used tickets");
                 }
 
-                if (tickets.Any(t => t.IsRefunded))
+                // APR-003 quantity guard: K must be > 0 and ≤ active (non-refunded,
+                // non-used) tickets — observed ON THE LOCKED LIST so concurrent refunds
+                // serialize and no ticket is refunded twice.
+                var active = tickets.Count(t => !t.IsRefunded && !t.IsUsed);
+                if (quantity <= 0 || quantity > active)
                 {
-                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: tickets already refunded", reservationId);
-                    throw new InvalidOperationException("Purchase already refunded");
+                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: quantity {Quantity} out of range ({Active} active remaining)", reservationId, quantity, active);
+                    throw new InvalidOperationException($"Cannot refund {quantity} tickets; {active} active remaining");
                 }
 
-                var existingRefundedTx = await _context.Transactions
-                    .FirstOrDefaultAsync(t => t.ReservationId == reservationId && t.Status == TransactionStatus.Refunded);
-                if (existingRefundedTx != null)
-                {
-                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: already refunded", reservationId);
-                    throw new InvalidOperationException("Purchase already refunded");
-                }
-
-                // APR-003: the Approved transaction is FLIPPED, never duplicated.
+                // APR-003: the Approved transaction is FLIPPED (only at zero active),
+                // never duplicated.
                 var approvedTx = await _context.Transactions
                     .FirstOrDefaultAsync(t => t.ReservationId == reservationId && t.Status == TransactionStatus.Approved);
                 if (approvedTx == null)
@@ -175,21 +178,46 @@ public class AdminPurchaseService : IAdminPurchaseService
                     throw new InvalidOperationException("No approved transaction found for this purchase");
                 }
 
-                approvedTx.Status = TransactionStatus.Refunded;
-                approvedTx.UpdatedAt = now;
+                // APR-013 deterministic selection: the K OLDEST non-refunded, non-used
+                // tickets (stable, replayable, auditable under concurrent ops).
+                var selected = tickets
+                    .Where(t => !t.IsRefunded && !t.IsUsed)
+                    .OrderBy(t => t.CreatedAt)
+                    .Take(quantity)
+                    .ToList();
 
-                foreach (var ticket in tickets)
+                foreach (var ticket in selected)
                 {
                     ticket.IsRefunded = true;
                     ticket.RefundedAt = now;
+                }
+
+                // APR-012: exactly one immutable Refunds ledger row per operation.
+                var unitPrice = reservation.TicketType.Price;   // D7
+                _context.Refunds.Add(new Refund
+                {
+                    ReservationId = reservationId,
+                    TicketIds = selected.Select(t => t.Id).ToArray(),
+                    Quantity = quantity,
+                    Amount = unitPrice * quantity,
+                    AdminId = adminId,
+                    CreatedAt = now
+                });
+
+                // D2 flip invariant: flip Approved → Refunded ONLY when this operation
+                // leaves zero active tickets; partial ops keep the tx Approved.
+                if (active == quantity)
+                {
+                    approvedTx.Status = TransactionStatus.Refunded;
+                    approvedTx.UpdatedAt = now;
                 }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
                 _logger.LogInformation(
-                    "Purchase {ReservationId} refunded by admin {AdminId}: {TicketCount} tickets marked refunded, transaction flipped to Refunded",
-                    reservationId, adminId, tickets.Count);
+                    "Refunded {Quantity}/{Active} tickets of reservation {ReservationId}; tx {Flip} by admin {AdminId}",
+                    quantity, active, reservationId, active == quantity ? "flipped" : "kept-Approved", adminId);
             }
             catch
             {
@@ -197,5 +225,36 @@ public class AdminPurchaseService : IAdminPurchaseService
                 throw;
             }
         });
+    }
+
+    /// <summary>
+    /// Row-locks the reservation's tickets using the three-provider lock trio
+    /// (Npgsql SELECT ... FOR UPDATE / SQLite no-op UPDATE / InMemory plain) so the
+    /// check-then-write refund serializes across concurrent operations (APR-004/013).
+    /// </summary>
+    private async Task<List<Ticket>> AcquireTicketLocksAsync(Guid reservationId)
+    {
+        var provider = _context.Database.ProviderName;
+        if (provider == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            return await _context.Tickets
+                .FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"ReservationId\" = {reservationId} FOR UPDATE")
+                .ToListAsync();
+        }
+        if (provider == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            // SQLite has no FOR UPDATE: a no-op UPDATE on each row acquires the
+            // database write lock so the check-then-write serializes.
+            var sqliteTickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
+            foreach (var ticket in sqliteTickets)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE \"Tickets\" SET \"CreatedAt\" = \"CreatedAt\" WHERE \"Id\" = {ticket.Id}");
+            }
+            return sqliteTickets;
+        }
+
+        // InMemory provider (tests): no native locking support.
+        return await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
     }
 }

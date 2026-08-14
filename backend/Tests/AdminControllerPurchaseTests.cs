@@ -91,11 +91,11 @@ public class AdminControllerPurchaseTests
     public async Task RefundPurchase_NoAuthenticatedUser_ReturnsUnauthorized()
     {
         // Act — no claims set
-        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid());
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(1));
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result);
-        _mockPurchaseService.Verify(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        _mockPurchaseService.Verify(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<Guid>()), Times.Never);
         _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
     }
 
@@ -114,7 +114,7 @@ public class AdminControllerPurchaseTests
             "Test Event",
             new List<AdminPurchaseRow>
             {
-                new(Guid.NewGuid(), "juan.perez@gmail.com", "31234561", "General", 2, 200m, DateTime.UtcNow, true, false)
+                new(Guid.NewGuid(), "juan.perez@gmail.com", "31234561", "General", 2, 200m, DateTime.UtcNow, 2, 200m, true, false)
             },
             200m);
 
@@ -154,29 +154,55 @@ public class AdminControllerPurchaseTests
     #region POST /api/admin/events/{eventId}/purchases/{reservationId}/refund — APR-003/007/008
 
     [Fact]
-    public async Task RefundPurchase_Success_WritesRefundPurchaseAuditWithoutMotivo()
+    public async Task RefundPurchase_Success_PassesQuantityBodyAndWritesAuditWithoutMotivo()
     {
-        // Arrange
+        // Arrange (APR-003/007/008): body { quantity } flows to the service 3-arg call;
+        // audit detail includes the quantity but no motivo/refund-reason field.
         var adminId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
         var reservationId = Guid.NewGuid();
         SetAuthenticatedUser(adminId, UserRole.Admin);
 
         // Act
-        var result = await _controller.RefundPurchase(eventId, reservationId);
+        var result = await _controller.RefundPurchase(eventId, reservationId, new RefundPurchaseRequest(2));
 
-        // Assert — 200 + exactly one audit entry: RefundPurchase/Payment, reservation id,
-        // details without any motivo/refund-reason field (APR-007)
+        // Assert — 200 + the service received (reservationId, 2, adminId)
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
+        _mockPurchaseService.Verify(
+            s => s.RefundPurchaseAsync(reservationId, 2, adminId), Times.Once);
+
+        // Assert — exactly one audit entry: RefundPurchase/Payment, reservation id,
+        // details WITH the quantity and WITHOUT any motivo/refund-reason (APR-007/008)
         _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
             c.UserId == adminId &&
             c.Action == AuditActionType.RefundPurchase &&
             c.Resource == AuditResourceType.Payment &&
             c.ResourceId == reservationId &&
             c.Details != null &&
+            c.Details.Contains("2 tickets", StringComparison.OrdinalIgnoreCase) &&
             !c.Details.Contains("motivo", StringComparison.OrdinalIgnoreCase) &&
             !c.Details.Contains("reason", StringComparison.OrdinalIgnoreCase))), Times.Once);
+    }
+
+    [Fact]
+    public async Task RefundPurchase_InvalidQuantity_ReturnsConflict()
+    {
+        // Arrange — APR-003: K ≤ 0 or K > active → InvalidOperationException → 409,
+        // no audit written on failure.
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockPurchaseService
+            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("Cannot refund 0 tickets; 2 active remaining"));
+
+        // Act
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(0));
+
+        // Assert — 409 Conflict, no audit written on failure
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(409, conflict.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
     }
 
     [Fact]
@@ -186,11 +212,11 @@ public class AdminControllerPurchaseTests
         var adminId = Guid.NewGuid();
         SetAuthenticatedUser(adminId, UserRole.Admin);
         _mockPurchaseService
-            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<Guid>()))
             .ThrowsAsync(new InvalidOperationException("Cannot refund a purchase with used tickets"));
 
         // Act
-        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid());
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(1));
 
         // Assert — 409 Conflict, no audit written on failure
         var conflict = Assert.IsType<ConflictObjectResult>(result);
@@ -205,11 +231,11 @@ public class AdminControllerPurchaseTests
         var adminId = Guid.NewGuid();
         SetAuthenticatedUser(adminId, UserRole.Admin);
         _mockPurchaseService
-            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<Guid>()))
             .ThrowsAsync(new KeyNotFoundException("Reservation not found"));
 
         // Act
-        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid());
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(1));
 
         // Assert
         var notFound = Assert.IsType<NotFoundObjectResult>(result);
@@ -226,11 +252,11 @@ public class AdminControllerPurchaseTests
         SetAuthenticatedUser(adminId, UserRole.Admin);
 
         // Act
-        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid());
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(1));
 
         // Assert — success surfaces and the service was called exactly once
         Assert.IsType<OkObjectResult>(result);
-        _mockPurchaseService.Verify(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), adminId), Times.Once);
+        _mockPurchaseService.Verify(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), 1, adminId), Times.Once);
         _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Once);
     }
 
@@ -241,11 +267,11 @@ public class AdminControllerPurchaseTests
         var adminId = Guid.NewGuid();
         SetAuthenticatedUser(adminId, UserRole.Admin);
         _mockPurchaseService
-            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .Setup(s => s.RefundPurchaseAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<Guid>()))
             .ThrowsAsync(new Exception("Database error"));
 
         // Act
-        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid());
+        var result = await _controller.RefundPurchase(Guid.NewGuid(), Guid.NewGuid(), new RefundPurchaseRequest(1));
 
         // Assert
         var statusCodeResult = Assert.IsType<ObjectResult>(result);

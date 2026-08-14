@@ -254,22 +254,27 @@ public class AdminController : TicketeraControllerBase
     }
 
     /// <summary>
-    /// Refunds an unused full purchase atomically (APR-003/004): marks its tickets
-    /// refunded and flips the Approved Transaction to Refunded — no MP money movement,
-    /// no email, no motivo (APR-008). Audits RefundPurchase/Payment after commit.
+    /// Refunds K tickets of a purchase atomically (APR-003/004/012/013): marks the K
+    /// oldest non-refunded, non-used tickets refunded, inserts one Refunds ledger row
+    /// and flips the Approved Transaction to Refunded only at zero active tickets — no
+    /// MP money movement, no email, no motivo (APR-008). Audits RefundPurchase/Payment
+    /// after commit.
     /// </summary>
     /// <param name="eventId">Event owning the purchase (used in the audit detail)</param>
     /// <param name="reservationId">Confirmed reservation to refund</param>
-    /// <returns>200 on success; 404 when the reservation is missing; 409 when the
-    /// purchase has no Approved transaction, is already refunded or a ticket IsUsed</returns>
+    /// <param name="request">Body with the number of tickets to refund (K &gt; 0)</param>
+    /// <returns>200 on success; 404 when the reservation is missing; 409 when K ≤ 0,
+    /// K &gt; active remaining, the purchase has no Approved transaction or a ticket
+    /// IsUsed</returns>
     [HttpPost("events/{eventId:guid}/purchases/{reservationId:guid}/refund")]
-    public async Task<IActionResult> RefundPurchase(Guid eventId, Guid reservationId)
+    public async Task<IActionResult> RefundPurchase(Guid eventId, Guid reservationId,
+        [FromBody] RefundPurchaseRequest request)
     {
         if (!TryGetUserId(out var adminId)) return Unauthorized();
 
         try
         {
-            await _adminPurchaseService.RefundPurchaseAsync(reservationId, adminId);
+            await _adminPurchaseService.RefundPurchaseAsync(reservationId, request.Quantity, adminId);
 
             // APR-007: audit AFTER the transaction commits, best-effort, no motivo.
             await TryLogAuditAsync(adminId, new AuditLogContext(
@@ -277,7 +282,7 @@ public class AdminController : TicketeraControllerBase
                 AuditActionType.RefundPurchase,
                 AuditResourceType.Payment,
                 reservationId,
-                Truncate($"Admin refunded purchase {reservationId} for event {eventId}", 1000)));
+                Truncate($"Admin refunded {request.Quantity} tickets of purchase {reservationId} for event {eventId}", 1000)));
 
             return Ok(new { message = "Purchase refunded successfully" });
         }
@@ -393,6 +398,14 @@ public class AdminController : TicketeraControllerBase
 /// Request body for creating a new user account as an administrator.
 /// </summary>
 public record AdminCreateUserRequest(string Name, string Email, string Password, UserRole Role);
+
+/// <summary>
+/// Request body for a quantity-based purchase refund (APR-003/D8). Plain positional
+/// record with NO data annotations — validation lives in the service, which throws
+/// InvalidOperationException → 409 for K ≤ 0 or K &gt; active (uniform 200/404/409/500
+/// mapping). Missing body → automatic 400 via [ApiController].
+/// </summary>
+public record RefundPurchaseRequest(int Quantity);
 
 /// <summary>
 /// Response returned after a user is created by an administrator.

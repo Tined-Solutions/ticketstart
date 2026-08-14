@@ -8,10 +8,12 @@ using Xunit;
 namespace TicketeraOnline.Api.Tests;
 
 /// <summary>
-/// RED tests for IAdminPurchaseService (APR-002/003/004/007/008).
-/// Covers the atomic full-purchase refund (tickets marked IsRefunded, the Approved
-/// Transaction FLIPPED to Refunded — never a second row), the IsUsed guard with
-/// re-check under lock, and the listing with masked buyer data + totalRefunded.
+/// RED tests for IAdminPurchaseService (APR-002/003/004/007/008/012/013/014).
+/// Covers the atomic QUANTITY-BASED partial refund: the K oldest non-refunded,
+/// non-used tickets marked IsRefunded (APR-013), one immutable Refunds ledger row
+/// per operation (APR-012), the Approved Transaction flipped to Refunded ONLY when
+/// zero active tickets remain (D2 — never a second row), and the listing projecting
+/// RefundedQuantity/RefundedAmount with TotalRefunded = Σ Refunds.Amount (APR-002).
 /// </summary>
 public class AdminPurchaseServiceTests : IDisposable
 {
@@ -137,26 +139,51 @@ public class AdminPurchaseServiceTests : IDisposable
         return (eventId, reservation.Id, ticketTypeId, mpId);
     }
 
-    #region RefundPurchaseAsync — APR-003/004/007/008
+    // TRACKED query: listing tests mutate these entities (IsRefunded / ReservationId)
+    // as seeding, so they must be tracked for SaveChangesAsync to persist the change.
+    private async Task<List<Ticket>> TicketsOf(Guid reservationId) =>
+        await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
+
+    #region RefundPurchaseAsync — APR-003/004/012/013
 
     [Fact]
-    public async Task RefundPurchaseAsync_HappyPath_MarksTicketsRefundedAndFlipsTransaction()
+    public async Task RefundPurchaseAsync_Partial_MarksTwoTicketsAndLeavesTxApproved()
     {
-        // Arrange (APR-003 happy path)
-        var (eventId, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 2);
+        // Arrange (APR-003 partial happy path): 4 active tickets, refund K=2.
+        var (_, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 4);
         var adminId = Guid.NewGuid();
 
         // Act
-        await _service.RefundPurchaseAsync(reservationId, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
 
-        // Assert — all tickets marked refunded with RefundedAt set
-        var tickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).ToListAsync();
-        Assert.Equal(2, tickets.Count);
+        // Assert — exactly 2 of the 4 tickets marked refunded with RefundedAt set
+        var tickets = await TicketsOf(reservationId);
+        Assert.Equal(4, tickets.Count);
+        Assert.Equal(2, tickets.Count(t => t.IsRefunded));
+        Assert.All(tickets.Where(t => t.IsRefunded), t => Assert.NotNull(t.RefundedAt));
+        Assert.All(tickets.Where(t => !t.IsRefunded), t => Assert.False(t.IsRefunded));
+
+        // Assert — the Approved transaction is NOT flipped on a partial refund (D2)
+        var tx = await _context.Transactions.SingleAsync(t => t.MercadoPagoId == mpId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_FullAtZeroActive_FlipsTransaction()
+    {
+        // Arrange (APR-003 full-at-zero): 2 active tickets, refund K=2 → active == K.
+        var (_, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+
+        // Assert — all tickets refunded
+        var tickets = await TicketsOf(reservationId);
         Assert.All(tickets, t => Assert.True(t.IsRefunded));
-        Assert.All(tickets, t => Assert.NotNull(t.RefundedAt));
 
-        // Assert — the Approved transaction was FLIPPED to Refunded and exactly ONE
-        // row remains for the MercadoPagoId (unique IX_Transactions_MercadoPagoId respected)
+        // Assert — the Approved transaction FLIPPED to Refunded and exactly ONE row
+        // remains for the MercadoPagoId (unique IX_Transactions_MercadoPagoId respected)
         var transactions = await _context.Transactions.Where(t => t.MercadoPagoId == mpId).ToListAsync();
         var tx = Assert.Single(transactions);
         Assert.Equal(TransactionStatus.Refunded, tx.Status);
@@ -164,7 +191,134 @@ public class AdminPurchaseServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RefundPurchaseAsync_NoApprovedTransaction_ThrowsAndChangesNothing()
+    public async Task RefundPurchaseAsync_InsertsRefundRow_WithTicketIdsQuantityUnitPriceAmountAdminId()
+    {
+        // Arrange (APR-012): 4 active tickets, refund K=2. TicketType.Price = 100m (D7).
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+        var tickets = await TicketsOf(reservationId);
+        var selectedIds = tickets.OrderBy(t => t.CreatedAt).Take(2).Select(t => t.Id).ToArray();
+
+        // Act
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+
+        // Assert — exactly one Refunds row with the operation snapshot
+        var refund = Assert.Single(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        Assert.Equal(reservationId, refund.ReservationId);
+        Assert.Equal(selectedIds, refund.TicketIds);          // TicketIds = the 2 selected
+        Assert.Equal(2, refund.Quantity);                      // Quantity = K
+        Assert.Equal(200m, refund.Amount);                     // Amount = Price × K (100 × 2)
+        Assert.Equal(adminId, refund.AdminId);
+        Assert.NotEqual(default, refund.CreatedAt);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_Cumulative_SecondRefundAppendsAndFlipsAtZero()
+    {
+        // Arrange (APR-012 cumulative): 4 active tickets; refund K=2 twice.
+        var (_, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+
+        // Act — first partial refund (2 of 4), then a second refund (the last 2)
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+
+        // Assert — two Refunds rows appended; TotalRefunded = Σ Amounts
+        var refunds = await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync();
+        Assert.Equal(2, refunds.Count);
+        Assert.All(refunds, r => Assert.Equal(200m, r.Amount));
+        Assert.Equal(400m, refunds.Sum(r => r.Amount));
+
+        // Assert — all 4 tickets refunded, and the tx flipped only at zero active
+        var tickets = await TicketsOf(reservationId);
+        Assert.Equal(4, tickets.Count(t => t.IsRefunded));
+        var tx = await _context.Transactions.SingleAsync(t => t.MercadoPagoId == mpId);
+        Assert.Equal(TransactionStatus.Refunded, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_QuantityAboveActiveRemaining_ThrowsNoChange()
+    {
+        // Arrange (APR-003: K > active): 2 active tickets, request K=3.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RefundPurchaseAsync(reservationId, 3, adminId));
+
+        // Assert — nothing mutated: no ticket, no Refunds row, tx still Approved
+        var tickets = await TicketsOf(reservationId);
+        Assert.All(tickets, t => Assert.False(t.IsRefunded));
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task RefundPurchaseAsync_QuantityZeroOrNegative_ThrowsNoChange(int quantity)
+    {
+        // Arrange (APR-003: K ≤ 0 blocked)
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RefundPurchaseAsync(reservationId, quantity, adminId));
+
+        // Assert — no state change
+        var tickets = await TicketsOf(reservationId);
+        Assert.All(tickets, t => Assert.False(t.IsRefunded));
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_SelectsOldestTickets_ByCreatedAt()
+    {
+        // Arrange (APR-013): 4 tickets with DISTINCT CreatedAt values; refund K=2.
+        // Ticket CreatedAt = purchasedAt.AddSeconds(i) → i=0 and i=1 are the oldest.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+        var tickets = await TicketsOf(reservationId);
+        var oldestTwo = tickets.OrderBy(t => t.CreatedAt).Take(2).Select(t => t.Id).ToHashSet();
+
+        // Act
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+
+        // Assert — exactly the two earliest-CreatedAt tickets are marked refunded
+        var after = await TicketsOf(reservationId);
+        var refundedIds = after.Where(t => t.IsRefunded).Select(t => t.Id).ToHashSet();
+        Assert.Equal(oldestTwo, refundedIds);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_ConcurrentQuantityGuard_SecondSeesFirstCommittedState()
+    {
+        // Arrange (APR-003 concurrent serialize): 4 active tickets. Simulates two
+        // sequential refunds where the second re-reads the FIRST's committed state
+        // under lock (InMemory path) — no ticket may be refunded twice.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+
+        // Act — "request 1" refunds 2, "request 2" refunds 2: both observe committed state
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+
+        // Assert — each ticket refunded exactly once; total refunded == 4
+        var tickets = await TicketsOf(reservationId);
+        Assert.Equal(4, tickets.Count(t => t.IsRefunded));
+        Assert.DoesNotContain(tickets, t => t.IsRefunded && t.RefundedAt == null);
+        var refunds = await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync();
+        Assert.Equal(2, refunds.Count);
+        Assert.Equal(4, refunds.Sum(r => r.Quantity));
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_NoApprovedTransaction_ThrowsNoChange()
     {
         // Arrange (APR-003: no Approved transaction)
         var (_, reservationId, _, _) = await SeedConfirmedPurchase(
@@ -173,61 +327,30 @@ public class AdminPurchaseServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, 1, adminId));
 
-        var tickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).AsNoTracking().ToListAsync();
+        var tickets = await TicketsOf(reservationId);
         Assert.All(tickets, t => Assert.False(t.IsRefunded));
         Assert.All(tickets, t => Assert.Null(t.RefundedAt));
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
     }
 
     [Fact]
-    public async Task RefundPurchaseAsync_UsedTicket_ThrowsAndChangesNothing()
+    public async Task RefundPurchaseAsync_UsedTicket_ThrowsNoChange()
     {
-        // Arrange (APR-004: a used ticket blocks the refund)
+        // Arrange (APR-004: a used ticket blocks the WHOLE refund, any K)
         var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2, anyTicketUsed: true);
         var adminId = Guid.NewGuid();
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, 1, adminId));
 
-        var tickets = await _context.Tickets.Where(t => t.ReservationId == reservationId).AsNoTracking().ToListAsync();
+        var tickets = await TicketsOf(reservationId);
         Assert.All(tickets, t => Assert.False(t.IsRefunded));
         var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
         Assert.Equal(TransactionStatus.Approved, tx.Status);
-    }
-
-    [Fact]
-    public async Task RefundPurchaseAsync_ScanWinsRace_ReCheckObservesUsedAndRollsBack()
-    {
-        // Arrange (APR-004 race arm): the staff scan committed IsUsed between the
-        // initial load and the in-lock re-check; the refund must observe it and abort.
-        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 1, anyTicketUsed: true);
-        var adminId = Guid.NewGuid();
-
-        // Act & Assert — the re-check sees IsUsed under the lock and refuses
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, adminId));
-
-        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
-        Assert.Equal(TransactionStatus.Approved, tx.Status);
-    }
-
-    [Fact]
-    public async Task RefundPurchaseAsync_AlreadyRefunded_ThrowsAndChangesNothing()
-    {
-        // Arrange — the purchase was already refunded (tx flipped + ticket flagged)
-        var (_, reservationId, _, _) = await SeedConfirmedPurchase(
-            txStatus: TransactionStatus.Refunded, anyTicketRefunded: true);
-        var adminId = Guid.NewGuid();
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, adminId));
-
-        // Exactly one tx row remains (no second insert attempted)
-        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
-        Assert.Equal(TransactionStatus.Refunded, tx.Status);
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -235,25 +358,53 @@ public class AdminPurchaseServiceTests : IDisposable
     {
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.RefundPurchaseAsync(Guid.NewGuid(), Guid.NewGuid()));
+            () => _service.RefundPurchaseAsync(Guid.NewGuid(), 1, Guid.NewGuid()));
     }
 
     #endregion
 
-    #region GetPurchasesAsync — APR-002
+    #region GetPurchasesAsync — APR-002/012/014
 
     [Fact]
-    public async Task GetPurchasesAsync_HappyPath_ReturnsRawBuyerDataAndFlagsRefunded()
+    public async Task GetPurchasesAsync_PartialAndFullRefunded_ReturnsRefundedQuantityRefundedAmountAndDerivedFlag()
     {
-        // Arrange — two confirmed purchases on the SAME event: one refunded, one approved
-        var (eventId, refundedReservationId, ticketTypeId, _) = await SeedConfirmedPurchase(quantity: 2);
-        var (_, secondReservationId, _, _) = await SeedConfirmedPurchase(
+        // Arrange — two confirmed purchases on the SAME event: one partially refunded
+        // (1 of 2 tickets), one fully refunded. Refunds ledger rows back each state.
+        var (eventId, partialReservationId, ticketTypeId, _) = await SeedConfirmedPurchase(quantity: 2);
+        var (_, fullReservationId, _, _) = await SeedConfirmedPurchase(
             quantity: 1, existingEventId: eventId, existingTicketTypeId: ticketTypeId);
 
-        var refundedTickets = await _context.Tickets.Where(t => t.ReservationId == refundedReservationId).ToListAsync();
-        foreach (var t in refundedTickets) { t.IsRefunded = true; t.RefundedAt = DateTime.UtcNow; }
-        var refundedTx = await _context.Transactions.SingleAsync(t => t.ReservationId == refundedReservationId);
-        refundedTx.Status = TransactionStatus.Refunded;
+        // Partial: 1 of 2 tickets refunded, 1 Refunds row (1 × 100), tx stays Approved.
+        var partialTickets = await TicketsOf(partialReservationId);
+        partialTickets[0].IsRefunded = true;
+        partialTickets[0].RefundedAt = DateTime.UtcNow;
+        _context.Refunds.Add(new Refund
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = partialReservationId,
+            TicketIds = new[] { partialTickets[0].Id },
+            Quantity = 1,
+            Amount = 100m,
+            AdminId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow
+        });
+
+        // Full: 1 of 1 tickets refunded, 1 Refunds row (1 × 100), tx Refunded.
+        var fullTickets = await TicketsOf(fullReservationId);
+        fullTickets[0].IsRefunded = true;
+        fullTickets[0].RefundedAt = DateTime.UtcNow;
+        _context.Refunds.Add(new Refund
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = fullReservationId,
+            TicketIds = new[] { fullTickets[0].Id },
+            Quantity = 1,
+            Amount = 100m,
+            AdminId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow
+        });
+        var fullTx = await _context.Transactions.SingleAsync(t => t.ReservationId == fullReservationId);
+        fullTx.Status = TransactionStatus.Refunded;
         await _context.SaveChangesAsync();
 
         // Act
@@ -264,29 +415,39 @@ public class AdminPurchaseServiceTests : IDisposable
         Assert.Equal("Test Event", response.EventName);
         Assert.Equal(2, response.Purchases.Count);
 
-        var refundedRow = response.Purchases.Single(p => p.ReservationId == refundedReservationId);
-        Assert.True(refundedRow.Refunded);
-        Assert.Equal("juan.perez@gmail.com", refundedRow.PurchaserEmail);
-        Assert.Equal("31234561", refundedRow.PurchaserDni);
-        Assert.Equal("General", refundedRow.TicketType);
-        Assert.Equal(2, refundedRow.Quantity);
-        Assert.Equal(200m, refundedRow.Amount);
+        var partialRow = response.Purchases.Single(p => p.ReservationId == partialReservationId);
+        Assert.Equal(1, partialRow.RefundedQuantity);   // APR-012
+        Assert.Equal(100m, partialRow.RefundedAmount);   // APR-012
+        Assert.False(partialRow.Refunded);               // 1 >= 2? NO → derived flag false
+        Assert.Equal("juan.perez@gmail.com", partialRow.PurchaserEmail);
+        Assert.Equal("31234561", partialRow.PurchaserDni);
+        Assert.Equal("General", partialRow.TicketType);
+        Assert.Equal(2, partialRow.Quantity);
+        Assert.Equal(200m, partialRow.Amount);
 
-        var approvedRow = response.Purchases.Single(p => p.ReservationId == secondReservationId);
-        Assert.False(approvedRow.Refunded);
-        Assert.Equal(100m, approvedRow.Amount);
+        var fullRow = response.Purchases.Single(p => p.ReservationId == fullReservationId);
+        Assert.Equal(1, fullRow.RefundedQuantity);
+        Assert.Equal(100m, fullRow.RefundedAmount);
+        Assert.True(fullRow.Refunded);                   // 1 >= 1 → derived flag true
+        Assert.Equal(100m, fullRow.Amount);
 
-        // totalRefunded = Σ Refunded tx amounts only (never includes approved)
+        // totalRefunded = Σ Refunds.Amount (APR-012), both rows count
         Assert.Equal(200m, response.TotalRefunded);
     }
 
     [Fact]
-    public async Task GetPurchasesAsync_TotalRefunded_SumOfRefundedTransactionAmounts()
+    public async Task GetPurchasesAsync_TotalRefunded_SumOfRefundsAmount()
     {
-        // Arrange — one refunded purchase of 200 + one approved of 100 on the same event
+        // Arrange — one refunded purchase of 200 (two Refunds rows of 100) + one
+        // approved of 100 on the same event. totalRefunded = Σ Refunds.Amount.
         var (eventId, ticketTypeId, _, _) = await SeedConfirmedPurchase(quantity: 2);
-        var (_, _, _, _) = await SeedConfirmedPurchase(quantity: 1, existingEventId: eventId, existingTicketTypeId: ticketTypeId);
-        var refundedReservationId = (await _context.Reservations.ToListAsync()).First(r => r.Quantity == 2).Id;
+        var (_, secondReservationId, _, _) = await SeedConfirmedPurchase(quantity: 1, existingEventId: eventId, existingTicketTypeId: ticketTypeId);
+        var refundedReservationId = (await _context.Reservations.AsNoTracking().ToListAsync()).First(r => r.Quantity == 2).Id;
+
+        var tickets = await TicketsOf(refundedReservationId);
+        foreach (var t in tickets) { t.IsRefunded = true; t.RefundedAt = DateTime.UtcNow; }
+        _context.Refunds.Add(new Refund { Id = Guid.NewGuid(), ReservationId = refundedReservationId, TicketIds = new[] { tickets[0].Id }, Quantity = 1, Amount = 100m, AdminId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow });
+        _context.Refunds.Add(new Refund { Id = Guid.NewGuid(), ReservationId = refundedReservationId, TicketIds = new[] { tickets[1].Id }, Quantity = 1, Amount = 100m, AdminId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow });
         var refundedTx = await _context.Transactions.SingleAsync(t => t.ReservationId == refundedReservationId);
         refundedTx.Status = TransactionStatus.Refunded;
         await _context.SaveChangesAsync();
@@ -294,8 +455,50 @@ public class AdminPurchaseServiceTests : IDisposable
         // Act
         var response = await _service.GetPurchasesAsync(eventId);
 
-        // Assert — only the refunded transaction amount counts
+        // Assert — Σ Refunds.Amount = 200, never includes the approved purchase
         Assert.Equal(200m, response.TotalRefunded);
+        Assert.Equal(2, response.Purchases.Count);
+        var approvedRow = response.Purchases.Single(p => p.ReservationId == secondReservationId);
+        Assert.False(approvedRow.Refunded);
+    }
+
+    [Fact]
+    public async Task GetPurchasesAsync_LegacyRefundWithBackfilledRow_KeepsCountingTotalRefunded()
+    {
+        // Arrange (APR-014): a Refunded transaction created BEFORE this change, with a
+        // backfilled Refunds row whose AdminId is NULL (pure-SQL migration). The legacy
+        // refund MUST keep counting toward totalRefunded.
+        var (eventId, ticketTypeId, _, _) = await SeedConfirmedPurchase(quantity: 1);
+        var (_, approvedReservationId, _, _) = await SeedConfirmedPurchase(quantity: 1, existingEventId: eventId, existingTicketTypeId: ticketTypeId);
+        var legacyReservationId = (await _context.Reservations.AsNoTracking().ToListAsync()).First(r => r.Quantity == 1 && r.Id != approvedReservationId).Id;
+
+        var ticket = Assert.Single(await TicketsOf(legacyReservationId));
+        ticket.IsRefunded = true;
+        ticket.RefundedAt = DateTime.UtcNow;
+        _context.Refunds.Add(new Refund
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = legacyReservationId,
+            TicketIds = new[] { ticket.Id },
+            Quantity = 1,
+            Amount = 100m,
+            AdminId = null,                                  // backfilled legacy row (APR-014)
+            CreatedAt = ticket.RefundedAt.Value
+        });
+        var legacyTx = await _context.Transactions.SingleAsync(t => t.ReservationId == legacyReservationId);
+        legacyTx.Status = TransactionStatus.Refunded;
+        await _context.SaveChangesAsync();
+
+        // Act
+        var response = await _service.GetPurchasesAsync(eventId);
+
+        // Assert — the backfilled row keeps TotalRefunded at 100 (no regression to 0)
+        Assert.Equal(100m, response.TotalRefunded);
+        var legacyRow = response.Purchases.Single(p => p.ReservationId == legacyReservationId);
+        Assert.True(legacyRow.Refunded);
+        Assert.Equal(100m, legacyRow.RefundedAmount);
+        var approvedRow = response.Purchases.Single(p => p.ReservationId == approvedReservationId);
+        Assert.False(approvedRow.Refunded);
     }
 
     [Fact]
@@ -338,7 +541,7 @@ public class AdminPurchaseServiceTests : IDisposable
         // Arrange — a confirmed purchase whose tickets have NULL ReservationId (APR-009
         // ambiguous legacy backfill) must be flagged "link unverified" in the listing.
         var (eventId, _, _, _) = await SeedConfirmedPurchase(quantity: 2);
-        var tickets = await _context.Tickets.ToListAsync();
+        var tickets = await _context.Tickets.Where(t => t.ReservationId != null).ToListAsync();
         foreach (var t in tickets) { t.ReservationId = null; }
         await _context.SaveChangesAsync();
 
