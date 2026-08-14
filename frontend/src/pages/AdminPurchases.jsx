@@ -21,14 +21,19 @@ function formatDate(dateString) {
   })
 }
 
-function statusBadge(refunded) {
-  return refunded
-    ? { variant: 'error', label: 'Reembolsada' }
-    : { variant: 'success', label: 'Confirmada' }
+function refundBadge(qty, refundedQty) {
+  if (refundedQty === 0) return { variant: 'success', label: 'Confirmada' }
+  const de = refundedQty >= qty
+    ? { variant: 'error', label: 'Reembolsada' } // fully → rose
+    : { variant: 'warning', label: 'Reembolsada' } // partial → amber
+  return { ...de, label: `${refundedQty} de ${qty} reembolsadas` } // APR-010
 }
 
 function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, refunding, error }) {
   const dialogRef = useDialog({ onClose: onCancel })
+  const [selectedQuantity, setSelectedQuantity] = useState(1)
+  const activeRemaining = purchase.quantity - purchase.refundedQuantity
+  const unitPrice = purchase.amount / purchase.quantity
   const ticketsLabel = purchase.quantity === 1 ? 'entrada' : 'entradas'
   return (
     <div
@@ -48,6 +53,26 @@ function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, re
           {formatCurrency(purchase.amount)}). Esta acción no se puede deshacer.
         </p>
 
+        <div className="mb-4">
+          <label htmlFor="refund-quantity" className="block text-sm text-text-2 mb-1">
+            Cantidad a reembolsar
+          </label>
+          <input
+            id="refund-quantity"
+            type="number"
+            min={1}
+            max={activeRemaining}
+            value={selectedQuantity}
+            onChange={(e) => setSelectedQuantity(Number(e.target.value))}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-text-1 min-h-[44px]"
+            aria-label="Cantidad a reembolsar"
+          />
+          <p className="mt-2 text-sm text-text-2">
+            Reembolsar {selectedQuantity} × {formatCurrency(unitPrice)} ={' '}
+            {formatCurrency(unitPrice * selectedQuantity)}
+          </p>
+        </div>
+
         {error && (
           <div className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 rounded-lg py-2 px-3 mb-4 text-sm" role="alert">
             {error}
@@ -58,7 +83,7 @@ function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, re
           <Button variant="secondary" onClick={onCancel} disabled={refunding} className="min-h-[44px]">
             Cancelar
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={refunding} className="min-h-[44px]">
+          <Button variant="danger" onClick={() => onConfirm(selectedQuantity)} disabled={refunding} className="min-h-[44px]">
             {refunding ? 'Reembolsando…' : 'Reembolsar'}
           </Button>
         </div>
@@ -86,8 +111,8 @@ export default function AdminPurchases() {
   })
 
   const refundMutation = useMutation({
-    mutationFn: async (reservationId) => {
-      const response = await apiClient.post(`/admin/events/${id}/purchases/${reservationId}/refund`)
+    mutationFn: async ({ reservationId, quantity }) => {
+      const response = await apiClient.post(`/admin/events/${id}/purchases/${reservationId}/refund`, { quantity })
       return response.data
     },
     onSuccess: () => {
@@ -98,10 +123,10 @@ export default function AdminPurchases() {
     },
   })
 
-  const handleConfirmRefund = () => {
+  const handleConfirmRefund = (quantity) => {
     if (!refundTarget) return
     setRefundError('')
-    refundMutation.mutate(refundTarget.reservationId, {
+    refundMutation.mutate({ reservationId: refundTarget.reservationId, quantity }, {
       onError: (err) => setRefundError(getErrorMessage(err)),
     })
   }
@@ -163,7 +188,7 @@ export default function AdminPurchases() {
                 </thead>
                 <tbody>
                   {data.purchases.map((purchase) => {
-                    const badge = statusBadge(purchase.refunded)
+                    const badge = refundBadge(purchase.quantity, purchase.refundedQuantity)
                     return (
                       <tr key={purchase.reservationId} className="border-b border-border hover:bg-surface-elevated transition-colors">
                         <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Comprador">
@@ -186,7 +211,7 @@ export default function AdminPurchases() {
                           <Button
                             variant="danger"
                             size="sm"
-                            disabled={purchase.refunded}
+                            disabled={purchase.refundedQuantity >= purchase.quantity}
                             onClick={() => setRefundTarget(purchase)}
                             aria-label={`Reembolsar compra de ${purchase.purchaserEmail}`}
                             className="min-h-[44px]"

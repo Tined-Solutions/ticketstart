@@ -54,7 +54,8 @@ const mockPurchases = {
       quantity: 2,
       amount: 200,
       purchasedAt: '2026-07-01T10:00:00Z',
-      refunded: false,
+      refundedQuantity: 0,
+      refundedAmount: 0,
       linkUnverified: false,
     },
     {
@@ -65,7 +66,8 @@ const mockPurchases = {
       quantity: 1,
       amount: 150,
       purchasedAt: '2026-07-02T10:00:00Z',
-      refunded: true,
+      refundedQuantity: 1,
+      refundedAmount: 150,
       linkUnverified: false,
     },
   ],
@@ -103,7 +105,7 @@ describe('AdminPurchases', () => {
     })
   })
 
-  it('renders purchases with raw buyer data and refunded badge', async () => {
+  it('renders purchases with raw buyer data and refunded badge variants', async () => {
     renderPage()
 
     // Raw buyer + DNI (Admin-only surface: the admin needs to identify the buyer to refund)
@@ -112,14 +114,15 @@ describe('AdminPurchases', () => {
     })
     expect(screen.getByText('31234561')).toBeInTheDocument()
 
-    // Refunded row shows the Refunded badge, approved row shows Confirmada
-    expect(screen.getByText('Reembolsada')).toBeInTheDocument()
+    // APR-010 badge variants: fully refunded (res-2, 1/1) → error "1 de 1 reembolsadas";
+    // not refunded (res-1, 0/2) → success "Confirmada"
+    expect(screen.getByText('1 de 1 reembolsadas')).toBeInTheDocument()
     expect(screen.getByText('Confirmada')).toBeInTheDocument()
 
     // Per-event totalRefunded is displayed
     expect(screen.getByText(/reembolsado: \$ 150/i)).toBeInTheDocument()
 
-    // The refunded row must NOT offer a refund action
+    // The fully-refunded row (refundedQuantity >= quantity) must NOT offer a refund action
     const refundedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('maria@test.com'))
     expect(within(refundedRow).queryByRole('button')).toBeDisabled()
   })
@@ -144,9 +147,9 @@ describe('AdminPurchases', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/event not found/i)
   })
 
-  it('refund confirm success invalidates the query and shows the updated state', async () => {
+  it('partial refund via quantity selector posts {quantity} and updates the row', async () => {
     // First GET returns the pre-refund list; after invalidation the refetch returns
-    // the purchase as refunded (res-1) with totalRefunded updated.
+    // res-1 with refundedQuantity 2 (fully refunded) and totalRefunded updated.
     let callCount = 0
     mockGet.mockImplementation((url) => {
       if (url !== '/admin/events/event-1/purchases') return Promise.reject(new Error('Unknown endpoint'))
@@ -157,7 +160,7 @@ describe('AdminPurchases', () => {
       const updated = {
         ...mockPurchases,
         purchases: mockPurchases.purchases.map((p) =>
-          p.reservationId === 'res-1' ? { ...p, refunded: true } : p
+          p.reservationId === 'res-1' ? { ...p, refundedQuantity: 2, refundedAmount: 200 } : p
         ),
         totalRefunded: 350,
       }
@@ -176,18 +179,35 @@ describe('AdminPurchases', () => {
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(/confirmar reembolso/i)).toBeInTheDocument()
 
+    // Quantity selector: number input 1..activeRemaining (activeRemaining = 2 - 0 = 2)
+    const quantityInput = within(dialog).getByLabelText(/cantidad a reembolsar/i)
+    expect(quantityInput).toHaveValue(1)
+    expect(quantityInput).toHaveAttribute('min', '1')
+    expect(quantityInput).toHaveAttribute('max', '2')
+
+    // Live preview: unitPrice = amount / quantity = 200 / 2 = 100
+    expect(within(dialog).getByText(/reembolsar 1 × \$ 100 = \$ 100/i)).toBeInTheDocument()
+
+    // Select K=2 → preview updates live
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '2')
+    expect(within(dialog).getByText(/reembolsar 2 × \$ 100 = \$ 200/i)).toBeInTheDocument()
+
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
 
-    // POST sent to the refund endpoint
+    // POST sent to the refund endpoint WITH the quantity body (APR-010)
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund')
+      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund', { quantity: 2 })
     })
 
-    // Query invalidation → refetch → the row now shows Reembolsada and totalRefunded grew
+    // Query invalidation → refetch → the row now shows the new refundedQuantity
+    // ("2 de 2 reembolsadas") and totalRefunded grew
     await waitFor(() => {
       expect(screen.getByText(/reembolsado: \$ 350/i)).toBeInTheDocument()
     })
-    expect(screen.getAllByText('Reembolsada')).toHaveLength(2)
+    const updatedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('juan.perez@gmail.com'))
+    expect(within(updatedRow).getByText('2 de 2 reembolsadas')).toBeInTheDocument()
+    expect(within(updatedRow).getByRole('button')).toBeDisabled()
     expect(mockGet.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -212,7 +232,7 @@ describe('AdminPurchases', () => {
 
     expect(mockGet).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Confirmada')).toBeInTheDocument()
-    expect(screen.queryByText('Reembolsada')).toBeInTheDocument()
+    expect(screen.getByText('1 de 1 reembolsadas')).toBeInTheDocument()
   })
 })
 
