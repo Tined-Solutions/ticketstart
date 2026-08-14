@@ -138,7 +138,9 @@ public class MetricsService : IMetricsService
                 TicketsSold = ticketsSold,
                 TotalRevenue = t?.Revenue ?? 0m,
                 RemainingInventory = totalInventory - ticketsSold - activeReservations,
-                TicketsScanned = t?.TicketsScanned ?? 0
+                TicketsScanned = t?.TicketsScanned ?? 0,
+                // EA-007: organizer dashboard renders the moderation badge
+                Status = e.Status
             };
         }).ToList();
 
@@ -203,7 +205,9 @@ public class MetricsService : IMetricsService
             TicketsSold = ticketsSold,
             TotalRevenue = totalRevenue,
             RemainingInventory = remainingInventory,
-            TicketsScanned = ticketsScanned
+            TicketsScanned = ticketsScanned,
+            // EA-007: organizer dashboard renders the moderation badge
+            Status = eventEntity.Status
         };
     }
 }

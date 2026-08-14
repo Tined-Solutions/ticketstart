@@ -108,6 +108,68 @@ public class MetricsControllerTests
     #region GET /api/metrics/organizer
 
     [Fact]
+    public async Task GetOrganizerMetrics_EachItemCarriesStatus()
+    {
+        // EA-007: every EventMetrics item round-trips its Status so the dashboard
+        // can render the moderation badge without extra queries.
+        var userId = Guid.NewGuid();
+        var metrics = new List<EventMetrics>
+        {
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Pending Event",
+                EventDate = DateTime.UtcNow.AddDays(10),
+                TicketsSold = 0,
+                TotalRevenue = 0m,
+                RemainingInventory = 100,
+                TicketsScanned = 0,
+                Status = EventStatus.Pending
+            },
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Approved Event",
+                EventDate = DateTime.UtcNow.AddDays(20),
+                TicketsSold = 5,
+                TotalRevenue = 500m,
+                RemainingInventory = 95,
+                TicketsScanned = 1,
+                Status = EventStatus.Approved
+            },
+            new EventMetrics
+            {
+                Id = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Rejected Event",
+                EventDate = DateTime.UtcNow.AddDays(30),
+                TicketsSold = 0,
+                TotalRevenue = 0m,
+                RemainingInventory = 50,
+                TicketsScanned = 0,
+                Status = EventStatus.Rejected
+            }
+        };
+
+        SetAuthenticatedUser(userId, UserRole.Organizador);
+        _mockMetricsService.Setup(s => s.GetOrganizerMetricsAsync(userId)).ReturnsAsync(metrics);
+
+        // Act
+        var result = await _controller.GetOrganizerMetrics();
+
+        // Assert — controller passes the DTO through unchanged, status included
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsAssignableFrom<IEnumerable<EventMetrics>>(okResult.Value);
+        var items = value.ToList();
+        Assert.Equal(3, items.Count);
+        Assert.Equal(EventStatus.Pending, items[0].Status);
+        Assert.Equal(EventStatus.Approved, items[1].Status);
+        Assert.Equal(EventStatus.Rejected, items[2].Status);
+    }
+
+    [Fact]
     public async Task GetOrganizerMetrics_ReturnsOkWithMetrics()
     {
         // Arrange

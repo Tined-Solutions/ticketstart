@@ -1,3 +1,5 @@
+using TicketeraOnline.Api.Models;
+
 namespace TicketeraOnline.Api.Services;
 
 /// <summary>
@@ -33,4 +35,11 @@ public class EventMetrics
     public decimal TotalRevenue { get; set; }
     public int RemainingInventory { get; set; }
     public int TicketsScanned { get; set; }
+
+    /// <summary>
+    /// EA-007: approval status, serialized as "Pending"/"Approved"/"Rejected"
+    /// (per-enum <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>)
+    /// so the organizer dashboard renders the moderation badge.
+    /// </summary>
+    public EventStatus Status { get; set; }
 }

@@ -93,7 +93,10 @@ public class EventService : IEventService
             ImageUrl = request.ImageUrl,
             OrganizerId = organizerId,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            // EA-002: new events always start Pending; CreateEventRequest has no
+            // Status field, so no client input can override the initial status.
+            Status = EventStatus.Pending
         };
 
         // Create ticket types
@@ -179,6 +182,10 @@ public class EventService : IEventService
             var now = _clock.GetUtcNow().UtcDateTime;
             query = query.Where(e => e.Date > now);
         }
+
+        // EHE-002: public catalog also excludes unapproved events — only
+        // Approved events are buyer-visible (EA-002 moderation gate).
+        query = query.Where(e => e.Status == EventStatus.Approved);
 
         var events = await query
             .ToListAsync();
@@ -863,6 +870,7 @@ public class EventService : IEventService
             OrganizerId = eventEntity.OrganizerId,
             CreatedAt = eventEntity.CreatedAt,
             UpdatedAt = eventEntity.UpdatedAt,
+            Status = eventEntity.Status,
             TicketTypes = ticketTypesWithAvailability
         });
     }

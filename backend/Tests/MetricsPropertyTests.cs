@@ -638,6 +638,52 @@ public class MetricsPropertyTests : IDisposable
 
     #endregion
 
+    #region EA-007 — EventMetrics carries Status
+
+    [Fact]
+    public async Task GetOrganizerMetrics_EachEventCarriesItsStatus()
+    {
+        // EA-007: the projection copies Status so the dashboard can render badges.
+        var organizerId = Guid.NewGuid();
+        var pending = CreateEvent(organizerId, "Pending Own");
+        pending.Status = EventStatus.Pending;
+        var approved = CreateEvent(organizerId, "Approved Own");
+        approved.Status = EventStatus.Approved;
+        var rejected = CreateEvent(organizerId, "Rejected Own");
+        rejected.Status = EventStatus.Rejected;
+        _context.Events.AddRange(pending, approved, rejected);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var metrics = (await _metricsService.GetOrganizerMetricsAsync(organizerId)).ToList();
+
+        // Assert
+        Assert.Equal(3, metrics.Count);
+        Assert.Equal(EventStatus.Pending, metrics.Single(m => m.EventId == pending.Id).Status);
+        Assert.Equal(EventStatus.Approved, metrics.Single(m => m.EventId == approved.Id).Status);
+        Assert.Equal(EventStatus.Rejected, metrics.Single(m => m.EventId == rejected.Id).Status);
+    }
+
+    [Fact]
+    public async Task GetEventMetrics_SingleEvent_ReturnsItsStatus()
+    {
+        // EA-007: single-event metrics carry Status too.
+        var organizerId = Guid.NewGuid();
+        var eventEntity = CreateEvent(organizerId, "Rejected Single");
+        eventEntity.Status = EventStatus.Rejected;
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var metrics = await _metricsService.GetEventMetricsAsync(eventEntity.Id);
+
+        // Assert
+        Assert.NotNull(metrics);
+        Assert.Equal(EventStatus.Rejected, metrics.Status);
+    }
+
+    #endregion
+
     private static Event CreateEvent(Guid organizerId, string name)
     {
         var now = DateTime.UtcNow;

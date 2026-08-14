@@ -190,6 +190,12 @@ public class EventWithAvailability
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public List<TicketTypeWithAvailability> TicketTypes { get; set; } = new();
+
+    /// <summary>
+    /// EA-007: approval status, serialized as "Pending"/"Approved"/"Rejected"
+    /// (per-enum <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>).
+    /// </summary>
+    public EventStatus Status { get; set; }
 }
 
 /// <summary>

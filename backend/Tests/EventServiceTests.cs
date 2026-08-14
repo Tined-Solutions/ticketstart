@@ -359,7 +359,9 @@ public class EventServiceTests : IDisposable
                 Location = $"Location {i}",
                 OrganizerId = organizerId,
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                // EA-002: only Approved events reach the public list (EHE-002)
+                Status = EventStatus.Approved
             };
 
             var ticketType = new TicketType
@@ -945,7 +947,9 @@ public class EventServiceTests : IDisposable
         {
             Id = Guid.NewGuid(), Name = "Test", Description = "D",
             Date = DateTime.UtcNow.AddDays(1), Location = "L",
-            OrganizerId = organizerId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            OrganizerId = organizerId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            // EA-002: only Approved events reach the public list (EHE-002)
+            Status = EventStatus.Approved
         };
         _context.Events.Add(evt);
 
@@ -981,7 +985,9 @@ public class EventServiceTests : IDisposable
         Location = "Location",
         OrganizerId = organizerId,
         CreatedAt = date,
-        UpdatedAt = date
+        UpdatedAt = date,
+        // EA-002: only Approved events reach the public list (EHE-002)
+        Status = EventStatus.Approved
     };
 
     [Fact]
@@ -1085,9 +1091,88 @@ public class EventServiceTests : IDisposable
         Assert.Contains(past.Id, ids);
     }
 
+    #region EA-002/EHE-002 — Event approval status (pending gating + DTO Status)
+
     [Fact]
-    public async Task GetEventById_Public_Expired_Null()
+    public async Task CreateEventAsync_SetsStatusPending()
     {
+        // EA-002: every created event starts Pending regardless of the requester.
+        var organizerId = Guid.NewGuid();
+        var request = new CreateEventRequest
+        {
+            Name = "Pending Event",
+            Description = "D",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "L",
+            TicketTypes = new List<CreateTicketTypeRequest>
+            {
+                new() { Name = "General", Price = 100m, Quantity = 50 }
+            }
+        };
+
+        // Act
+        var result = await _eventService.CreateEventAsync(request, organizerId);
+
+        // Assert
+        Assert.Equal(EventStatus.Pending, result.Status);
+    }
+
+    [Fact]
+    public async Task GetAllPublished_ExcludesPendingAndRejected()
+    {
+        // EHE-002: the public list must only surface Approved events. Pending and
+        // Rejected future-dated events are absent; Approved future-dated present.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var organizerId = Guid.NewGuid();
+        var approved = CreateEventEntity(organizerId, "Approved", fake.GetUtcNow().UtcDateTime.AddDays(1));
+        var pending = CreateEventEntity(organizerId, "Pending", fake.GetUtcNow().UtcDateTime.AddDays(2));
+        pending.Status = EventStatus.Pending;
+        var rejected = CreateEventEntity(organizerId, "Rejected", fake.GetUtcNow().UtcDateTime.AddDays(3));
+        rejected.Status = EventStatus.Rejected;
+        _context.Events.AddRange(approved, pending, rejected);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetAllPublishedEventsAsync();
+
+        // Assert — only the Approved event is visible
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Contains(approved.Id, ids);
+        Assert.DoesNotContain(pending.Id, ids);
+        Assert.DoesNotContain(rejected.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetEventById_Mapper_ReturnsStatus()
+    {
+        // EA-007/D-2: the shared GetEventByIdAsync (no status filter) must surface
+        // Status in the DTO — both the manage variant (Pending) and public (Approved).
+        var organizerId = Guid.NewGuid();
+        var pending = CreateEventEntity(organizerId, "Pending Own", DateTime.UtcNow.AddDays(1));
+        pending.Status = EventStatus.Pending;
+        var approved = CreateEventEntity(organizerId, "Approved Own", DateTime.UtcNow.AddDays(2));
+        approved.Status = EventStatus.Approved;
+        _context.Events.AddRange(pending, approved);
+        await _context.SaveChangesAsync();
+
+        // Act — manage variant returns the Pending event (EHE-006)
+        var pendingResult = await _eventService.GetEventByIdAsync(pending.Id, includeExpired: true);
+        var approvedResult = await _eventService.GetEventByIdAsync(approved.Id, includeExpired: true);
+
+        // Assert — mapper copies Status into the DTO
+        Assert.NotNull(pendingResult);
+        Assert.Equal(EventStatus.Pending, pendingResult.Status);
+        Assert.NotNull(approvedResult);
+        Assert.Equal(EventStatus.Approved, approvedResult.Status);
+    }
+
+    #endregion
+
+    [Fact]
+    public async Task GetEventById_Public_Expired_Null() {
         // EHE-003: public detail (default includeExpired=false) hides expired
         // events → null (the controller maps that to 404).
         var fake = new FakeTimeProvider();
