@@ -509,23 +509,50 @@ public class EventService : IEventService
         var dateChanged = oldDate != request.Date;
         if (dateChanged)
         {
-            // EDC-002: query distinct non-refunded buyer emails
-            var buyerEmails = await _context.Tickets
+            // EDC-002: query distinct non-refunded buyers, resolving a best-effort
+            // recipient name per email for personalized greetings. A buyer email may
+            // span several reservations; the name prefers the most recent reservation's
+            // non-empty PurchaserName, then the linked User.Name, else null (the email
+            // layer falls back to a generic greeting).
+            var buyerRecipients = await _context.Tickets
                 .Where(t => t.EventId == eventId && !t.IsRefunded)
-                .Select(t => t.PurchaserEmail)
-                .Distinct()
+                .Select(t => new
+                {
+                    Email = t.PurchaserEmail,
+                    PurchaserName = t.Reservation != null ? t.Reservation.PurchaserName : null,
+                    UserName = t.Reservation != null && t.Reservation.User != null ? t.Reservation.User.Name : null,
+                    ReservationCreatedAt = t.Reservation != null ? (DateTime?)t.Reservation.CreatedAt : null
+                })
                 .ToListAsync();
 
+            var recipientEmails = buyerRecipients
+                .GroupBy(r => r.Email)
+                .Select(g => new
+                {
+                    Email = g.Key,
+                    RecipientName = g
+                        .Where(r => !string.IsNullOrWhiteSpace(r.PurchaserName))
+                        .OrderByDescending(r => r.ReservationCreatedAt ?? DateTime.MinValue)
+                        .Select(r => r.PurchaserName)
+                        .FirstOrDefault()
+                        ?? g
+                            .Where(r => !string.IsNullOrWhiteSpace(r.UserName))
+                            .OrderByDescending(r => r.ReservationCreatedAt ?? DateTime.MinValue)
+                            .Select(r => r.UserName)
+                            .FirstOrDefault()
+                })
+                .ToList();
+
             // EDC-005: zero buyers → silent no-op
-            if (buyerEmails.Count > 0)
+            if (recipientEmails.Count > 0)
             {
                 _logger.LogInformation(
                     "Date change detected for event {EventId}: {OldDate} → {NewDate}. " +
                     "Enqueueing {BuyerCount} notifications.",
-                    eventId, oldDate, request.Date, buyerEmails.Count);
+                    eventId, oldDate, request.Date, recipientEmails.Count);
 
                 var now = _clock.GetUtcNow().UtcDateTime;
-                foreach (var email in buyerEmails)
+                foreach (var recipient in recipientEmails)
                 {
                     var notification = new EventNotification
                     {
@@ -534,7 +561,8 @@ public class EventService : IEventService
                         NotificationType = "DateChange",
                         OldDate = oldDate,
                         NewDate = request.Date,
-                        RecipientEmail = email,
+                        RecipientEmail = recipient.Email,
+                        RecipientName = recipient.RecipientName,
                         CreatedAt = now,
                         UpdatedAt = now
                     };

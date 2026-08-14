@@ -91,6 +91,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(r => r.Quantity).IsRequired();
             entity.Property(r => r.PurchaserDNI).IsRequired().HasMaxLength(50);
             entity.Property(r => r.PurchaserEmail).HasMaxLength(255);
+            entity.Property(r => r.PurchaserName).HasMaxLength(200);
             entity.Property(r => r.ExpiresAt).IsRequired();
             entity.Property(r => r.Status).IsRequired();
             entity.Property(r => r.CreatedAt).IsRequired();
@@ -221,6 +222,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.EventName).IsRequired().HasMaxLength(255).HasDefaultValue(string.Empty);
             entity.Property(e => e.NotificationType).IsRequired().HasMaxLength(50).HasDefaultValue("DateChange");
             entity.Property(e => e.RecipientEmail).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.RecipientName).HasMaxLength(200);
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasDefaultValue("pending");
             entity.Property(e => e.Attempts).IsRequired().HasDefaultValue(0);
             entity.Property(e => e.MaxAttempts).IsRequired().HasDefaultValue(5);

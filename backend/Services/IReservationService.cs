@@ -22,10 +22,11 @@ public interface IReservationService
     /// <param name="quantity">Number of tickets to reserve</param>
     /// <param name="purchaserDNI">Purchaser DNI (required, max 50 characters)</param>
     /// <param name="purchaserEmail">Purchaser email (optional)</param>
+    /// <param name="purchaserName">Purchaser display name (optional, used for personalized email greetings)</param>
     /// <returns>Created reservation with identifier</returns>
     /// <exception cref="ArgumentException">Thrown when quantity is invalid, DNI is invalid, or insufficient tickets available</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event or ticket type not found</exception>
-    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null);
+    Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null, string? purchaserName = null);
 
     /// <summary>
     /// Validates if a reservation exists, is active, and not expired.
@@ -114,6 +115,7 @@ public class CreateReservationRequest
     public int Quantity { get; set; }
     public string PurchaserDNI { get; set; } = string.Empty;
     public string? PurchaserEmail { get; set; }
+    public string? PurchaserName { get; set; }
     public string? ConfirmEmail { get; set; }
 }
 
@@ -124,6 +126,7 @@ public class UpdateReservationRequest
 {
     public string PurchaserDNI { get; set; } = string.Empty;
     public string? PurchaserEmail { get; set; }
+    public string? PurchaserName { get; set; }
     public string Token { get; set; } = string.Empty;
 }
 
