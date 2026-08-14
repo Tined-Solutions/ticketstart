@@ -13,6 +13,13 @@ public class Event
     public DateTime UpdatedAt { get; set; }
 
     /// <summary>
+    /// EA-001: approval status of the event. New events start <see cref="EventStatus.Pending"/>;
+    /// only <see cref="EventStatus.Approved"/> events surface in the buyer-facing catalog.
+    /// DB default is Pending (0); the migration backfills pre-existing rows to Approved.
+    /// </summary>
+    public EventStatus Status { get; set; } = EventStatus.Pending;
+
+    /// <summary>
     /// EHE-001: an event is expired when its start instant is strictly BEFORE
     /// <paramref name="asOf"/>. At the exact start instant (Date == asOf) the event
     /// is NOT expired — the predicate uses strict &lt;, not &lt;=. Pure function,

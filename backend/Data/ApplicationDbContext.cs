@@ -54,6 +54,10 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ImageUrl).HasMaxLength(1000);
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.UpdatedAt).IsRequired();
+            // EA-001/D-3: required int column; EF scaffolds defaultValue 0 (=Pending)
+            // for the NOT NULL add on a populated table. No HasConversion/HasDefaultValue
+            // (mirrors ReservationStatus/TransactionStatus).
+            entity.Property(e => e.Status).IsRequired();
 
             entity.HasOne(e => e.Organizer)
                 .WithMany(u => u.OrganizedEvents)
