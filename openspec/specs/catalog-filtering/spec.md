@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Buyers MUST NOT see expired events in the public catalog. The system applies a single `IsExpired` predicate at the DB query level so that `GET /api/events` and `GET /api/events/{id}` (public) never surface past events, while a management variant preserves organizer/admin access.
+Buyers MUST NOT see expired OR unapproved events in the public catalog. The system applies a single `IsExpired` predicate AND a `Status == Approved` filter at the DB query level so that `GET /api/events` and `GET /api/events/{id}` (public) never surface past or pending/rejected events, while a management variant preserves organizer/admin access regardless of status (EHE-006).
 
 ## Requirements
 
@@ -30,9 +30,9 @@ Buyers MUST NOT see expired events in the public catalog. The system applies a s
 - WHEN `IsExpired(2026-08-12T14:00:00Z)` is called
 - THEN the result is `false` (the predicate uses strict `<`, not `<=`)
 
-### Requirement: EHE-002 — Public event list excludes expired events
+### Requirement: EHE-002 — Public event list excludes expired and unapproved events
 
-`GetAllPublishedEventsAsync` MUST apply a `Where(e => !e.IsExpired(DateTime.UtcNow))` filter at the DB query level so expired events never appear in `GET /api/events`. The filter MUST be order-independent and MUST NOT affect non-expired events.
+`GetAllPublishedEventsAsync` MUST apply a `Where(e => !e.IsExpired(DateTime.UtcNow))` filter at the DB query level so expired events never appear in `GET /api/events`. It MUST additionally apply `Where(e => e.Status == EventStatus.Approved)` so pending and rejected events never appear either. Both filters MUST be order-independent and MUST NOT affect approved, non-expired events.
 
 #### Scenario: Expired event absent from public list
 
@@ -52,9 +52,21 @@ Buyers MUST NOT see expired events in the public catalog. The system applies a s
 - WHEN `GET /api/events` is called
 - THEN only future-dated events are returned regardless of insertion order
 
-### Requirement: EHE-003 — Public event detail returns 404 for expired events
+#### Scenario: Pending event absent from public list
 
-`GetEventByIdAsync` invoked from the public endpoint `GET /api/events/{id}` MUST return null for expired events, producing a 404 response. A role-gated management variant (separate method or `includeExpired` parameter) MUST exist for organizer/admin use and MUST return the event regardless of expiry.
+- GIVEN an event with `Status == Pending` and a future date
+- WHEN `GET /api/events` is called
+- THEN the response does NOT contain the pending event
+
+#### Scenario: Rejected event absent from public list
+
+- GIVEN an event with `Status == Rejected` and a future date
+- WHEN `GET /api/events` is called
+- THEN the response does NOT contain the rejected event
+
+### Requirement: EHE-003 — Public event detail returns 404 for expired or unapproved events
+
+`GetEventByIdAsync` invoked from the public endpoint `GET /api/events/{id}` MUST return null for expired events, producing a 404 response. The public endpoint MUST also produce 404 for events with `Status != Approved` (pending or rejected). A role-gated management variant (separate method or `includeExpired`/`includeNonApproved` parameter) MUST exist for organizer/admin use and MUST return the event regardless of expiry and regardless of status.
 
 #### Scenario: Expired event returns 404 on public detail
 
@@ -64,7 +76,7 @@ Buyers MUST NOT see expired events in the public catalog. The system applies a s
 
 #### Scenario: Active event returns 200 on public detail
 
-- GIVEN an event with `Date > DateTime.UtcNow`
+- GIVEN an event with `Date > DateTime.UtcNow` and `Status == Approved`
 - WHEN `GET /api/events/{id}` is called
 - THEN the response is 200 with full event detail
 
@@ -74,16 +86,28 @@ Buyers MUST NOT see expired events in the public catalog. The system applies a s
 - WHEN `GET /api/events/{id}` is called
 - THEN the response is 404 Not Found
 
-#### Scenario: Management variant returns expired event for organizer
+#### Scenario: Pending event returns 404 on public detail
 
-- GIVEN an expired event owned by an organizer
+- GIVEN an event with `Status == Pending` and a future date
+- WHEN `GET /api/events/{id}` is called (unauthenticated or buyer role)
+- THEN the response is 404 Not Found
+
+#### Scenario: Rejected event returns 404 on public detail
+
+- GIVEN an event with `Status == Rejected` and a future date
+- WHEN `GET /api/events/{id}` is called (unauthenticated or buyer role)
+- THEN the response is 404 Not Found
+
+#### Scenario: Management variant returns unapproved event for organizer
+
+- GIVEN a pending or rejected event owned by an organizer
 - WHEN the organizer calls the management variant of `GetEventByIdAsync`
-- THEN the response is 200 with full event detail including expiry status
+- THEN the response is 200 with full event detail including its status
 
 ## Coverage Matrix
 
 | Requirement | Scenarios |
 |-------------|-----------|
 | EHE-001 | future-not-expired, past-is-expired, exact-instant-not-expired |
-| EHE-002 | expired-absent-from-list, all-expired-empty-list, mix-order-independent |
-| EHE-003 | expired-404-public-detail, active-200-public-detail, same-day-after-start-404, management-variant-returns-expired |
+| EHE-002 | expired-absent-from-list, all-expired-empty-list, mix-order-independent, pending-absent, rejected-absent |
+| EHE-003 | expired-404-public-detail, active-200-public-detail, same-day-after-start-404, pending-404, rejected-404, management-variant-returns-unapproved |
