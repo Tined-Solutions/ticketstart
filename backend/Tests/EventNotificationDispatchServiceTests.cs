@@ -38,7 +38,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
         // re-setup this mock with Success = false.
         _mockEmailService
             .Setup(e => e.SendEventDateChangeNotificationAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<string?>()))
             .ReturnsAsync(new EmailResult { Success = true });
 
         var services = new ServiceCollection();
@@ -232,7 +232,8 @@ public class EventNotificationDispatchServiceTests : IDisposable
                 notification.RecipientEmail,
                 "Rock Fest 2026",
                 oldDate,
-                newDate),
+                newDate,
+                It.IsAny<string?>()),
             Times.Once);
     }
 
@@ -246,7 +247,7 @@ public class EventNotificationDispatchServiceTests : IDisposable
     {
         _mockEmailService
             .Setup(e => e.SendEventDateChangeNotificationAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<string?>()))
             .ReturnsAsync(new EmailResult { Success = false, Error = "Resend rejected recipient" });
 
         var notification = new EventNotification

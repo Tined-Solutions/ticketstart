@@ -284,7 +284,7 @@ public class PaymentService : IPaymentService
                     reservation.Status = ReservationStatus.Confirmed;
                     await _context.SaveChangesAsync();
 
-                    var email = reservation.PurchaserEmail ?? reservation.User?.Email ?? "guest@ticketera.com";
+                    var email = reservation.PurchaserEmail ?? reservation.User?.Email ?? "guest@ticketstart.com";
                     var tickets = (await _ticketService.CreateTicketsAsync(reservation.Id, email, reservation.PurchaserDNI)).ToList();
 
                     _context.Transactions.Add(new Transaction
@@ -311,7 +311,7 @@ public class PaymentService : IPaymentService
                         try
                         {
                             var eventEntity = tickets[0].Event ?? reservation.Event;
-                            await _emailService.SendTicketEmailAsync(email, tickets, eventEntity);
+                            await _emailService.SendTicketEmailAsync(email, tickets, eventEntity, reservation.PurchaserName ?? reservation.User?.Name);
                         }
                         catch (Exception ex)
                         {
@@ -562,6 +562,7 @@ public class PaymentService : IPaymentService
                 }
 
                 var tickets = await _context.Tickets
+                    .Include(t => t.Event)
                     .Where(t => row.TicketIds.Contains(t.Id))
                     .ToListAsync();
 
@@ -576,7 +577,7 @@ public class PaymentService : IPaymentService
                     continue;
                 }
 
-                await _emailService.SendTicketEmailAsync(row.RecipientEmail, tickets, tickets[0].Event);
+                await _emailService.SendTicketEmailAsync(row.RecipientEmail, tickets, tickets[0].Event, reservation.PurchaserName ?? reservation.User?.Name);
 
                 row.Attempts++;
                 row.Status = "sent";

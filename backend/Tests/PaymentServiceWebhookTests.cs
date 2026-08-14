@@ -209,7 +209,7 @@ public class PaymentServiceWebhookTests : IDisposable
         Assert.Equal(reservation.Quantity, tickets.Count);
 
         _mockEmailService.Verify(
-            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()),
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
             Times.Once);
     }
 
@@ -317,7 +317,7 @@ public class PaymentServiceWebhookTests : IDisposable
             });
 
         _mockEmailService
-            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()))
+            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
             .ThrowsAsync(new InvalidOperationException("SMTP failure"));
 
         var envelope = new MercadoPagoWebhookEnvelope
@@ -548,7 +548,7 @@ public class PaymentServiceWebhookTests : IDisposable
         var tickets = await _context.Tickets.Where(t => t.EventId == eventEntity.Id).ToListAsync();
         Assert.Equal(reservation.Quantity, tickets.Count);
         _mockEmailService.Verify(
-            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()),
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
             Times.Once);
     }
 

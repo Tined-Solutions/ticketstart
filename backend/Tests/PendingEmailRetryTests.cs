@@ -213,7 +213,7 @@ public class PendingEmailRetryTests : IDisposable
         await _context.SaveChangesAsync();
 
         _mockEmailService
-            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()))
+            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
             .ThrowsAsync(new InvalidOperationException("Still failing"));
 
         var response = await _paymentService.RetryPendingEmailsAsync();

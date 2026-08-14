@@ -112,7 +112,8 @@ public class EventNotificationDispatchService : IHostedService, IDisposable
                         notification.RecipientEmail,
                         notification.EventName,
                         notification.OldDate ?? notification.CreatedAt,
-                        notification.NewDate ?? DateTime.UtcNow);
+                        notification.NewDate ?? DateTime.UtcNow,
+                        notification.RecipientName);
 
                     // Surface delivery failure as an exception so the shared
                     // IRetryableEmailSender state machine records attempts/LastError

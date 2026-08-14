@@ -1255,7 +1255,7 @@ public class TicketServiceTests : IDisposable
         // Arrange — APR-005: refunded tickets are not re-sent
         var emailServiceMock = new Mock<IEmailService>();
         emailServiceMock
-            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>()))
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
             .ReturnsAsync(new EmailResult { Success = true });
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);
@@ -1327,7 +1327,8 @@ public class TicketServiceTests : IDisposable
         emailServiceMock.Verify(s => s.SendResendEmailAsync(
             "buyer@test.com",
             It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1 && tickets.All(t => !t.IsRefunded)),
-            It.IsAny<Event>()), Times.Once);
+            It.IsAny<Event>(),
+            It.IsAny<string?>()), Times.Once);
     }
 
     #endregion
