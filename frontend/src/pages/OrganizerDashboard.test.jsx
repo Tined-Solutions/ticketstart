@@ -6,6 +6,7 @@ import OrganizerDashboard from './OrganizerDashboard.jsx'
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 const mockDelete = vi.fn()
+const mockUseAuth = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -18,6 +19,10 @@ vi.mock('../api/client.js', () => ({
   },
 }))
 
+vi.mock('../context/auth.js', () => ({
+  useAuth: () => mockUseAuth(),
+}))
+
 const mockMetrics = [
   {
     id: 'metrics-1',
@@ -28,6 +33,7 @@ const mockMetrics = [
     totalRevenue: 1800000,
     remainingInventory: 30,
     ticketsScanned: 45,
+    status: 'Approved',
   },
   {
     id: 'metrics-2',
@@ -38,6 +44,7 @@ const mockMetrics = [
     totalRevenue: 0,
     remainingInventory: 200,
     ticketsScanned: 0,
+    status: 'Pending',
   },
   {
     id: 'metrics-3',
@@ -48,6 +55,7 @@ const mockMetrics = [
     totalRevenue: 0,
     remainingInventory: 50,
     ticketsScanned: 0,
+    status: 'Rejected',
   },
 ]
 
@@ -57,6 +65,9 @@ describe('OrganizerDashboard', () => {
     mockGet.mockReset()
     mockDelete.mockReset()
     mockNavigate.mockReset()
+    mockUseAuth.mockReset()
+    // Default: organizer role — Editar hidden (EA-009 UI-only)
+    mockUseAuth.mockReturnValue({ user: { role: 'Organizador' } })
   })
 
   it('renders event metrics from API data', async () => {
@@ -137,7 +148,9 @@ describe('OrganizerDashboard', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/new')
   })
 
-  it('edit button navigates to event edit page', async () => {
+  it('edit button navigates to event edit page (admin keeps edit)', async () => {
+    // EA-009: Editar is admin-only (UI); admin sees it and it navigates
+    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
     mockGet.mockResolvedValue({ data: mockMetrics })
 
     render(<OrganizerDashboard />)
@@ -311,6 +324,58 @@ describe('OrganizerDashboard', () => {
     render(<OrganizerDashboard />)
 
     expect(screen.getByRole('button', { name: /\+\s*crear evento/i })).toBeInTheDocument()
+  })
+
+  // ── EA-009: status badges + role-gated Edit ─────────────────────────
+
+  it('renders a status badge per event row (3 variants)', async () => {
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Approved → "Aprobado" (success), Pending → "Pendiente" (warning),
+    // Rejected → "Rechazado" (error) — one badge per row
+    const rows = screen.getAllByRole('row')
+    const approvedRow = rows.find((r) => r.textContent.includes('Recital de Rock Nacional'))
+    const pendingRow = rows.find((r) => r.textContent.includes('Feria de Emprendedores'))
+    const rejectedRow = rows.find((r) => r.textContent.includes('Workshop de Fotografia'))
+
+    expect(within(approvedRow).getByText('Aprobado')).toBeInTheDocument()
+    expect(within(pendingRow).getByText('Pendiente')).toBeInTheDocument()
+    expect(within(rejectedRow).getByText('Rechazado')).toBeInTheDocument()
+  })
+
+  it('hides Edit entry for organizers (EA-009)', async () => {
+    mockUseAuth.mockReturnValue({ user: { role: 'Organizador' } })
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument()
+    // Metricas + Eliminar remain for organizers
+    expect(screen.getByRole('button', { name: /ver metricas de recital de rock nacional/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /eliminar recital de rock nacional/i })).toBeInTheDocument()
+  })
+
+  it('shows Edit entry for admins (EA-009)', async () => {
+    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
+    mockGet.mockResolvedValue({ data: mockMetrics })
+
+    render(<OrganizerDashboard />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByRole('button', { name: /editar/i }).length).toBe(3)
   })
 })
 

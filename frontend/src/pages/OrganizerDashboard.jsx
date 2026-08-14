@@ -4,7 +4,10 @@ import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
+import { useAuth } from '../context/auth.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
+import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import { fadeIn } from '../lib/motion.js'
@@ -51,6 +54,10 @@ function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) 
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  // EA-009: backend EventOwnership is unchanged; Edit is hidden for organizers
+  // (UI-only) and kept for admins (D-8).
+  const canEdit = user?.role === 'Admin'
 
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
@@ -193,6 +200,7 @@ export default function OrganizerDashboard() {
                 <tr className="border-b-2 border-border">
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
+                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Estado</th>
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Entradas vendidas</th>
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ingresos</th>
                   <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Inventario</th>
@@ -208,21 +216,28 @@ export default function OrganizerDashboard() {
                   >
                     <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{m.eventName}</td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(m.eventDate)}</td>
+                    <td className="py-3.5 px-4 align-middle" data-label="Estado">
+                      <Badge variant={statusBadgeVariant(m.status)}>
+                        {statusLabel(m.status)}
+                      </Badge>
+                    </td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Entradas vendidas">{m.ticketsSold}</td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ingresos">{formatCurrency(m.totalRevenue)}</td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Inventario">{m.remainingInventory}</td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Escaneados">{m.ticketsScanned}</td>
                     <td className="py-3.5 px-4 align-middle" data-label="Acciones">
                       <div className="flex gap-2 flex-nowrap">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => navigate(`/organizer/events/${m.eventId}`)}
-                          aria-label={`Editar ${m.eventName}`}
-                          className="min-h-[44px]"
-                        >
-                          Editar
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate(`/organizer/events/${m.eventId}`)}
+                            aria-label={`Editar ${m.eventName}`}
+                            className="min-h-[44px]"
+                          >
+                            Editar
+                          </Button>
+                        )}
                         <Button
                           variant="secondary"
                           size="sm"
