@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<PendingEmailSend> PendingEmailSends { get; set; }
     public DbSet<EventNotification> EventNotifications { get; set; }
+    public DbSet<Refund> Refunds { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -232,6 +233,25 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Refund entity configuration (APR-012 ledger row, D5/D6/D7).
+        // One immutable row per refund operation. Restrict (not Cascade) so
+        // reservations cannot be deleted while refund history references them.
+        modelBuilder.Entity<Refund>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReservationId);
+            entity.Property(e => e.TicketIds).HasColumnType("uuid[]").IsRequired();
+            entity.Property(e => e.Quantity).IsRequired();
+            entity.Property(e => e.Amount).IsRequired().HasColumnType("decimal(18,2)");
+            entity.Property(e => e.AdminId).IsRequired(false);
+            entity.Property(e => e.CreatedAt).IsRequired();
+
+            entity.HasOne(e => e.Reservation)
+                .WithMany()
+                .HasForeignKey(e => e.ReservationId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
