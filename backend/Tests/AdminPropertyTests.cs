@@ -422,6 +422,83 @@ public class AdminPropertyTests : IDisposable
 
     #endregion
 
+    #region EA-005/EA-003 — Approve/Reject status transitions + pending list
+
+    /// <summary>
+    /// EA-005: for ANY starting status, an admin approve or reject call succeeds —
+    /// no state machine blocks any transition (only a missing event fails).
+    /// </summary>
+    [Fact]
+    public void Property_ApproveReject_AnyStatus_TransitionsSucceed()
+    {
+        var prop = PropStatic.ForAll(
+            new CustomArbitrary<EventStatus>(GenStatic.Elements(Enum.GetValues<EventStatus>())),
+            startingStatus =>
+            {
+                var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                    .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                    .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                    .Options;
+
+                using var context = new ApplicationDbContext(options);
+                using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+                var adminService = new AdminService(context, loggerFactory.CreateLogger<AdminService>());
+
+                var eventEntity = CreateEvent(Guid.NewGuid(), "Transitions");
+                eventEntity.Status = startingStatus;
+                context.Events.Add(eventEntity);
+                context.SaveChanges();
+
+                var approved = Task.Run(() => adminService.ApproveEventAsync(eventEntity.Id)).Result;
+                var rejected = Task.Run(() => adminService.RejectEventAsync(eventEntity.Id, "reason")).Result;
+
+                return approved.Status == EventStatus.Approved
+                       && rejected.Status == EventStatus.Rejected;
+            });
+
+        Check.QuickThrowOnFailure(prop);
+    }
+
+    /// <summary>
+    /// EA-003: GetPendingEventsAsync returns ONLY Pending events (mixed statuses),
+    /// oldest first, and never approved/rejected rows.
+    /// </summary>
+    [Fact]
+    public async Task GetPendingEvents_ReturnsOnlyPending_OldestFirst()
+    {
+        // Arrange — one event per status; Pending ones created at different times
+        var organizerId = Guid.NewGuid();
+        var early = CreateEvent(organizerId, "Early Pending");
+        early.Status = EventStatus.Pending;
+        early.CreatedAt = DateTime.UtcNow.AddDays(-5);
+        var late = CreateEvent(organizerId, "Late Pending");
+        late.Status = EventStatus.Pending;
+        late.CreatedAt = DateTime.UtcNow.AddDays(-1);
+        var approved = CreateEvent(organizerId, "Approved");
+        approved.Status = EventStatus.Approved;
+        var rejected = CreateEvent(organizerId, "Rejected");
+        rejected.Status = EventStatus.Rejected;
+        _context.Events.AddRange(early, late, approved, rejected);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _adminService.GetPendingEventsAsync(1, 50);
+
+        // Assert — only the two Pending events, oldest (CreatedAt) first
+        var ids = result.Items.Select(e => e.Id).ToList();
+        Assert.Equal(2, result.Total);
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(early.Id, ids);
+        Assert.Contains(late.Id, ids);
+        Assert.DoesNotContain(approved.Id, ids);
+        Assert.DoesNotContain(rejected.Id, ids);
+        Assert.Equal(early.Id, ids[0]); // OrderBy(CreatedAt): early before late
+        Assert.Equal(EventStatus.Pending, result.Items[0].Status);
+        Assert.Equal(EventStatus.Pending, result.Items[1].Status);
+    }
+
+    #endregion
+
     private static Event CreateEvent(Guid organizerId, string name)
     {
         var now = DateTime.UtcNow;

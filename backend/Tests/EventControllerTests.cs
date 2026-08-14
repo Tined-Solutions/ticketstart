@@ -304,6 +304,57 @@ public class EventControllerTests
     }
 
     [Fact]
+    public async Task GetEventById_PendingFuture_404()
+    {
+        // EHE-003: a future-dated Pending event returns 404 on the public detail.
+        using var factory = new EventCatalogApiFactory();
+        var client = factory.CreateClient();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Pending Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(1), organizerId, EventStatus.Pending);
+
+        // Act
+        var response = await client.GetAsync($"/api/events/{eventId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetEventById_RejectedFuture_404()
+    {
+        // EHE-003: a future-dated Rejected event returns 404 on the public detail.
+        using var factory = new EventCatalogApiFactory();
+        var client = factory.CreateClient();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Rejected Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(1), organizerId, EventStatus.Rejected);
+
+        // Act
+        var response = await client.GetAsync($"/api/events/{eventId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetEventById_ApprovedFuture_200_WithStatus()
+    {
+        // EHE-003/EA-007: an Approved future event returns 200 with Status surfaced.
+        using var factory = new EventCatalogApiFactory();
+        var client = factory.CreateClient();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Approved Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(1), organizerId, EventStatus.Approved);
+
+        // Act
+        var response = await client.GetAsync($"/api/events/{eventId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<EventWithAvailability>();
+        Assert.NotNull(body);
+        Assert.Equal(EventStatus.Approved, body.Status);
+    }
+
+    [Fact]
     public async Task GetEventById_ManagementIncludeExpired_200()
     {
         // EHE-003: the role-gated management variant returns the expired event.
@@ -506,7 +557,7 @@ public class EventCatalogApiFactory : WebApplicationFactory<Program>
         return result.UserId;
     }
 
-    public Guid SeedEvent(string name, DateTime date, Guid organizerId)
+    public Guid SeedEvent(string name, DateTime date, Guid organizerId, EventStatus status = EventStatus.Approved)
     {
         var id = Guid.NewGuid();
         using var scope = Services.CreateScope();
@@ -520,7 +571,8 @@ public class EventCatalogApiFactory : WebApplicationFactory<Program>
             Location = "Venue",
             OrganizerId = organizerId,
             CreatedAt = date,
-            UpdatedAt = date
+            UpdatedAt = date,
+            Status = status
         });
         db.SaveChanges();
         return id;

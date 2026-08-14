@@ -40,6 +40,14 @@ public class EventController : TicketeraControllerBase
             return NotFound(new { error = "Event not found" });
         }
 
+        // EHE-003/EA-001: the public detail only surfaces Approved events. The
+        // status filter lives HERE (post-read), not inside GetEventByIdAsync —
+        // POST-201 create and the /manage variant depend on it unfiltered (D-2).
+        if (eventDetails.Status != EventStatus.Approved)
+        {
+            return NotFound(new { error = "Event not found" });
+        }
+
         return Ok(eventDetails);
     }
 
