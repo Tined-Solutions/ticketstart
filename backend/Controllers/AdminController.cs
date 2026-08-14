@@ -297,6 +297,78 @@ public class AdminController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Approves an event (EA-003): flips it to Approved so it appears in the public
+    /// catalog. Any status may be approved (EA-005 — no state machine). Audits AFTER
+    /// service success; an unknown event (KeyNotFoundException) writes NO audit.
+    /// </summary>
+    /// <param name="eventId">ID of the event to approve</param>
+    /// <returns>200 with the updated event summary, or 404 when the event is unknown</returns>
+    [HttpPost("events/{eventId:guid}/approve")]
+    public async Task<IActionResult> ApproveEvent(Guid eventId)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var summary = await _adminService.ApproveEventAsync(eventId);
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.ApproveEvent,
+                AuditResourceType.Event,
+                eventId,
+                Truncate($"Admin approved event {eventId}", 1000)));
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "Event not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error approving event {EventId}", eventId);
+            return StatusCode(500, new { error = "An error occurred while approving the event" });
+        }
+    }
+
+    /// <summary>
+    /// Rejects an event (EA-004): flips it to Rejected, hiding it from the public
+    /// catalog. The rejection reason is OPTIONAL and audit-only (never stored on the
+    /// event); Details is truncated to the varchar(1000) cap. Audits AFTER service
+    /// success; an unknown event writes NO audit.
+    /// </summary>
+    /// <param name="eventId">ID of the event to reject</param>
+    /// <param name="request">Optional body carrying the rejection reason</param>
+    /// <returns>200 with the updated event summary, or 404 when the event is unknown</returns>
+    [HttpPost("events/{eventId:guid}/reject")]
+    public async Task<IActionResult> RejectEvent(Guid eventId, [FromBody] RejectEventRequest? request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var summary = await _adminService.RejectEventAsync(eventId, request?.Reason);
+            var details = Truncate(
+                $"Admin rejected event {eventId}{(request?.Reason is { Length: > 0 } r ? $": {r}" : "")}", 1000);
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.RejectEvent,
+                AuditResourceType.Event,
+                eventId,
+                details));
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "Event not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting event {EventId}", eventId);
+            return StatusCode(500, new { error = "An error occurred while rejecting the event" });
+        }
+    }
+
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try
@@ -332,3 +404,9 @@ public class AdminUserResponse
     public string Email { get; set; } = string.Empty;
     public UserRole Role { get; set; }
 }
+
+/// <summary>
+/// Request body for rejecting an event (EA-004). Reason is OPTIONAL (MAY be null)
+/// and audit-only — it is never stored on the event.
+/// </summary>
+public record RejectEventRequest(string? Reason = null);

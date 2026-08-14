@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Security.Claims;
+using System.Reflection;
 using System.Text.Json;
 using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Models;
@@ -578,6 +579,199 @@ public class AdminControllerTests
         Assert.Single(value);
         _mockAuditLogService.Verify(s => s.GetLogsForUserAsync(targetUserId), Times.Once);
         _mockAuditLogService.Verify(s => s.GetAllLogsAsync(), Times.Never);
+    }
+
+    #endregion
+
+    #region EA-003/004 — Approve / Reject event moderation
+
+    [Fact]
+    public async Task ApproveEvent_AdminRole_ReturnsOkAndAudits()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var summary = new EventSummary
+        {
+            Id = eventId,
+            Name = "Pending Event",
+            Date = DateTime.UtcNow.AddDays(10),
+            Location = "Venue",
+            OrganizerId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow,
+            Status = EventStatus.Approved
+        };
+
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.ApproveEventAsync(eventId)).ReturnsAsync(summary);
+
+        // Act
+        var result = await _controller.ApproveEvent(eventId);
+
+        // Assert — 200 with the updated summary + ApproveEvent audit (EA-003)
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsType<EventSummary>(okResult.Value);
+        Assert.Equal(EventStatus.Approved, value.Status);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.UserId == adminId &&
+            c.Action == AuditActionType.ApproveEvent &&
+            c.Resource == AuditResourceType.Event &&
+            c.ResourceId == eventId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectEvent_WithReason_ReturnsOkAndAuditsReason()
+    {
+        // Arrange — optional reason is audit-only, included in Details (EA-004)
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var summary = new EventSummary
+        {
+            Id = eventId,
+            Name = "Pending Event",
+            Date = DateTime.UtcNow.AddDays(10),
+            Location = "Venue",
+            OrganizerId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow,
+            Status = EventStatus.Rejected
+        };
+        const string reason = "Contenido promocional no verificado";
+
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.RejectEventAsync(eventId, reason)).ReturnsAsync(summary);
+
+        // Act
+        var result = await _controller.RejectEvent(eventId, new RejectEventRequest(reason));
+
+        // Assert — 200 + audit carries the reason
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsType<EventSummary>(okResult.Value);
+        Assert.Equal(EventStatus.Rejected, value.Status);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.UserId == adminId &&
+            c.Action == AuditActionType.RejectEvent &&
+            c.Resource == AuditResourceType.Event &&
+            c.ResourceId == eventId &&
+            c.Details!.Contains(reason, StringComparison.OrdinalIgnoreCase))), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectEvent_LongReason_IsTruncatedTo1000()
+    {
+        // Arrange — Details is capped at varchar(1000) (EA-004)
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var longReason = new string('x', 1500);
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.RejectEventAsync(eventId, longReason))
+            .ReturnsAsync(new EventSummary { Id = eventId, Status = EventStatus.Rejected });
+
+        // Act
+        var result = await _controller.RejectEvent(eventId, new RejectEventRequest(longReason));
+
+        // Assert
+        Assert.IsType<OkObjectResult>(result);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.Action == AuditActionType.RejectEvent &&
+            c.Details != null &&
+            c.Details.Length <= 1000)), Times.Once);
+    }
+
+    [Fact]
+    public async Task RejectEvent_WithoutReason_ReturnsOk()
+    {
+        // Arrange — reason MAY be null (EA-004, not mandatory)
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.RejectEventAsync(eventId, null))
+            .ReturnsAsync(new EventSummary { Id = eventId, Status = EventStatus.Rejected });
+
+        // Act
+        var result = await _controller.RejectEvent(eventId, new RejectEventRequest(null));
+
+        // Assert
+        Assert.IsType<OkObjectResult>(result);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.Action == AuditActionType.RejectEvent &&
+            c.ResourceId == eventId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApproveEvent_UnknownEvent_ReturnsNotFound_NoAudit()
+    {
+        // Arrange — EA-003: unknown event → 404 and NO audit entry
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.ApproveEventAsync(It.IsAny<Guid>()))
+            .ThrowsAsync(new KeyNotFoundException("Event not found"));
+
+        // Act
+        var result = await _controller.ApproveEvent(Guid.NewGuid());
+
+        // Assert
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(404, notFound.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RejectEvent_UnknownEvent_ReturnsNotFound_NoAudit()
+    {
+        // Arrange — EA-004: unknown event → 404 and NO audit entry
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.RejectEventAsync(It.IsAny<Guid>(), It.IsAny<string?>()))
+            .ThrowsAsync(new KeyNotFoundException("Event not found"));
+
+        // Act
+        var result = await _controller.RejectEvent(Guid.NewGuid(), new RejectEventRequest("x"));
+
+        // Assert
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(404, notFound.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApproveEvent_NoUserId_ReturnsUnauthorized()
+    {
+        // Act — no authenticated user
+        var result = await _controller.ApproveEvent(Guid.NewGuid());
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task ApproveEvent_ServiceThrows_ReturnsInternalServerError()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.ApproveEventAsync(It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var result = await _controller.ApproveEvent(Guid.NewGuid());
+
+        // Assert
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, statusCodeResult.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public void ApproveReject_Endpoints_InheritClassLevelRequireAdminRole()
+    {
+        // EA-003/004 non-admin scenario: the class-level RequireAdminRole policy
+        // covers BOTH new endpoints — no AllowAnonymous at action level.
+        var approve = typeof(AdminController).GetMethod(nameof(AdminController.ApproveEvent));
+        var reject = typeof(AdminController).GetMethod(nameof(AdminController.RejectEvent));
+        Assert.NotNull(approve);
+        Assert.NotNull(reject);
+        Assert.Null(approve!.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>(false));
+        Assert.Null(reject!.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>(false));
     }
 
     #endregion

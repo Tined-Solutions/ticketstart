@@ -81,7 +81,8 @@ public class AdminService : IAdminService
                 Date = e.Date,
                 Location = e.Location,
                 OrganizerId = e.OrganizerId,
-                CreatedAt = e.CreatedAt
+                CreatedAt = e.CreatedAt,
+                Status = e.Status
             })
             .ToListAsync();
 
@@ -95,6 +96,89 @@ public class AdminService : IAdminService
             PageSize = pageSize
         };
     }
+
+    /// <summary>
+    /// Approves an event (EA-003): any status may be approved (EA-005). The status
+    /// flip is the whole operation — a Rejected event re-enters the public catalog.
+    /// </summary>
+    public async Task<EventSummary> ApproveEventAsync(Guid eventId)
+    {
+        var eventEntity = await _context.Events.FindAsync(eventId)
+            ?? throw new KeyNotFoundException($"Event {eventId} not found");
+
+        eventEntity.Status = EventStatus.Approved;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Admin approved event {EventId}", eventId);
+        return ToSummary(eventEntity);
+    }
+
+    /// <summary>
+    /// Rejects an event (EA-004): any status may be rejected (EA-005). The optional
+    /// reason is audit-only — the controller stores it in the audit detail; it is
+    /// never persisted on the event.
+    /// </summary>
+    public async Task<EventSummary> RejectEventAsync(Guid eventId, string? reason)
+    {
+        var eventEntity = await _context.Events.FindAsync(eventId)
+            ?? throw new KeyNotFoundException($"Event {eventId} not found");
+
+        eventEntity.Status = EventStatus.Rejected;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Admin rejected event {EventId}", eventId);
+        return ToSummary(eventEntity);
+    }
+
+    /// <summary>
+    /// Lists events awaiting approval (EA-003): Pending events only, oldest first,
+    /// paginated with the same clamps as the other admin list endpoints.
+    /// </summary>
+    public async Task<PagedResult<EventSummary>> GetPendingEventsAsync(int page, int pageSize)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+
+        _logger.LogInformation("Retrieving pending events for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
+
+        var total = await _context.Events.AsNoTracking().CountAsync(e => e.Status == EventStatus.Pending);
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.Status == EventStatus.Pending)
+            .OrderBy(e => e.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(e => new EventSummary
+            {
+                Id = e.Id,
+                Name = e.Name,
+                Date = e.Date,
+                Location = e.Location,
+                OrganizerId = e.OrganizerId,
+                CreatedAt = e.CreatedAt,
+                Status = e.Status
+            })
+            .ToListAsync();
+
+        return new PagedResult<EventSummary>
+        {
+            Items = events,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    private static EventSummary ToSummary(Event eventEntity) => new()
+    {
+        Id = eventEntity.Id,
+        Name = eventEntity.Name,
+        Date = eventEntity.Date,
+        Location = eventEntity.Location,
+        OrganizerId = eventEntity.OrganizerId,
+        CreatedAt = eventEntity.CreatedAt,
+        Status = eventEntity.Status
+    };
 
     /// <summary>
     /// Retrieves a paginated list of all audit log entries in the system,

@@ -23,6 +23,32 @@ public interface IAdminService
     /// ordered by timestamp and id descending.
     /// </summary>
     Task<PagedResult<AuditLogEntry>> GetAllLogsAsync(int page, int pageSize);
+
+    /// <summary>
+    /// Approves an event (EA-003): flips its status to <see cref="EventStatus.Approved"/>,
+    /// making it buyer-visible. Any status may be approved (EA-005 — no state machine).
+    /// </summary>
+    /// <param name="eventId">ID of the event to approve</param>
+    /// <returns>The updated event summary</returns>
+    /// <exception cref="KeyNotFoundException">Event does not exist.</exception>
+    Task<EventSummary> ApproveEventAsync(Guid eventId);
+
+    /// <summary>
+    /// Rejects an event (EA-004): flips its status to <see cref="EventStatus.Rejected"/>,
+    /// hiding it from the public catalog. Any status may be rejected (EA-005). The
+    /// optional reason is audit-only — it is never stored on the event.
+    /// </summary>
+    /// <param name="eventId">ID of the event to reject</param>
+    /// <param name="reason">Optional rejection reason (may be null), stored in the audit detail</param>
+    /// <returns>The updated event summary</returns>
+    /// <exception cref="KeyNotFoundException">Event does not exist.</exception>
+    Task<EventSummary> RejectEventAsync(Guid eventId, string? reason);
+
+    /// <summary>
+    /// Retrieves a paginated list of events still awaiting approval
+    /// (<see cref="EventStatus.Pending"/>), oldest first.
+    /// </summary>
+    Task<PagedResult<EventSummary>> GetPendingEventsAsync(int page, int pageSize);
 }
 
 /// <summary>
@@ -49,4 +75,11 @@ public class EventSummary
     public string Location { get; set; } = string.Empty;
     public Guid OrganizerId { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// EA-007: approval status, serialized as "Pending"/"Approved"/"Rejected"
+    /// (per-enum <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/>)
+    /// so the admin panel renders the moderation badge.
+    /// </summary>
+    public EventStatus Status { get; set; }
 }

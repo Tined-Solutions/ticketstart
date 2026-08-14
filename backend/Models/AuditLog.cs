@@ -81,7 +81,9 @@ public enum AuditActionType
     ValidateQr,
     AddTicketStock,   // NEW (ATS-005) — ActionType varchar(100), no migration
     AddTicketType,    // NEW (ATS-005)
-    RefundPurchase    // NEW (APR-007) — varchar-stored, no migration
+    RefundPurchase,   // NEW (APR-007) — varchar-stored, no migration
+    ApproveEvent,     // NEW (EA-003) — varchar-stored, no migration
+    RejectEvent       // NEW (EA-004) — varchar-stored, no migration
 }
 
 /// <summary>
