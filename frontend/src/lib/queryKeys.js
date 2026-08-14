@@ -14,4 +14,7 @@ export const queryKeys = {
   // organizer/staff views never share a cache entry.
   managementEvents: ['management-events'],
   managementEvent: (id) => ['management-event', id],
+  // EA-008: admin event moderation list (v1 AdminPanel stays manual-fetch, but the
+  // key documents the invalidation target for catalog queries ['events']/['event', id]).
+  adminEvents: ['admin-events'],
 }

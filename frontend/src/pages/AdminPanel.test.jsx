@@ -7,9 +7,14 @@ const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 const mockDelete = vi.fn()
 const mockPost = vi.fn()
+const mockInvalidateQueries = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
+}))
+
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({ invalidateQueries: (...args) => mockInvalidateQueries(...args) }),
 }))
 
 vi.mock('../api/client.js', () => ({
@@ -28,6 +33,7 @@ const mockEvents = [
     location: 'Estadio Luna Park, Buenos Aires',
     organizerId: 'user-2',
     createdAt: '2026-06-01T10:00:00Z',
+    status: 'Approved',
   },
   {
     id: 'event-2',
@@ -36,6 +42,7 @@ const mockEvents = [
     location: 'La Rural, Buenos Aires',
     organizerId: 'user-3',
     createdAt: '2026-06-15T10:00:00Z',
+    status: 'Pending',
   },
   {
     id: 'event-3',
@@ -44,6 +51,7 @@ const mockEvents = [
     location: null,
     organizerId: 'user-2',
     createdAt: '2026-07-01T10:00:00Z',
+    status: 'Rejected',
   },
 ]
 
@@ -75,6 +83,7 @@ describe('AdminPanel', () => {
     mockDelete.mockReset()
     mockPost.mockReset()
     mockNavigate.mockReset()
+    mockInvalidateQueries.mockReset()
 
     // Default: resolve both endpoints
     mockGet.mockImplementation((url) => {
@@ -729,6 +738,127 @@ describe('AdminPanel', () => {
       })
     })
   })
+
+  // ── EA-008: pending count + status badges + approve/reject ────────
+
+  it('shows the pending count badge', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Only event-2 is Pending → "Pendientes: 1" next to the events header
+    expect(screen.getByText('Pendientes: 1')).toBeInTheDocument()
+  })
+
+  it('renders a status badge per event row', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const rows = screen.getAllByRole('row')
+    const approvedRow = rows.find((r) => r.textContent.includes('Recital de Rock Nacional'))
+    const pendingRow = rows.find((r) => r.textContent.includes('Feria de Emprendedores'))
+    const rejectedRow = rows.find((r) => r.textContent.includes('Workshop de Fotografia'))
+
+    expect(within(approvedRow).getByText('Aprobado')).toBeInTheDocument()
+    expect(within(pendingRow).getByText('Pendiente')).toBeInTheDocument()
+    expect(within(rejectedRow).getByText('Rechazado')).toBeInTheDocument()
+  })
+
+  it('shows Approve/Reject actions per status (EA-008)', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    // Pending (event-2): both actions
+    expect(screen.getByRole('button', { name: /aprobar feria de emprendedores/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /rechazar feria de emprendedores/i })).toBeInTheDocument()
+    // Approved (event-1): Reject only — re-reject hides it (EA-005)
+    expect(screen.queryByRole('button', { name: /aprobar recital de rock nacional/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /rechazar recital de rock nacional/i })).toBeInTheDocument()
+    // Rejected (event-3): Approve only — re-publish (EA-005)
+    expect(screen.getByRole('button', { name: /aprobar workshop de fotografia/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /rechazar workshop de fotografia/i })).not.toBeInTheDocument()
+  })
+
+  it('approve success invalidates queries, refetches and shows Approved badge', async () => {
+    // Mutate the source data BEFORE the POST resolves so the refetch reflects it
+    let eventsData = mockEvents.map((e) => ({ ...e }))
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: eventsData, total: 3, page: 1, pageSize: 200 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+    mockPost.mockImplementation(async (url) => {
+      if (url === '/admin/events/event-2/approve') {
+        eventsData = eventsData.map((e) =>
+          e.id === 'event-2' ? { ...e, status: 'Approved' } : e
+        )
+      }
+      return { data: {} }
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /aprobar feria de emprendedores/i }))
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-2/approve')
+    })
+
+    // D-6: catalog + detail queries invalidated
+    expect(mockInvalidateQueries).toHaveBeenCalledWith(['events'])
+    expect(mockInvalidateQueries).toHaveBeenCalledWith(['event', 'event-2'])
+
+    // Refetch applied → the row now shows the Approved badge and pending count drops
+    await waitFor(() => {
+      const rows = screen.getAllByRole('row')
+      const feriaRow = rows.find((r) => r.textContent.includes('Feria de Emprendedores'))
+      expect(within(feriaRow).getByText('Aprobado')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Pendientes: 0')).toBeInTheDocument()
+    expect(screen.getByText(/aprobado correctamente/i)).toBeInTheDocument()
+  })
+
+  it('approve failure shows error and leaves state unchanged (EA-008)', async () => {
+    mockPost.mockRejectedValue({
+      response: { data: { error: { message: 'Error del servidor' } } },
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /aprobar feria de emprendedores/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/error del servidor/i)).toBeInTheDocument()
+    })
+
+    // No query invalidation and the Pending badge stays
+    expect(mockInvalidateQueries).not.toHaveBeenCalled()
+    expect(screen.getByText('Pendientes: 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /aprobar feria de emprendedores/i })).toBeInTheDocument()
+    const rows = screen.getAllByRole('row')
+    const feriaRow = rows.find((r) => r.textContent.includes('Feria de Emprendedores'))
+    expect(within(feriaRow).getByText('Pendiente')).toBeInTheDocument()
+  })
 })
 
 // ── Visual Regression: Glass & Theme ──────────────────────────────────
@@ -740,6 +870,7 @@ describe('AdminPanel — Visual Regression', () => {
     mockDelete.mockReset()
     mockPost.mockReset()
     mockNavigate.mockReset()
+    mockInvalidateQueries.mockReset()
 
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {

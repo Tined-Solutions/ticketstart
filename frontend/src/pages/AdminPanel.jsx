@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -79,6 +81,7 @@ function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) 
 
 export default function AdminPanel() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const [events, setEvents] = useState([])
   const [users, setUsers] = useState([])
@@ -90,6 +93,10 @@ export default function AdminPanel() {
   const [feedback, setFeedback] = useState({ type: '', message: '' })
 
   const [addTicketsTarget, setAddTicketsTarget] = useState(null)
+
+  // EA-008: id of the event whose approve/reject request is in flight (disables
+  // that row's action buttons while the request runs).
+  const [busyApprovalId, setBusyApprovalId] = useState(null)
 
   const initialFormData = { name: '', email: '', password: '', role: '' }
   const [formData, setFormData] = useState(initialFormData)
@@ -142,6 +149,48 @@ export default function AdminPanel() {
   const handleRetry = () => {
     const controller = new AbortController()
     loadData(controller)
+  }
+
+  // EA-008: moderation actions. Success → invalidate catalog/detail queries
+  // (D-6) + re-run the manual admin list fetch; failure → feedback, no mutation.
+  const handleApprove = async (event) => {
+    setFeedback({ type: '', message: '' })
+    setBusyApprovalId(event.id)
+    try {
+      await apiClient.post(`/admin/events/${event.id}/approve`)
+      setFeedback({
+        type: 'success',
+        message: `Evento "${event.name}" aprobado correctamente`,
+      })
+      queryClient.invalidateQueries(['events'])
+      queryClient.invalidateQueries(['event', event.id])
+      const controller = new AbortController()
+      loadData(controller)
+    } catch (err) {
+      setFeedback({ type: 'error', message: getErrorMessage(err) })
+    } finally {
+      setBusyApprovalId(null)
+    }
+  }
+
+  const handleReject = async (event) => {
+    setFeedback({ type: '', message: '' })
+    setBusyApprovalId(event.id)
+    try {
+      await apiClient.post(`/admin/events/${event.id}/reject`)
+      setFeedback({
+        type: 'success',
+        message: `Evento "${event.name}" rechazado correctamente`,
+      })
+      queryClient.invalidateQueries(['events'])
+      queryClient.invalidateQueries(['event', event.id])
+      const controller = new AbortController()
+      loadData(controller)
+    } catch (err) {
+      setFeedback({ type: 'error', message: getErrorMessage(err) })
+    } finally {
+      setBusyApprovalId(null)
+    }
   }
 
   const getOrganizerEmail = (organizerId) => {
@@ -293,9 +342,14 @@ export default function AdminPanel() {
         <>
           {/* ── Events section ─────────────────────────────── */}
           <GlassCard className="p-6 mb-12">
-            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
-              Eventos ({events.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
+              <h2 className="text-xl font-display font-semibold text-text-1 text-left">
+                Eventos ({events.length})
+              </h2>
+              <Badge variant="warning">
+                Pendientes: {events.filter((e) => e.status === 'Pending').length}
+              </Badge>
+            </div>
 
             {events.length === 0 ? (
               <p className="text-text-2 text-center py-8">No hay eventos en el sistema.</p>
@@ -308,6 +362,7 @@ export default function AdminPanel() {
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ubicación</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Organizador</th>
+                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Estado</th>
                       <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
                     </tr>
                   </thead>
@@ -320,8 +375,37 @@ export default function AdminPanel() {
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Organizador">
                           {getOrganizerEmail(event.organizerId)}
                         </td>
+                        <td className="py-3.5 px-4 align-middle" data-label="Estado">
+                          <Badge variant={statusBadgeVariant(event.status)}>
+                            {statusLabel(event.status)}
+                          </Badge>
+                        </td>
                         <td className="py-3.5 px-4 align-middle" data-label="Acciones">
                           <div className="flex gap-2 flex-nowrap">
+                            {event.status !== 'Approved' && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleApprove(event)}
+                                disabled={busyApprovalId === event.id}
+                                aria-label={`Aprobar ${event.name}`}
+                                className="min-h-[44px]"
+                              >
+                                Aprobar
+                              </Button>
+                            )}
+                            {event.status !== 'Rejected' && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleReject(event)}
+                                disabled={busyApprovalId === event.id}
+                                aria-label={`Rechazar ${event.name}`}
+                                className="min-h-[44px]"
+                              >
+                                Rechazar
+                              </Button>
+                            )}
                             <Button
                               variant="primary"
                               size="sm"
