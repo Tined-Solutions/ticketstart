@@ -546,7 +546,7 @@ public class EmailPropertyTests
         Assert.Equal(recipient, captured!.To);
         Assert.Contains(amount.ToString("0.00", CultureInfo.InvariantCulture), captured.Html);
         Assert.Contains(reason, captured.Html);
-        Assert.Contains("reembolso", captured.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reembolsamos", captured.Subject, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
