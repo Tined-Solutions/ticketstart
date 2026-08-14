@@ -55,7 +55,7 @@ Note: `strict-tdd.md` does not exist on disk; strict TDD is enforced via `opensp
 ## Phase 5: Verification / Rollout (APR-011/014/015)
 
 - [x] 5.1 **Full suites** — `dotnet test` (backend) + `npx vitest run` (frontend): replaced + new tests green, ripple consumers unaffected (D10); no MP/motivo/reservation-status/refund-editing path (APR-015). Verify: both commands green.
-- [ ] 5.2 **Apply migration (manual PG)** — **PENDING-OWNER (rollout step, NOT executed in apply)**: `ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --context TicketeraOnline.Api.Data.ApplicationDbContext`; history 15/15 → 16/16; backfilled rows exist with AdminId NULL. Verify: `dotnet ef migrations list`.
+- [x] 5.2 **Apply migration (manual PG)** — **EXECUTED 2026-08-14 (owner-approved)**: `ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --context TicketeraOnline.Api.Data.ApplicationDbContext`; history 15/15 → 16/16, zero pending; `Refunds` table created + legacy backfill applied on Supabase dev.
 - [x] 5.3 **Rollback doc** — PR notes: `dotnet ef migrations remove` pre-deploy OR drop `Refunds` table post-deploy (additive, no FK consumer blocks revert); revert service/DTO/row/UI to binary; `IsRefunded` flags + audit rows kept (no data loss). Verify: PR description.
 
 ## Work-Unit Evidence (single PR)
