@@ -141,7 +141,8 @@ export default function EventForm({
       if (isCreate) {
         const response = await apiClient.post('/events', payload)
         eventId = response.data.id
-        setFeedback({ type: 'success', message: 'Evento creado correctamente' })
+        // EA-009: new events start Pending — communicate the moderation gate
+        setFeedback({ type: 'success', message: 'Evento creado correctamente. Queda pendiente de aprobacion.' })
       } else {
         if (!eventId) {
           setFeedback({ type: 'error', message: 'No se pudo identificar el evento para actualizar' })

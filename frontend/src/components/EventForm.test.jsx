@@ -286,6 +286,22 @@ describe('EventForm — create mode', () => {
     expect(screen.getByText(/evento creado correctamente/i)).toBeInTheDocument()
   })
 
+  it('shows pending-approval copy after successful creation (EA-009)', async () => {
+    mockPost.mockResolvedValueOnce({ data: { id: 'new-event-id' } })
+
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(/pendiente de aprobacion/i)).toBeInTheDocument()
+  })
+
   it('shows error feedback when creation fails', async () => {
     mockPost.mockRejectedValueOnce({
       response: { data: { error: { message: 'Datos invalidos' } } },
@@ -496,6 +512,9 @@ describe('EventForm — edit mode', () => {
     expect(
       screen.getByText(/evento actualizado correctamente/i)
     ).toBeInTheDocument()
+
+    // EA-009: the pending-approval copy is create-mode only — edit stays unchanged
+    expect(screen.queryByText(/pendiente de aprobacion/i)).not.toBeInTheDocument()
   })
 
   it('shows error feedback when update fails', async () => {
