@@ -12,6 +12,7 @@ import Checkout from './pages/Checkout.jsx'
 import CheckoutReturn from './pages/CheckoutReturn.jsx'
 import CheckoutSuccess from './pages/CheckoutSuccess.jsx'
 import TicketLookup from './pages/TicketLookup.jsx'
+import Faq from './pages/Faq.jsx'
 import StaffScan from './pages/StaffScan.jsx'
 import OrganizerDashboard from './pages/OrganizerDashboard.jsx'
 import OrganizerEventNew from './pages/OrganizerEventNew.jsx'
@@ -36,6 +37,7 @@ function App() {
           <Route path="/checkout/return" element={<CheckoutReturn />} />
           <Route path="/checkout/success" element={<CheckoutSuccess />} />
           <Route path="/tickets/lookup" element={<TicketLookup />} />
+          <Route path="/faq" element={<Faq />} />
 
           <Route
             path="/staff/scan"
