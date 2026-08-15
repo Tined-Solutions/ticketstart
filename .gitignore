@@ -14,6 +14,14 @@ frontend/build/
 *.log
 .logs/
 
+# Runtime logs (dotnet run / npm dev)
+nohup.out
+
+# Local tooling — not project code
+agent-skills/
+ux-designer-skill/
+frontend/dotnet-install.sh
+
 # Environment-specific config (contains local secrets)
 **/appsettings.Development.json
 **/appsettings.*.local.json
