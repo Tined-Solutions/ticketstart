@@ -126,6 +126,7 @@ const successResponse = {
   data: {
     isValid: true,
     error: null,
+    errorCode: null,
     ticket: mockTicketDetails,
   },
 }
@@ -134,6 +135,7 @@ const alreadyUsedResponse = {
   data: {
     isValid: false,
     error: 'Ticket already used on 2026-08-15 21:30:00 UTC.',
+    errorCode: 'already_used',
     ticket: { ...mockTicketDetails, isUsed: true },
   },
 }
@@ -142,6 +144,7 @@ const invalidSignatureResponse = {
   data: {
     isValid: false,
     error: 'Invalid QR code signature. This ticket may be fraudulent.',
+    errorCode: 'invalid_signature',
     ticket: null,
   },
 }
@@ -261,7 +264,7 @@ describe('StaffScan', () => {
     mockGet.mockRejectedValueOnce(new Error('Network error'))
     renderWithQueryClient(<StaffScan />)
     await waitFor(() => {
-      expect(screen.getByText(/no se pudieron cargar los eventos/i)).toBeInTheDocument()
+      expect(screen.getByText(/no pudimos cargar los eventos/i)).toBeInTheDocument()
     })
   })
 
@@ -286,7 +289,7 @@ describe('StaffScan', () => {
     renderWithQueryClient(<StaffScan />)
     await screen.findByLabelText(/^evento$/i)
     await userEvent.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
-    expect(screen.getByText(/debe seleccionar un evento/i)).toBeInTheDocument()
+    expect(screen.getByText(/tenes que seleccionar un evento/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
   })
 
@@ -296,10 +299,10 @@ describe('StaffScan', () => {
     await screen.findByLabelText(/^evento$/i)
 
     await userEvent.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
-    expect(screen.getByText(/debe seleccionar un evento/i)).toBeInTheDocument()
+    expect(screen.getByText(/tenes que seleccionar un evento/i)).toBeInTheDocument()
 
     await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
-    expect(screen.queryByText(/debe seleccionar un evento/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/tenes que seleccionar un evento/i)).not.toBeInTheDocument()
   })
 
   // -- Selecting an event enables the scan button -------------------------
@@ -328,7 +331,7 @@ describe('StaffScan', () => {
     const user = userEvent.setup()
     await startScanning(user)
     await waitFor(() => {
-      expect(screen.getByText(/no se pudo acceder a la cámara/i)).toBeInTheDocument()
+      expect(screen.getByText(/no pudimos acceder a la camara/i)).toBeInTheDocument()
     })
   })
 
@@ -366,7 +369,7 @@ describe('StaffScan', () => {
 
     const resultAlert = screen.getByRole('alert')
     expect(resultAlert).toBeInTheDocument()
-    expect(within(resultAlert).getByText(/ticket válido/i)).toBeInTheDocument()
+    expect(within(resultAlert).getByText(/entrada valida/i)).toBeInTheDocument()
     expect(within(resultAlert).getByText(/recital de rock nacional/i)).toBeInTheDocument()
     expect(within(resultAlert).getByText(/platea/i)).toBeInTheDocument()
     expect(within(resultAlert).getByText(/comprador@test.com/i)).toBeInTheDocument()
@@ -402,7 +405,7 @@ describe('StaffScan', () => {
     const resultAlert = screen.getByRole('alert')
     expect(resultAlert).toBeInTheDocument()
     expect(
-      within(resultAlert).getByText(/ticket already used on 2026-08-15 21:30:00 UTC/i)
+      within(resultAlert).getByText(/esta entrada ya fue usada/i)
     ).toBeInTheDocument()
     expect(window.AudioContext).toHaveBeenCalled()
   })
@@ -420,7 +423,7 @@ describe('StaffScan', () => {
     const resultAlert = screen.getByRole('alert')
     expect(resultAlert).toBeInTheDocument()
     expect(
-      within(resultAlert).getByText(/invalid qr code signature/i)
+      within(resultAlert).getByText(/este qr no es de una entrada valida/i)
     ).toBeInTheDocument()
   })
 
@@ -437,7 +440,7 @@ describe('StaffScan', () => {
     const resultAlert = screen.getByRole('alert')
     expect(resultAlert).toBeInTheDocument()
     expect(
-      within(resultAlert).getByText(/error de conexión al validar el ticket/i)
+      within(resultAlert).getByText(/no se pudo validar la entrada/i)
     ).toBeInTheDocument()
   })
 
@@ -496,7 +499,7 @@ describe('StaffScan', () => {
       simulateQrScan('qr-success-data')
     })
     await waitFor(() => {
-      expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/entrada valida/i).length).toBeGreaterThan(0)
     })
 
     // Click "Escanear Otro" and re-start scanning
@@ -509,7 +512,7 @@ describe('StaffScan', () => {
       simulateQrScan('qr-already-used')
     })
     await waitFor(() => {
-      expect(screen.getByText(/ticket already used/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/ya fue usada/i).length).toBeGreaterThan(0)
     })
 
     // Click "Escanear Otro" again
@@ -523,7 +526,7 @@ describe('StaffScan', () => {
     })
     await waitFor(() => {
       const resultAlert = screen.getByRole('alert')
-      expect(within(resultAlert).getByText(/invalid qr code signature/i)).toBeInTheDocument()
+      expect(within(resultAlert).getByText(/este qr no es de una entrada valida/i)).toBeInTheDocument()
     })
 
     // Verify history
@@ -542,6 +545,29 @@ describe('StaffScan', () => {
 
   // -- Resetting after scan -----------------------------------------------
 
+  it('expands a history entry to show the full detail', async () => {
+    mockPost.mockResolvedValueOnce(alreadyUsedResponse)
+    renderWithQueryClient(<StaffScan />)
+    const user = userEvent.setup()
+    await startScanning(user)
+
+    await act(async () => {
+      simulateQrScan()
+    })
+
+    // The collapsed row shows the voseo summary
+    const listitem = await screen.findByRole('listitem')
+    expect(listitem.textContent).toMatch(/esta entrada ya fue usada/i)
+
+    // Expand shows the event/type detail
+    const toggle = within(listitem).getByRole('button')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(within(listitem).getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    expect(within(listitem).getByText(/platea/i)).toBeInTheDocument()
+  })
+
   it('resets the result display when a different event is selected after a scan', async () => {
     mockPost.mockResolvedValueOnce(successResponse)
     renderWithQueryClient(<StaffScan />)
@@ -552,13 +578,13 @@ describe('StaffScan', () => {
       simulateQrScan()
     })
 
-    expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/entrada valida/i).length).toBeGreaterThan(0)
 
     // Select a different event — result should clear
     await user.selectOptions(screen.getByLabelText(/^evento$/i), mockEvents[1].id)
     // The overlay exits via AnimatePresence — wait for the exit animation to finish
     await waitFor(() => {
-      expect(screen.queryByText(/ticket válido/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/entrada valida/i)).not.toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: /iniciar escaneo/i })).toBeInTheDocument()
   })
@@ -584,7 +610,7 @@ describe('StaffScan', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/entrada valida/i).length).toBeGreaterThan(0)
     })
 
     const stored = sessionStorage.getItem('staff_scan_history')
@@ -629,7 +655,7 @@ describe('StaffScan — Visual Regression', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText(/ticket válido/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/entrada valida/i).length).toBeGreaterThan(0)
     })
 
     expect(screen.getByText(/historial de escaneos/i)).toBeInTheDocument()
@@ -648,7 +674,7 @@ describe('StaffScan — Visual Regression', () => {
 
     const resultAlert = await screen.findByRole('alert')
     expect(resultAlert).toBeInTheDocument()
-    expect(resultAlert.textContent).toMatch(/ticket válido/i)
+    expect(resultAlert.textContent).toMatch(/entrada valida/i)
   })
 
   it('result overlay clears when rescanning', async () => {
@@ -661,7 +687,7 @@ describe('StaffScan — Visual Regression', () => {
       simulateQrScan()
     })
 
-    await screen.findByText(/ticket válido/i)
+    await screen.findByText(/entrada valida/i)
 
     await user.click(screen.getByRole('button', { name: /escanear otro/i }))
 

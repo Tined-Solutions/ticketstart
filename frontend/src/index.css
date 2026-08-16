@@ -134,17 +134,32 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── StaffScan QR reader ────────────────────────────────────────────────── */
 
-.qr-reader-container {
+.qr-reader-wrap {
+  position: relative;
   width: 100%;
   max-width: 400px;
-  min-height: 300px;
   margin: 0 auto 24px;
+}
+.qr-reader-container {
+  width: 100%;
+  min-height: 300px;
   border: 2px dashed var(--border);
   border-radius: 12px;
   overflow: hidden;
-  display: none;
+  display: block;
 }
-.qr-reader-container.active { display: block; }
+.qr-reader-container.active { border-color: var(--accent); }
+.qr-reader-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  color: var(--text-2);
+  pointer-events: none;
+}
 
 /* ── Toast animation ────────────────────────────────────────────────────── */
 

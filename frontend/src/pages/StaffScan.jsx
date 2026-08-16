@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Spinner from '../components/Spinner.jsx'
 import { fadeInScale } from '../lib/motion.js'
 import { useManagementEvents } from '../hooks/useManagementEvents.js'
+import { getScanMessage } from '../lib/scanMessages.js'
 
 // ---------------------------------------------------------------------------
 // Audio helpers
@@ -101,6 +102,7 @@ export default function StaffScan() {
   const [scanning, setScanning] = useState(false)
   const [result, setResult] = useState(null) // { type: 'success'|'error', message, ticket }
   const [history, setHistory] = useState(() => loadHistoryFromStorage()) // Initialize from sessionStorage
+  const [expandedEntry, setExpandedEntry] = useState(null) // index of expanded history entry
   const [error, setError] = useState('')
   const scannerRef = useRef(null)
 
@@ -109,7 +111,7 @@ export default function StaffScan() {
   // hides expired events.
   const { data: events = [], isLoading: eventsLoading, isError: eventsIsError } = useManagementEvents()
   const eventsError = eventsIsError
-    ? 'No se pudieron cargar los eventos. Intente recargar la pagina.'
+    ? 'No pudimos cargar los eventos. Proba recargar la pagina.'
     : ''
 
   // -----------------------------------------------------------------------
@@ -141,12 +143,15 @@ export default function StaffScan() {
 
         const { isValid, error: apiError, ticket } = response.data
 
+        const message = getScanMessage(response.data)
+
         const entry = {
           timestamp: new Date().toISOString(),
           qrCodeData: decodedText,
           eventId,
           isValid,
           error: apiError || null,
+          message: message || null,
           ticket: ticket || null,
         }
         setHistory((prev) => {
@@ -156,17 +161,17 @@ export default function StaffScan() {
         })
 
         if (isValid) {
-          setResult({ type: 'success', message: 'Ticket válido', ticket })
+          setResult({ type: 'success', message, ticket })
           playSuccessBeep()
         } else {
-          setResult({ type: 'error', message: apiError || 'Ticket inválido', ticket: ticket || null })
+          setResult({ type: 'error', message, ticket: ticket || null })
           playErrorBeep()
         }
       } catch (err) {
         const message =
           err?.response?.data?.error?.message ||
           err?.response?.data?.error ||
-          'Error de conexión al validar el ticket'
+          'No se pudo validar la entrada. Revisa tu conexion e intentalo de nuevo.'
 
         const entry = {
           timestamp: new Date().toISOString(),
@@ -174,6 +179,7 @@ export default function StaffScan() {
           eventId,
           isValid: false,
           error: typeof message === 'string' ? message : 'Error de validación',
+          message: typeof message === 'string' ? message : 'Error de validación',
           ticket: null,
         }
         setHistory((prev) => {
@@ -195,7 +201,7 @@ export default function StaffScan() {
 
   const startScanning = useCallback(async () => {
     if (!eventId) {
-      setError('Debe seleccionar un evento')
+      setError('Tenes que seleccionar un evento')
       return
     }
 
@@ -220,7 +226,7 @@ export default function StaffScan() {
 
       setScanning(true)
     } catch (err) {
-      setError('No se pudo acceder a la cámara. Verifique los permisos del navegador.')
+      setError('No pudimos acceder a la camara. Revisa los permisos del navegador.')
       console.error('Camera error:', err)
     }
   }, [eventId, handleScanSuccess])
@@ -248,7 +254,7 @@ export default function StaffScan() {
       variants={fadeInScale}
       initial="initial"
       animate="animate"
-      className="max-w-3xl mx-auto px-4 sm:px-6 py-10"
+      className="max-w-3xl mx-auto px-4 sm:px-6 py-10 overflow-x-hidden"
     >
       {/* Page header */}
       <header className="mb-8 text-center">
@@ -288,6 +294,7 @@ export default function StaffScan() {
                 setResult(null)
               }}
               disabled={scanning}
+              className="w-full min-w-0"
             >
               <option value="" disabled>Seleccionar evento...</option>
               {events.map((event) => (
@@ -329,11 +336,18 @@ export default function StaffScan() {
       </div>
 
       {/* Camera feed */}
-      <div
-        id="qr-reader"
-        className={`qr-reader-container${scanning ? ' active' : ''}`}
-        aria-label={scanning ? 'Camara activa — escaneando' : undefined}
-      />
+      <div className="qr-reader-wrap">
+        {!scanning && (
+          <div className="qr-reader-placeholder">
+            La camara se activara al iniciar el escaneo
+          </div>
+        )}
+        <div
+          id="qr-reader"
+          className={`qr-reader-container${scanning ? ' active' : ''}`}
+          aria-label={scanning ? 'Camara activa — escaneando' : undefined}
+        />
+      </div>
 
       {/* Result overlay */}
       <AnimatePresence>
@@ -343,7 +357,7 @@ export default function StaffScan() {
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`text-center p-6 rounded-xl mb-6 ${
+            className={`text-center p-4 rounded-xl mb-6 max-w-full min-w-0 overflow-hidden ${
               result.type === 'success'
                 ? 'bg-emerald-500/10 border-2 border-emerald-500'
                 : 'bg-rose-500/10 border-2 border-rose-500'
@@ -351,22 +365,22 @@ export default function StaffScan() {
             role="alert"
           >
             <span
-              className={`inline-flex items-center justify-center w-14 h-14 rounded-full text-2xl font-bold mb-3 ${
+              className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-xl font-bold mb-2 ${
                 result.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
               }`}
               aria-hidden="true"
             >
               {result.type === 'success' ? '\u2713' : '\u2717'}
             </span>
-            <p className="text-lg font-semibold text-text-1 mb-4">{result.message}</p>
+            <p className="text-base font-semibold text-text-1 mb-3 break-words">{result.message}</p>
             {result.ticket && (
-              <dl className="grid grid-cols-[auto_1fr] gap-1 gap-x-3 text-left max-w-sm mx-auto p-3 bg-surface-elevated rounded-lg">
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-0.5 gap-x-3 text-left text-xs sm:text-sm max-w-sm mx-auto p-2.5 bg-surface-elevated rounded-lg">
                 <dt className="font-medium text-text-1">Evento</dt>
-                <dd className="text-text-2 m-0">{result.ticket.eventName}</dd>
+                <dd className="text-text-2 m-0 min-w-0 break-words">{result.ticket.eventName}</dd>
                 <dt className="font-medium text-text-1">Tipo</dt>
-                <dd className="text-text-2 m-0">{result.ticket.ticketTypeName}</dd>
+                <dd className="text-text-2 m-0 min-w-0 break-words">{result.ticket.ticketTypeName}</dd>
                 <dt className="font-medium text-text-1">Comprador</dt>
-                <dd className="text-text-2 m-0">{result.ticket.purchaserEmail}</dd>
+                <dd className="text-text-2 m-0 min-w-0 break-all">{result.ticket.purchaserEmail}</dd>
               </dl>
             )}
           </motion.div>
@@ -380,27 +394,66 @@ export default function StaffScan() {
             Historial de Escaneos ({history.length})
           </h2>
           <div className="flex flex-col gap-2" role="list">
-            {history.map((entry, i) => (
-              <div
-                key={`${entry.timestamp}-${i}`}
-                className={`flex items-center gap-2 py-2.5 px-3.5 rounded-lg text-sm border ${
-                  entry.isValid ? 'border-l-4 border-l-emerald-500 border-border' : 'border-l-4 border-l-rose-500 border-border'
-                }`}
-                role="listitem"
-              >
-                <span className="font-mono text-text-2 whitespace-nowrap min-w-[4.5rem]">
-                  {new Date(entry.timestamp).toLocaleTimeString('es-AR')}
-                </span>
-                <Badge variant={entry.isValid ? 'success' : 'error'}>
-                  {entry.isValid ? 'Valido' : 'Invalido'}
-                </Badge>
-                <span className="flex-1 text-text-2 overflow-hidden text-ellipsis whitespace-nowrap">
-                  {entry.ticket
-                    ? `${entry.ticket.eventName} — ${entry.ticket.ticketTypeName}`
-                    : entry.error}
-                </span>
-              </div>
-            ))}
+            {history.map((entry, i) => {
+              const expanded = expandedEntry === i
+              const summary = entry.isValid
+                ? entry.ticket
+                  ? `${entry.ticket.eventName} — ${entry.ticket.ticketTypeName}`
+                  : 'Entrada valida'
+                : entry.message || entry.error || 'Entrada invalida'
+              return (
+                <div
+                  key={`${entry.timestamp}-${i}`}
+                  className={`rounded-lg text-sm border overflow-hidden ${
+                    entry.isValid ? 'border-l-4 border-l-emerald-500 border-border' : 'border-l-4 border-l-rose-500 border-border'
+                  }`}
+                  role="listitem"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedEntry(expanded ? null : i)}
+                    aria-expanded={expanded}
+                    aria-controls={`scan-entry-${i}-detail`}
+                    className="w-full flex items-center gap-2 py-3 px-3.5 text-left bg-transparent hover:bg-surface-elevated/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <span className="font-mono text-text-2 whitespace-nowrap min-w-[4.5rem]">
+                      {new Date(entry.timestamp).toLocaleTimeString('es-AR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                    </span>
+                    <Badge variant={entry.isValid ? 'success' : 'error'}>
+                      {entry.isValid ? 'Valido' : 'Invalido'}
+                    </Badge>
+                    <span className="flex-1 min-w-0 text-text-2 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {summary}
+                    </span>
+                    <span
+                      className={`text-text-2 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                      aria-hidden="true"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </span>
+                  </button>
+                  {expanded && (
+                    <div id={`scan-entry-${i}-detail`} className="px-3.5 pb-3 pt-1 text-text-2 border-t border-border/60">
+                      <p className="break-words">{summary}</p>
+                      {entry.ticket && (
+                        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-1 gap-x-3 mt-2 text-xs">
+                          <dt className="font-medium text-text-1">Evento</dt>
+                          <dd className="m-0 min-w-0 break-words">{entry.ticket.eventName}</dd>
+                          <dt className="font-medium text-text-1">Tipo</dt>
+                          <dd className="m-0 min-w-0 break-words">{entry.ticket.ticketTypeName}</dd>
+                        </dl>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
