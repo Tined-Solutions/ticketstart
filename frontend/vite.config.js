@@ -45,6 +45,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     server: {
+      // Permitir acceso desde tuneles HTTPS (ngrok/cloudflared) para probar
+      // el scan con camara desde el telefono. El host cambia en cada reinicio
+      // del tunel, por eso se permiten los sufijos, no un host puntual.
+      allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev', '.trycloudflare.com'],
       proxy: {
         '/api': {
           target: env.VITE_API_TARGET || detectBackendUrl(),
