@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TicketeraOnline.Api.Data;
@@ -12,9 +13,11 @@ using TicketeraOnline.Api.Data;
 namespace TicketeraOnline.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814143308_AddPurchaserNameAndRecipientName")]
+    partial class AddPurchaserNameAndRecipientName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -257,38 +260,6 @@ namespace TicketeraOnline.Api.Migrations
                     b.HasIndex("ReservationId");
 
                     b.ToTable("pending_email_send", (string)null);
-                });
-
-            modelBuilder.Entity("TicketeraOnline.Api.Models.Refund", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("AdminId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("ReservationId")
-                        .HasColumnType("uuid");
-
-                    b.PrimitiveCollection<Guid[]>("TicketIds")
-                        .IsRequired()
-                        .HasColumnType("uuid[]");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ReservationId");
-
-                    b.ToTable("Refunds");
                 });
 
             modelBuilder.Entity("TicketeraOnline.Api.Models.Reservation", b =>
@@ -538,17 +509,6 @@ namespace TicketeraOnline.Api.Migrations
                         .WithMany()
                         .HasForeignKey("ReservationId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Reservation");
-                });
-
-            modelBuilder.Entity("TicketeraOnline.Api.Models.Refund", b =>
-                {
-                    b.HasOne("TicketeraOnline.Api.Models.Reservation", "Reservation")
-                        .WithMany()
-                        .HasForeignKey("ReservationId")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Reservation");

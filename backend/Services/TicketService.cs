@@ -557,6 +557,7 @@ public class TicketService : ITicketService
             var tickets = await _context.Tickets
                 .Include(t => t.Event)
                 .Include(t => t.TicketType)
+                .Include(t => t.Reservation)
                 .Where(t => t.PurchaserEmail == email && !t.IsRefunded) // APR-005: refunded tickets are not re-sent
                 .ToListAsync();
 
@@ -579,7 +580,10 @@ public class TicketService : ITicketService
                 try
                 {
                     var emailService = _serviceProvider.GetRequiredService<IEmailService>();
-                    var result = await emailService.SendResendEmailAsync(email, eventTickets, eventDetails);
+                    var recipientName = eventTickets
+                        .Select(t => t.Reservation?.PurchaserName)
+                        .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+                    var result = await emailService.SendResendEmailAsync(email, eventTickets, eventDetails, recipientName);
 
                     if (!result.Success)
                     {

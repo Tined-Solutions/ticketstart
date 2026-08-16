@@ -46,7 +46,7 @@ public class ReservationService : IReservationService
     /// no stock counter to increment or roll back.
     /// Validates: Requirements 4.1, 4.2, 4.3, 4.4, 12.6, Batch 3 REQ-7, REQ-8.
     /// </summary>
-    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null)
+    public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null, string? purchaserName = null)
     {
         _logger.LogInformation("Creating reservation for user {UserId}, event {EventId}, ticketType {TicketTypeId}, quantity {Quantity}",
             userId, eventId, ticketTypeId, quantity);
@@ -75,7 +75,7 @@ public class ReservationService : IReservationService
         // InMemory providers use ONE transaction that contains the row lock, the
         // availability check and the reservation insert. Only the row-lock mechanism
         // differs by provider.
-        return await CreateReservationTransactionalAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI, purchaserEmail);
+        return await CreateReservationTransactionalAsync(userId, eventId, ticketTypeId, quantity, purchaserDNI, purchaserEmail, purchaserName);
     }
 
     /// <summary>
@@ -86,7 +86,7 @@ public class ReservationService : IReservationService
     /// the first sees the available stock and the rest observe the fresh committed state.
     /// Any failure (missing row, insufficient stock, insert error) rolls back everything.
     /// </summary>
-    private async Task<Reservation> CreateReservationTransactionalAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail)
+    private async Task<Reservation> CreateReservationTransactionalAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail, string? purchaserName = null)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
 
@@ -192,6 +192,7 @@ public class ReservationService : IReservationService
                     Quantity = quantity,
                     PurchaserDNI = purchaserDNI,
                     PurchaserEmail = purchaserEmail,
+                    PurchaserName = purchaserName,
                     ExpiresAt = now.AddMinutes(ReservationExpirationMinutes),
                     Status = ReservationStatus.Active,
                     CreatedAt = now
@@ -438,6 +439,10 @@ public class ReservationService : IReservationService
         // Update only the editable fields — stock and ticket selection remain untouched
         reservation.PurchaserDNI = request.PurchaserDNI.Trim();
         reservation.PurchaserEmail = request.PurchaserEmail?.Trim();
+        if (!string.IsNullOrWhiteSpace(request.PurchaserName))
+        {
+            reservation.PurchaserName = request.PurchaserName;
+        }
 
         await _context.SaveChangesAsync();
 

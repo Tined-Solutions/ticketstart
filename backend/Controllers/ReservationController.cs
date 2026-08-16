@@ -55,7 +55,8 @@ public class ReservationController : ControllerBase
                 request.TicketTypeId,
                 request.Quantity,
                 request.PurchaserDNI,
-                request.PurchaserEmail
+                request.PurchaserEmail,
+                request.PurchaserName
             );
 
             // Map to response DTO

@@ -34,7 +34,7 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails)
+    public async Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null)
     {
         _logger.LogInformation(
             "Sending ticket confirmation email to {Recipient} for event {EventId}",
@@ -66,7 +66,8 @@ public class EmailService : IEmailService
             eventDetails,
             ticketContentIds,
             totalAmount,
-            recipientEmail);
+            recipientEmail,
+            recipientName);
 
         var request = new ResendEmailRequest
         {
@@ -96,7 +97,7 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails)
+    public async Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null)
     {
         _logger.LogInformation(
             "Sending ticket resend email to {Recipient} for event {EventId}",
@@ -128,13 +129,14 @@ public class EmailService : IEmailService
             eventDetails,
             ticketContentIds,
             totalAmount,
-            recipientEmail);
+            recipientEmail,
+            recipientName);
 
         var request = new ResendEmailRequest
         {
             From = ResolvedFrom,
             To = recipientEmail,
-            Subject = $"Reenvío de tus entradas para {eventDetails.Name}",
+            Subject = $"Te reenviamos tus entradas para {eventDetails.Name}",
             Html = html,
             Attachments = attachments
         };
@@ -158,19 +160,19 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task<EmailResult> SendRefundNotificationAsync(string recipientEmail, decimal amount, string reason)
+    public async Task<EmailResult> SendRefundNotificationAsync(string recipientEmail, decimal amount, string reason, string? recipientName = null)
     {
         _logger.LogInformation(
             "Sending refund notification email to {Recipient} for amount {Amount}",
             recipientEmail, amount);
 
-        var html = RefundNotificationTemplate.Render(amount, reason);
+        var html = RefundNotificationTemplate.Render(amount, reason, recipientName);
 
         var request = new ResendEmailRequest
         {
             From = ResolvedFrom,
             To = recipientEmail,
-            Subject = "Notificación de reembolso",
+            Subject = "Te reembolsamos tu compra",
             Html = html
         };
 
@@ -246,20 +248,20 @@ public class EmailService : IEmailService
 
     /// <inheritdoc />
     public async Task<EmailResult> SendEventDateChangeNotificationAsync(
-        string recipientEmail, string eventName, DateTime oldDate, DateTime newDate)
+        string recipientEmail, string eventName, DateTime oldDate, DateTime newDate, string? recipientName = null)
     {
         _logger.LogInformation(
             "Sending event date change notification to {Recipient} for event '{EventName}'",
             recipientEmail, eventName);
 
         var refundContactEmail = _options.FromEmail;
-        var html = EventDateChangeTemplate.Render(eventName, oldDate, newDate, refundContactEmail);
+        var html = EventDateChangeTemplate.Render(eventName, oldDate, newDate, refundContactEmail, recipientName);
 
         var request = new ResendEmailRequest
         {
             From = ResolvedFrom,
             To = recipientEmail,
-            Subject = $"Cambio de fecha: {eventName}",
+            Subject = $"Tu evento cambió de fecha: {eventName}",
             Html = html
         };
 

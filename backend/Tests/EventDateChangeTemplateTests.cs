@@ -118,7 +118,7 @@ public class EventDateChangeTemplateTests
             "reembolsos@ticketera.com");
 
         Assert.StartsWith("<!DOCTYPE html>", html, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("<html>", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<html lang=\"es\">", html, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("</html>", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -136,16 +136,16 @@ public class EventDateChangeTemplateTests
             "reembolsos@ticketera.com");
 
         Assert.Contains(
-            "QR ya emitido continúa siendo válido",
+            "Tu QR ya emitido sigue siendo válido para la nueva fecha.",
             html,
             StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// The signature reads "equipo de Ticketera" without the leading article.
+    /// The footer signature reads "— El equipo de TicketStart".
     /// </summary>
     [Fact]
-    public void Render_SignatureOmitsLeadingArticle()
+    public void Render_FooterShowsTicketStartBrand()
     {
         var html = EventDateChangeTemplate.Render(
             "Rock Fest",
@@ -153,7 +153,7 @@ public class EventDateChangeTemplateTests
             new DateTime(2026, 11, 1),
             "reembolsos@ticketera.com");
 
-        Assert.Contains("equipo de Ticketera", html, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("El equipo", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("El equipo de TicketStart", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("equipo de Ticketera", html, StringComparison.OrdinalIgnoreCase);
     }
 }

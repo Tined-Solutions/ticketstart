@@ -175,6 +175,7 @@ describe('Checkout', () => {
       eventId: cart.eventId,
       ticketTypeId: cart.selection.ticketTypeId,
       quantity: cart.selection.quantity,
+      purchaserName: 'Juan Perez',
       purchaserEmail: 'juan@example.com',
       confirmEmail: 'juan@example.com',
       purchaserDNI: '12345678',
@@ -616,6 +617,7 @@ describe('Checkout', () => {
     expect(mockPatch).toHaveBeenCalledWith(
       `/reservations/${reservation.id}`,
       expect.objectContaining({
+        purchaserName: 'Nombre Editado',
         purchaserEmail: 'editado@test.com',
         purchaserDNI: '87654321',
         token: reservation.token,

@@ -44,6 +44,12 @@ public class EventNotification : IRetryableEmailRow
     /// </summary>
     public string RecipientEmail { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Recipient display name captured at enqueue time for personalized greetings.
+    /// Nullable: falls back to a generic greeting when no name is available.
+    /// </summary>
+    public string? RecipientName { get; set; }
+
     // ---- IRetryableEmailRow ----
 
     /// <inheritdoc />

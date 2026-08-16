@@ -173,6 +173,7 @@ export default function Checkout() {
 
       const response = reservation
         ? await apiClient.patch(`/reservations/${reservation.id}`, {
+            purchaserName: purchaserName.trim(),
             purchaserEmail: email,
             purchaserDNI: dni,
             token: reservation.token,
@@ -181,6 +182,7 @@ export default function Checkout() {
             eventId: cart.eventId,
             ticketTypeId: selection.ticketTypeId,
             quantity: selection.quantity,
+            purchaserName: purchaserName.trim(),
             purchaserEmail: email,
             confirmEmail: confirmEmail.trim(),
             purchaserDNI: dni,
