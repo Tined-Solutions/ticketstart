@@ -243,7 +243,8 @@ public class TicketService : ITicketService
             return new QRCodeValidationResult
             {
                 IsValid = false,
-                Error = "Invalid QR code signature. This ticket may be fraudulent."
+                Error = "Invalid QR code signature. This ticket may be fraudulent.",
+                ErrorCode = "invalid_signature"
             };
         }
 
@@ -255,159 +256,176 @@ public class TicketService : ITicketService
             return new QRCodeValidationResult
             {
                 IsValid = false,
-                Error = "Invalid QR code format."
+                Error = "Invalid QR code format.",
+                ErrorCode = "invalid_format"
             };
         }
 
-        // Step 3: Use transaction to atomically check and update ticket status
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        // Step 3: Use transaction to atomically check and update ticket status.
+        // Wrapped in CreateExecutionStrategy because EnableRetryOnFailure is
+        // configured: NpgsqlRetryingExecutionStrategy rejects user-initiated
+        // transactions unless they run inside the execution strategy.
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        try
+        return await strategy.ExecuteAsync(async () =>
         {
-            // Load ticket with related data
-            var ticket = await _context.Tickets
-                .Include(t => t.Event)
-                .Include(t => t.TicketType)
-                .FirstOrDefaultAsync(t => t.Id == ticketId);
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-            if (ticket == null)
-            {
-                _logger.LogWarning("Ticket {TicketId} not found", ticketId);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = "Ticket not found."
-                };
-            }
-
-            // Step 4: Validate QR timestamp window
-            // Extract timestamp from QR code payload
-            long qrTimestamp;
             try
             {
-                qrTimestamp = HmacHelper.ExtractTimestamp(qrCodeData);
-            }
-            catch (FormatException)
-            {
-                _logger.LogWarning("Failed to extract timestamp from QR code for ticket {TicketId}", ticketId);
-                await transaction.RollbackAsync();
+                // Load ticket with related data
+                var ticket = await _context.Tickets
+                    .Include(t => t.Event)
+                    .Include(t => t.TicketType)
+                    .FirstOrDefaultAsync(t => t.Id == ticketId);
+
+                if (ticket == null)
+                {
+                    _logger.LogWarning("Ticket {TicketId} not found", ticketId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "Ticket not found.",
+                        ErrorCode = "ticket_not_found"
+                    };
+                }
+
+                // Step 4: Validate QR timestamp window
+                // Extract timestamp from QR code payload
+                long qrTimestamp;
+                try
+                {
+                    qrTimestamp = HmacHelper.ExtractTimestamp(qrCodeData);
+                }
+                catch (FormatException)
+                {
+                    _logger.LogWarning("Failed to extract timestamp from QR code for ticket {TicketId}", ticketId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "Invalid QR code format: cannot extract timestamp.",
+                        ErrorCode = "invalid_format"
+                    };
+                }
+
+                var qrDateTime = DateTimeOffset.FromUnixTimeSeconds(qrTimestamp).UtcDateTime;
+
+                // Validate: timestamp >= purchaseDate (ticket.CreatedAt) with 5-min clock-skew tolerance
+                if (qrDateTime < ticket.CreatedAt.AddMinutes(-5))
+                {
+                    _logger.LogWarning("QR timestamp {QrTimestamp} is before ticket purchase date {PurchaseDate} for ticket {TicketId}",
+                        qrDateTime, ticket.CreatedAt, ticketId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "QR code timestamp is outside valid window.",
+                        ErrorCode = "outside_window",
+                        Ticket = ticket
+                    };
+                }
+
+                // Validate: timestamp <= event.EndDate + 24h
+                var maxValidDate = ticket.Event.Date.AddHours(ValidationWindowHours);
+                if (qrDateTime > maxValidDate)
+                {
+                    _logger.LogWarning("QR timestamp {QrTimestamp} is after event end + 24h {MaxDate} for ticket {TicketId}",
+                        qrDateTime, maxValidDate, ticketId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "QR code timestamp is outside valid window.",
+                        ErrorCode = "outside_window",
+                        Ticket = ticket
+                    };
+                }
+
+                // Validate: timestamp <= now (not in the future)
+                if (qrDateTime > DateTime.UtcNow)
+                {
+                    _logger.LogWarning("QR timestamp {QrTimestamp} is in the future for ticket {TicketId}",
+                        qrDateTime, ticketId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "QR code timestamp is outside valid window.",
+                        ErrorCode = "outside_window",
+                        Ticket = ticket
+                    };
+                }
+
+                // Step 5: Check if ticket has already been used (double-scan prevention)
+                if (ticket.IsUsed)
+                {
+                    _logger.LogWarning("Ticket {TicketId} has already been used at {UsedAt}",
+                        ticketId, ticket.UsedAt);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = $"Ticket already used on {ticket.UsedAt:yyyy-MM-dd HH:mm:ss} UTC.",
+                        ErrorCode = "already_used",
+                        Ticket = ticket
+                    };
+                }
+
+                // Step 5b: Check if ticket has been refunded (APR-006)
+                if (ticket.IsRefunded)
+                {
+                    _logger.LogWarning("Ticket {TicketId} was refunded at {RefundedAt}; scan rejected",
+                        ticketId, ticket.RefundedAt);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = "Entrada reembolsada",
+                        ErrorCode = "refunded",
+                        Ticket = ticket
+                    };
+                }
+
+                // Step 6: Check event association
+                if (ticket.EventId != eventId)
+                {
+                    _logger.LogWarning("Ticket {TicketId} is for event {TicketEventId}, but scanned at event {ScannedEventId}",
+                        ticketId, ticket.EventId, eventId);
+                    await transaction.RollbackAsync();
+                    return new QRCodeValidationResult
+                    {
+                        IsValid = false,
+                        Error = $"Ticket is for event '{ticket.Event.Name}', not this event.",
+                        ErrorCode = "wrong_event",
+                        Ticket = ticket
+                    };
+                }
+
+                // Step 7: Mark ticket as used with timestamp
+                ticket.IsUsed = true;
+                ticket.UsedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Ticket {TicketId} validated and marked as used for event {EventId}",
+                    ticketId, eventId);
+
                 return new QRCodeValidationResult
                 {
-                    IsValid = false,
-                    Error = "Invalid QR code format: cannot extract timestamp."
-                };
-            }
-
-            var qrDateTime = DateTimeOffset.FromUnixTimeSeconds(qrTimestamp).UtcDateTime;
-
-            // Validate: timestamp >= purchaseDate (ticket.CreatedAt) with 5-min clock-skew tolerance
-            if (qrDateTime < ticket.CreatedAt.AddMinutes(-5))
-            {
-                _logger.LogWarning("QR timestamp {QrTimestamp} is before ticket purchase date {PurchaseDate} for ticket {TicketId}",
-                    qrDateTime, ticket.CreatedAt, ticketId);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = "QR code timestamp is outside valid window.",
+                    IsValid = true,
                     Ticket = ticket
                 };
             }
-
-            // Validate: timestamp <= event.EndDate + 24h
-            var maxValidDate = ticket.Event.Date.AddHours(ValidationWindowHours);
-            if (qrDateTime > maxValidDate)
+            catch (Exception ex)
             {
-                _logger.LogWarning("QR timestamp {QrTimestamp} is after event end + 24h {MaxDate} for ticket {TicketId}",
-                    qrDateTime, maxValidDate, ticketId);
+                _logger.LogError(ex, "Error validating QR code for ticket {TicketId}", ticketId);
                 await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = "QR code timestamp is outside valid window.",
-                    Ticket = ticket
-                };
+                throw;
             }
-
-            // Validate: timestamp <= now (not in the future)
-            if (qrDateTime > DateTime.UtcNow)
-            {
-                _logger.LogWarning("QR timestamp {QrTimestamp} is in the future for ticket {TicketId}",
-                    qrDateTime, ticketId);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = "QR code timestamp is outside valid window.",
-                    Ticket = ticket
-                };
-            }
-
-            // Step 5: Check if ticket has already been used (double-scan prevention)
-            if (ticket.IsUsed)
-            {
-                _logger.LogWarning("Ticket {TicketId} has already been used at {UsedAt}",
-                    ticketId, ticket.UsedAt);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = $"Ticket already used on {ticket.UsedAt:yyyy-MM-dd HH:mm:ss} UTC.",
-                    Ticket = ticket
-                };
-            }
-
-            // Step 5b: Check if ticket has been refunded (APR-006)
-            if (ticket.IsRefunded)
-            {
-                _logger.LogWarning("Ticket {TicketId} was refunded at {RefundedAt}; scan rejected",
-                    ticketId, ticket.RefundedAt);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = "Entrada reembolsada",
-                    Ticket = ticket
-                };
-            }
-
-            // Step 6: Check event association
-            if (ticket.EventId != eventId)
-            {
-                _logger.LogWarning("Ticket {TicketId} is for event {TicketEventId}, but scanned at event {ScannedEventId}",
-                    ticketId, ticket.EventId, eventId);
-                await transaction.RollbackAsync();
-                return new QRCodeValidationResult
-                {
-                    IsValid = false,
-                    Error = $"Ticket is for event '{ticket.Event.Name}', not this event.",
-                    Ticket = ticket
-                };
-            }
-
-            // Step 7: Mark ticket as used with timestamp
-            ticket.IsUsed = true;
-            ticket.UsedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.LogInformation("Ticket {TicketId} validated and marked as used for event {EventId}",
-                ticketId, eventId);
-
-            return new QRCodeValidationResult
-            {
-                IsValid = true,
-                Ticket = ticket
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating QR code for ticket {TicketId}", ticketId);
-            await transaction.RollbackAsync();
-            throw;
-        }
+        });
     }
 
     /// <summary>

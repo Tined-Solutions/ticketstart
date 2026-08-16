@@ -125,7 +125,8 @@ public class TicketController : TicketeraControllerBase
             var response = new ValidateQRCodeResponse
             {
                 IsValid = result.IsValid,
-                Error = result.Error
+                Error = result.Error,
+                ErrorCode = result.ErrorCode
             };
 
             if (result.Ticket != null)

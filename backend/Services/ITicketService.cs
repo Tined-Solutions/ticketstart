@@ -105,6 +105,7 @@ public class QRCodeValidationResult
 {
     public bool IsValid { get; set; }
     public string? Error { get; set; }
+    public string? ErrorCode { get; set; }
     public Ticket? Ticket { get; set; }
 }
 
@@ -165,6 +166,7 @@ public class ValidateQRCodeResponse
 {
     public bool IsValid { get; set; }
     public string? Error { get; set; }
+    public string? ErrorCode { get; set; }
     public TicketValidationDetails? Ticket { get; set; }
 }
 
