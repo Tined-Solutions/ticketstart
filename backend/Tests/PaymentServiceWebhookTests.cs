@@ -297,6 +297,192 @@ public class PaymentServiceWebhookTests : IDisposable
 
     #endregion
 
+    #region JD-C3 — Non-terminal statuses must NOT cancel or poison idempotency
+
+    [Fact]
+    public async Task Webhook_PendingPayment_LeavesReservationActiveAndNoTransaction()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        var paymentId = "pay-pending-new";
+        _mockMpClient
+            .Setup(c => c.GetPaymentByIdAsync(paymentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = "pending",
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            });
+
+        var envelope = new MercadoPagoWebhookEnvelope
+        {
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = paymentId }
+        };
+
+        var result = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+
+        // A pending status is NOT a failure: ACK without side effects.
+        Assert.True(result.Success);
+
+        var updatedReservation = await _context.Reservations.FindAsync(reservation.Id);
+        Assert.Equal(ReservationStatus.Active, updatedReservation!.Status);
+
+        // No Rejected (or any) transaction row may be recorded for a non-final status,
+        // otherwise it would lock out the later approved webhook (JD-C3 idempotency lockout).
+        var transactions = await _context.Transactions
+            .Where(t => t.MercadoPagoId == paymentId)
+            .ToListAsync();
+        Assert.Empty(transactions);
+
+        var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
+        Assert.Empty(tickets);
+    }
+
+    [Fact]
+    public async Task Webhook_InProcessPayment_LeavesReservationActiveAndNoTransaction()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        var paymentId = "pay-inprocess-new";
+        _mockMpClient
+            .Setup(c => c.GetPaymentByIdAsync(paymentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = "in_process",
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            });
+
+        var envelope = new MercadoPagoWebhookEnvelope
+        {
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = paymentId }
+        };
+
+        var result = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+
+        Assert.True(result.Success);
+
+        var updatedReservation = await _context.Reservations.FindAsync(reservation.Id);
+        Assert.Equal(ReservationStatus.Active, updatedReservation!.Status);
+
+        var transactions = await _context.Transactions
+            .Where(t => t.MercadoPagoId == paymentId)
+            .ToListAsync();
+        Assert.Empty(transactions);
+    }
+
+    /// <summary>
+    /// JD-C3 lockout regression: a pending webhook arriving before the approved one must
+    /// NOT record a Rejected transaction, so the approved webhook still creates tickets.
+    /// </summary>
+    [Fact]
+    public async Task Webhook_PendingThenApproved_StillCreatesTickets()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        var paymentId = "pay-pending-then-approved";
+        _mockMpClient
+            .SetupSequence(c => c.GetPaymentByIdAsync(paymentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = "pending",
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            })
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = "approved",
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            });
+
+        var envelope = new MercadoPagoWebhookEnvelope
+        {
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = paymentId }
+        };
+
+        // First webhook: pending → no side effects
+        var pendingResult = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+        Assert.True(pendingResult.Success);
+
+        var afterPending = await _context.Reservations.FindAsync(reservation.Id);
+        Assert.Equal(ReservationStatus.Active, afterPending!.Status);
+
+        // Second webhook: approved → must still confirm and create tickets (no lockout)
+        var approvedResult = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+        Assert.True(approvedResult.Success);
+        Assert.Equal(paymentId, approvedResult.PaymentId);
+
+        var updatedReservation = await _context.Reservations.FindAsync(reservation.Id);
+        Assert.Equal(ReservationStatus.Confirmed, updatedReservation!.Status);
+
+        var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
+        Assert.Equal(reservation.Quantity, tickets.Count);
+
+        var approvedTxs = await _context.Transactions
+            .Where(t => t.MercadoPagoId == paymentId && t.Status == TransactionStatus.Approved)
+            .ToListAsync();
+        Assert.Single(approvedTxs);
+
+        _mockEmailService.Verify(
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// Terminal failure statuses (rejected/cancelled/refunded/charged_back) must keep
+    /// cancelling the reservation — only non-terminal statuses become no-ops.
+    /// </summary>
+    [Theory]
+    [InlineData("rejected")]
+    [InlineData("cancelled")]
+    [InlineData("refunded")]
+    [InlineData("charged_back")]
+    public async Task Webhook_TerminalFailureStatus_CancelsReservation(string status)
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2);
+
+        var paymentId = $"pay-{status}-new";
+        _mockMpClient
+            .Setup(c => c.GetPaymentByIdAsync(paymentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoPaymentDetail
+            {
+                Id = paymentId,
+                Status = status,
+                ExternalReference = reservation.Id.ToString(),
+                TransactionAmount = 100
+            });
+
+        var envelope = new MercadoPagoWebhookEnvelope
+        {
+            Action = "payment.updated",
+            Type = "payment",
+            Data = new MercadoPagoWebhookData { Id = paymentId }
+        };
+
+        var result = await _paymentService.ProcessWebhookAsync(envelope, string.Empty);
+
+        Assert.True(result.Success);
+
+        var updatedReservation = await _context.Reservations.FindAsync(reservation.Id);
+        Assert.Equal(ReservationStatus.Cancelled, updatedReservation!.Status);
+
+        var tickets = await _context.Tickets.Where(t => t.EventId == reservation.EventId).ToListAsync();
+        Assert.Empty(tickets);
+    }
+
+    #endregion
+
     #region Task 3.2 — Email failure → logged + queued
 
     [Fact]

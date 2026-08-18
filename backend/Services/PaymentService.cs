@@ -265,8 +265,33 @@ public class PaymentService : IPaymentService
             return await ProcessApprovedPaymentAsync(reservation, dataId, amount);
         }
 
-        return await ProcessFailedPaymentAsync(reservation, dataId, amount);
+        // JD-C3: only FINAL failure statuses may cancel the reservation and record a
+        // Rejected transaction. Non-terminal statuses (pending / in_process / in_mediation /
+        // authorized / unknown) are ACKed with no side effects — a premature webhook must not
+        // cancel a reservation or poison the idempotency check before the payment reaches its
+        // final state (otherwise a later approved webhook is locked out and the customer never
+        // receives tickets despite having paid).
+        if (IsFinalFailureStatus(payment.Status))
+        {
+            return await ProcessFailedPaymentAsync(reservation, dataId, amount);
+        }
+
+        _logger.LogInformation(
+            "Payment {PaymentId} is in non-terminal status '{Status}'; reservation {ReservationId} left unchanged (200 ACK)",
+            dataId, payment.Status, reservation.Id);
+        return new WebhookResult { Success = true, PaymentId = dataId, FailureType = WebhookFailureType.None };
     }
+
+    /// <summary>
+    /// Mercado Pago statuses that are terminal payment failures: once a payment reaches one
+    /// of these it will not become approved. Any other non-"approved" status is non-terminal
+    /// and must be ignored rather than treated as a failure (JD-C3).
+    /// </summary>
+    private static bool IsFinalFailureStatus(string status) =>
+        status.Equals("rejected", StringComparison.OrdinalIgnoreCase) ||
+        status.Equals("cancelled", StringComparison.OrdinalIgnoreCase) ||
+        status.Equals("refunded", StringComparison.OrdinalIgnoreCase) ||
+        status.Equals("charged_back", StringComparison.OrdinalIgnoreCase);
 
     private async Task<WebhookResult> ProcessApprovedPaymentAsync(Reservation reservation, string paymentId, decimal amount)
     {
