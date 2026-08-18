@@ -95,7 +95,7 @@ public class ReservationServiceTests : IDisposable
 
     /// <summary>
     /// Each call generates a unique token with a different nonce.
-    /// The new format (nonce:timestamp:signature) is non-deterministic per call.
+    /// The new format (reservationId:nonce:timestamp:signature) is non-deterministic per call.
     /// </summary>
     [Fact]
     public void GenerateReservationToken_EachCall_GeneratesUniqueToken()
@@ -113,9 +113,9 @@ public class ReservationServiceTests : IDisposable
         // Tokens should differ because each has a unique nonce
         Assert.NotEqual(token1, token2);
 
-        // Both should have the correct format: nonce:timestamp:signature
-        Assert.Equal(3, token1.Split(':').Length);
-        Assert.Equal(3, token2.Split(':').Length);
+        // Both should have the correct format: reservationId:nonce:timestamp:signature
+        Assert.Equal(4, token1.Split(':').Length);
+        Assert.Equal(4, token2.Split(':').Length);
     }
 
     [Fact]
@@ -126,11 +126,33 @@ public class ReservationServiceTests : IDisposable
         var reservationId2 = Guid.NewGuid();
 
         // Act
-        var token1 = _reservationService.GenerateReservationToken(reservationId1);
-        var token2 = _reservationService.GenerateReservationToken(reservationId2);
+        var token = _reservationService.GenerateReservationToken(reservationId1);
+        var isValid = _reservationService.ValidateReservationToken(token, out var boundReservationId);
 
         // Assert
-        Assert.NotEqual(token1, token2);
+        Assert.True(isValid);
+        Assert.Equal(reservationId1, boundReservationId);
+        Assert.NotEqual(reservationId2, boundReservationId);
+    }
+
+    [Fact]
+    public async Task UpdateReservationAsync_WithTokenBoundToDifferentReservation_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var reservationA = await _reservationService.CreateReservationAsync(
+            null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI);
+        var reservationB = await _reservationService.CreateReservationAsync(
+            null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI);
+        var request = new UpdateReservationRequest
+        {
+            PurchaserDNI = "87654321",
+            Token = _reservationService.GenerateReservationToken(reservationA.Id)
+        };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _reservationService.UpdateReservationAsync(reservationB.Id, request));
     }
 
     [Fact]

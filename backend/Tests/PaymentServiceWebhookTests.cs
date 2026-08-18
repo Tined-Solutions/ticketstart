@@ -355,9 +355,9 @@ public class PaymentServiceWebhookTests : IDisposable
     {
         var nonce = Guid.NewGuid().ToString("N")[..16];
         var timestamp = now.ToUnixTimeSeconds();
-        var dataToSign = $"{nonce}:{timestamp}";
+        var dataToSign = $"{reservationId}:{nonce}:{timestamp}";
         var signature = HmacHelper.ComputeHmacSha256(dataToSign, secret);
-        return $"{nonce}:{timestamp}:{signature}";
+        return $"{reservationId}:{nonce}:{timestamp}:{signature}";
     }
 
     /// <summary>

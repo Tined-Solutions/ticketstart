@@ -419,7 +419,8 @@ public class ReservationService : IReservationService
         }
 
         // Validate reservation token (proves the caller owns this reservation)
-        if (!ValidateReservationToken(request.Token, out _))
+        if (!ValidateReservationToken(request.Token, out var tokenReservationId) ||
+            tokenReservationId != reservationId)
         {
             _logger.LogWarning("Invalid reservation token for reservation {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Invalid reservation token");
@@ -453,7 +454,7 @@ public class ReservationService : IReservationService
 
     /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
-    /// Token format: nonce:timestamp:signature
+    /// Token format: reservationId:nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.
     /// </summary>
     public string GenerateReservationToken(Guid reservationId)
@@ -465,9 +466,9 @@ public class ReservationService : IReservationService
 
         var nonce = Guid.NewGuid().ToString("N")[..16];
         var timestamp = _clock.GetUtcNow().ToUnixTimeSeconds();
-        var dataToSign = $"{nonce}:{timestamp}";
+        var dataToSign = $"{reservationId}:{nonce}:{timestamp}";
         var signature = HmacHelper.ComputeHmacSha256(dataToSign, _tokenOptions.TokenSecretKey);
-        var token = $"{nonce}:{timestamp}:{signature}";
+        var token = $"{reservationId}:{nonce}:{timestamp}:{signature}";
 
         _logger.LogDebug("Generated reservation token for reservation {ReservationId}", reservationId);
 
@@ -477,7 +478,7 @@ public class ReservationService : IReservationService
     /// <summary>
     /// Validates a reservation token.
     /// Checks signature integrity and token expiry (default 10 minutes).
-    /// Returns the reservation ID if valid.
+    /// Returns the reservation ID bound to the token if valid.
     /// </summary>
     public bool ValidateReservationToken(string token, out Guid reservationId, int expiryMinutes = 10)
     {
@@ -489,15 +490,21 @@ public class ReservationService : IReservationService
         }
 
         var parts = token.Split(':');
-        if (parts.Length != 3)
+        if (parts.Length != 4)
         {
-            _logger.LogWarning("Invalid reservation token format: expected 3 parts, got {Count}", parts.Length);
+            _logger.LogWarning("Invalid reservation token format: expected 4 parts, got {Count}", parts.Length);
             return false;
         }
 
-        var nonce = parts[0];
-        var timestampStr = parts[1];
-        var providedSignature = parts[2];
+        if (!Guid.TryParse(parts[0], out reservationId))
+        {
+            _logger.LogWarning("Invalid reservation ID in reservation token");
+            return false;
+        }
+
+        var nonce = parts[1];
+        var timestampStr = parts[2];
+        var providedSignature = parts[3];
 
         if (!long.TryParse(timestampStr, out var timestamp))
         {
@@ -514,7 +521,7 @@ public class ReservationService : IReservationService
         }
 
         // Verify signature
-        var dataToVerify = $"{nonce}:{timestamp}";
+        var dataToVerify = $"{reservationId}:{nonce}:{timestamp}";
         if (!HmacHelper.ValidateHmacSha256(dataToVerify, _tokenOptions.TokenSecretKey, providedSignature))
         {
             _logger.LogWarning("Reservation token signature verification failed");

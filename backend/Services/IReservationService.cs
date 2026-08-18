@@ -87,19 +87,19 @@ public interface IReservationService
 
     /// <summary>
     /// Generates an HMAC-SHA256 token for a reservation.
-    /// Token format: nonce:timestamp:signature
+    /// Token format: reservationId:nonce:timestamp:signature
     /// The token proves the caller created the reservation without requiring authentication.
     /// Validates: IDOR protection for guest checkout.
     /// </summary>
     /// <param name="reservationId">Reservation identifier</param>
-    /// <returns>HMAC-SHA256 token in nonce:timestamp:signature format</returns>
+    /// <returns>HMAC-SHA256 token in reservationId:nonce:timestamp:signature format</returns>
     string GenerateReservationToken(Guid reservationId);
 
     /// <summary>
     /// Validates a reservation token for signature integrity and expiry.
     /// </summary>
     /// <param name="token">The reservation token to validate</param>
-    /// <param name="reservationId">Output: reservation ID (unused in new format but kept for API compat)</param>
+    /// <param name="reservationId">Output: reservation ID bound to the token</param>
     /// <param name="expiryMinutes">Max token age in minutes (default: 10)</param>
     /// <returns>True if the token is valid and not expired</returns>
     bool ValidateReservationToken(string token, out Guid reservationId, int expiryMinutes = 10);

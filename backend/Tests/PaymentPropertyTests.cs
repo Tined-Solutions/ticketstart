@@ -545,8 +545,8 @@ public class PaymentPropertyTests : IDisposable
     {
         var nonce = Guid.NewGuid().ToString("N")[..16];
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var dataToSign = $"{nonce}:{timestamp}";
+        var dataToSign = $"{reservationId}:{nonce}:{timestamp}";
         var signature = ComputeHmacSha256(dataToSign, _tokenOptions.Value.TokenSecretKey);
-        return $"{nonce}:{timestamp}:{signature}";
+        return $"{reservationId}:{nonce}:{timestamp}:{signature}";
     }
 }

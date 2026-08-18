@@ -60,17 +60,23 @@ public class PaymentService : IPaymentService
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
-        // Validate new token format: nonce:timestamp:signature
+        // Validate token format: reservationId:nonce:timestamp:signature
         var tokenParts = token.Split(':');
-        if (tokenParts.Length != 3)
+        if (tokenParts.Length != 4)
         {
             _logger.LogWarning("Invalid reservation token format for reservation {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
-        var nonce = tokenParts[0];
-        var timestampStr = tokenParts[1];
-        var providedSignature = tokenParts[2];
+        if (!Guid.TryParse(tokenParts[0], out var tokenReservationId))
+        {
+            _logger.LogWarning("Invalid reservation ID in token for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        var nonce = tokenParts[1];
+        var timestampStr = tokenParts[2];
+        var providedSignature = tokenParts[3];
 
         if (!long.TryParse(timestampStr, out var ts))
         {
@@ -87,10 +93,16 @@ public class PaymentService : IPaymentService
         }
 
         // Verify signature
-        var dataToVerify = $"{nonce}:{ts}";
+        var dataToVerify = $"{tokenReservationId}:{nonce}:{ts}";
         if (!HmacHelper.ValidateHmacSha256(dataToVerify, _tokenOptions.TokenSecretKey, providedSignature))
         {
             _logger.LogWarning("Invalid reservation token signature for reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        if (tokenReservationId != reservationId)
+        {
+            _logger.LogWarning("Reservation token is bound to a different reservation than requested {ReservationId}", reservationId);
             throw new UnauthorizedAccessException("Invalid reservation token");
         }
 
