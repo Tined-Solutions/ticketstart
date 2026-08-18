@@ -201,7 +201,10 @@ builder.Services.AddControllers();
 // and does NOT redirect ngrok-forwarded HTTPS requests back to HTTP → 502.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+    // X-Forwarded-Proto keeps UseHttpsRedirection from looping on HTTPS tunnels;
+    // X-Forwarded-For lets the ForwardedHeaders middleware rewrite RemoteIpAddress to the
+    // real client IP, which the rate limiters partition by (JD-C2) and audit logs rely on.
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     if (builder.Environment.IsDevelopment())
     {
         // Trust any proxy in development (ngrok IPs change).
@@ -213,32 +216,45 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // Configure rate limiting
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("Resend", config =>
-    {
-        config.PermitLimit = 3;
-        config.Window = TimeSpan.FromHours(1);
-        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
-    });
-
-    options.AddSlidingWindowLimiter("Login", config =>
-    {
-        config.PermitLimit = 10;
-        config.Window = TimeSpan.FromMinutes(1);
-        config.SegmentsPerWindow = 4;
-        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
-    });
-
-    options.AddFixedWindowLimiter("Reservations", config =>
-    {
-        config.PermitLimit = 5;
-        config.Window = TimeSpan.FromMinutes(1);
-        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
-    });
-
+    // JD-C2: every limiter is partitioned per client (never global), so one client cannot
+    // exhaust a shared bucket and lock out everyone else, and each client actually gets its
+    // own limit. Anonymous abuse endpoints (Resend/Login) partition by client IP; Reservations
+    // partitions by user id when authenticated, else by IP.
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("Resend", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromHours(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("Login", context =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 4,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("Reservations", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitioner.AuthenticatedOrIp(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
