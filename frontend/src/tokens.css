@@ -38,7 +38,7 @@
   --color-border: var(--border);
   --color-border-hover: var(--border-hover);
 
-  /* New "Modern Elegance" design tokens — bridged from data-theme custom props */
+  /* "Modern Elegance" design tokens — bridged from :root custom props */
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
@@ -50,119 +50,89 @@
   --color-glass-bg: var(--glass-bg);
   --color-glass-border: var(--glass-border);
 
-  /* Typography */
+  /* Brand palette (2.1) + dark variants (2.4) + Gris Oscuro —
+     exposed so bg-naranja/15, text-purpura-dark, bg-cian/20 resolve in Tailwind v4 */
+  --color-naranja: var(--naranja);
+  --color-naranja-dark: var(--naranja-dark);
+  --color-amarillo: var(--amarillo);
+  --color-amarillo-dark: var(--amarillo-dark);
+  --color-verde: var(--verde);
+  --color-verde-dark: var(--verde-dark);
+  --color-cian: var(--cian);
+  --color-cian-dark: var(--cian-dark);
+  --color-purpura: var(--purpura);
+  --color-purpura-dark: var(--purpura-dark);
+  --color-gris-oscuro: var(--gris-oscuro);
+
+  /* Typography — Poppins (display) + Inter (body), per brand 9 */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui;
+  --font-display: "Poppins", ui-sans-serif, system-ui;
   --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Consolas, 'Courier New', monospace;
 
   /* Design-system spacing / sizing */
-  --radius-glass: 1rem;
+  --radius-glass: 1.25rem;
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+  --radius-input: 0.5rem;
 
-  /* Motion tokens */
+  /* Motion tokens — all ≤300ms (REQ-BDS-9) */
   --ease-micro: cubic-bezier(0.2, 0.6, 0.2, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --dur-micro: 200ms;
-  --dur-normal: 400ms;
-  --dur-slow: 600ms;
+  --dur-micro: 150ms;
+  --dur-normal: 250ms;
+  --dur-slow: 300ms;
 }
 
 /* ── Custom dark variant — keys off data-theme attribute ───────────────── */
+/* Retained for future dark mode (brand 2.5); the app is light-only today.  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ── Design-System Custom Properties (theme cascade) ───────────────────── */
-/* :root = dark default (matches design.md REQ-DS1: "no attribute → dark")  */
+/* Light-only :root (brand 2.5). Raw palette (2.1) for surfaces/gradients;
+   dark variants (2.4) for text/buttons/focus; semantic tokens remap to
+   brand values for legacy compatibility. */
 
 :root {
-  /* ── New design tokens (dark default) ── */
-  --canvas: #0a0a0f;
-  --surface: #1a1a2e;
-  --surface-elevated: #1e293b;
-  --text-1: #f8fafc;
-  --text-2: #94a3b8;
-  --text-muted: #64748b;
-  --brand-1: #7c3aed;
-  --brand-2: #a855f7;
-  --glass-bg: rgba(26, 26, 46, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* ── Brand palette (2.1) — surfaces / gradients / decorative fills ── */
+  --naranja: #F78B2D;
+  --amarillo: #F5C01F;
+  --verde: #67CF65;
+  --cian: #18C8DB;
+  --purpura: #B65DC2;
+  --gris-oscuro: #4A4A4A;
 
-  /* ── Legacy CSS vars (backward compat with existing inline styles & BEM) ── */
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #e0e7ff;
-  --primary-content: #ffffff;
-  --secondary: #64748b;
-  --secondary-hover: #475569;
-  --secondary-light: #f1f5f9;
-  --secondary-content: #ffffff;
-  --accent: #c084fc;
-  --accent-hover: #a855f7;
-  --accent-light: #ede9fe;
-  --neutral-50: #fafafa;
-  --neutral-100: #f5f5f5;
-  --neutral-200: #e5e5e5;
-  --neutral-300: #d4d4d4;
-  --neutral-500: #737373;
-  --neutral-700: #404040;
-  --neutral-900: #171717;
-  --success: #16a34a;
-  --success-light: #dcfce7;
-  --success-border: #86efac;
-  --warning: #f59e0b;
-  --warning-light: #fef3c7;
-  --warning-border: #fde68a;
-  --danger: #dc2626;
-  --danger-light: #fee2e2;
-  --danger-border: #fca5a5;
-  --info: #0ea5e9;
-  --info-light: #e0f2fe;
-  --info-border: #7dd3fc;
-  --border: #2e303a;
-  --border-hover: #404040;
+  /* ── Dark variants (2.4) — text / buttons / focus, WCAG AA on white ── */
+  --naranja-dark: #B45309;
+  --amarillo-dark: #6B5300;
+  --verde-dark: #166534;
+  --cian-dark: #0B6170;
+  --purpura-dark: #6A2176;
 
-  /* Legacy page CSS variables (BEM pages still reference these) */
-  --text: #9ca3af;
-  --text-h: #f3f4f6;
-  --bg: #16171d;
-  --code-bg: #1f2028;
-  --social-bg: rgba(47, 48, 58, 0.5);
-  --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-
-  font: 18px/145% "Inter", system-ui, -apple-system, sans-serif;
-  letter-spacing: 0.18px;
-  color-scheme: dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ── Light theme — data-theme="light" attribute ────────────────────────── */
-
-[data-theme="light"] {
-  /* New design tokens (light) */
-  --canvas: #f8fafc;
-  --surface: #ffffff;
-  --surface-elevated: #f1f5f9;
-  --text-1: #0f172a;
-  --text-2: #475569;
-  --text-muted: #94a3b8;
-  --glass-bg: rgba(255, 255, 255, 0.6);
+  /* ── Modern design tokens (light) ── */
+  --canvas: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-elevated: #F5F5F5;
+  --text-1: #4A4A4A;        /* Gris Oscuro — main text */
+  --text-2: #6B6B6B;
+  --text-muted: #6B7280;    /* 4.83:1 AA on white */
+  --brand-1: var(--purpura-dark);  /* single mapping — purpura dark (AA) */
+  --brand-2: var(--naranja-dark);  /* single mapping — naranja dark (AA) */
+  --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(0, 0, 0, 0.08);
 
-  /* Legacy semantic tokens (light) */
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #e0e7ff;
+  /* ── Legacy semantic tokens (light, brand remap) ── */
+  --primary: var(--naranja-dark);
+  --primary-hover: #8F4208;  /* 7.12:1 on white; 7.12:1 white text */
+  --primary-light: #FEE9D6;
   --primary-content: #ffffff;
-  --secondary: #64748b;
-  --secondary-hover: #475569;
-  --secondary-light: #f1f5f9;
+  --secondary: #6B6B6B;
+  --secondary-hover: #4A4A4A;
+  --secondary-light: #F5F5F5;
   --secondary-content: #ffffff;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-light: rgba(79, 70, 229, 0.1);
+  --accent: var(--purpura-dark);
+  --accent-hover: #5A1B64;  /* 11.83:1 on white; 11.83:1 white text */
+  --accent-light: rgba(182, 93, 194, 0.12);  /* light purpura tint */
+  --accent-bg: rgba(182, 93, 194, 0.12);
   --neutral-50: #fafafa;
   --neutral-100: #f5f5f5;
   --neutral-200: #e5e5e5;
@@ -185,75 +155,23 @@
   --border: #e5e7eb;
   --border-hover: #d4d4d4;
 
-  /* Legacy page CSS vars (light) */
+  /* Legacy page CSS variables (BEM pages still reference these) */
   --text: #6b7280;
-  --text-h: #171717;
+  --text-h: #1A1A1A;
   --bg: #ffffff;
   --code-bg: #f5f5f5;
   --social-bg: rgba(245, 245, 245, 0.5);
   --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+  font: 18px/145% "Inter", system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.18px;
   color-scheme: light;
-}
-
-/* ── Dark theme explicit (mirrors :root — ensures dark: variant keys correctly) ── */
-
-[data-theme="dark"] {
-  /* New design tokens (dark — mirrors :root) */
-  --canvas: #0a0a0f;
-  --surface: #1a1a2e;
-  --surface-elevated: #1e293b;
-  --text-1: #f8fafc;
-  --text-2: #94a3b8;
-  --text-muted: #64748b;
-  --brand-1: #7c3aed;
-  --brand-2: #a855f7;
-  --glass-bg: rgba(26, 26, 46, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.08);
-
-  /* Legacy semantic tokens (dark) */
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #e0e7ff;
-  --primary-content: #ffffff;
-  --secondary: #64748b;
-  --secondary-hover: #475569;
-  --secondary-light: #1e293b;
-  --secondary-content: #ffffff;
-  --accent: #c084fc;
-  --accent-hover: #a855f7;
-  --accent-light: #ede9fe;
-  --neutral-50: #1e293b;
-  --neutral-100: #1e293b;
-  --neutral-200: #334155;
-  --neutral-300: #475569;
-  --neutral-500: #64748b;
-  --neutral-700: #cbd5e1;
-  --neutral-900: #f8fafc;
-  --success: #16a34a;
-  --success-light: #14532d;
-  --success-border: #16a34a;
-  --warning: #f59e0b;
-  --warning-light: #451a03;
-  --warning-border: #f59e0b;
-  --danger: #dc2626;
-  --danger-light: #450a0a;
-  --danger-border: #dc2626;
-  --info: #0ea5e9;
-  --info-light: #0c4a6e;
-  --info-border: #0ea5e9;
-  --border: #2e303a;
-  --border-hover: #404040;
-
-  /* Legacy page CSS vars (dark) */
-  --text: #9ca3af;
-  --text-h: #f3f4f6;
-  --bg: #16171d;
-  --code-bg: #1f2028;
-  --social-bg: rgba(47, 48, 58, 0.5);
-  --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-
-  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ── Base layer overrides (after Tailwind preflight) ───────────────────── */
@@ -279,7 +197,7 @@
   }
 
   h1, h2 {
-    font-weight: 500;
+    font-weight: 700;
     color: var(--text-h);
   }
 

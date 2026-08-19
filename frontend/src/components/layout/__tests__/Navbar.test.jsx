@@ -8,16 +8,7 @@ vi.mock('../../../context/auth.js', () => ({
   useAuth: vi.fn(),
 }))
 
-vi.mock('../../../hooks/useTheme.jsx', async (importOriginal) => {
-  const original = await importOriginal()
-  return {
-    ...original,
-    useTheme: vi.fn(),
-  }
-})
-
 import { useAuth } from '../../../context/auth.js'
-import { useTheme } from '../../../hooks/useTheme.jsx'
 
 function renderNavbar() {
   return render(
@@ -34,11 +25,6 @@ describe('Navbar', () => {
       isAuthenticated: false,
       logout: vi.fn(),
     })
-    useTheme.mockReturnValue({
-      theme: 'dark',
-      setTheme: vi.fn(),
-      toggle: vi.fn(),
-    })
   })
 
   it('renders Sign In link when unauthenticated', () => {
@@ -47,6 +33,19 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument()
     expect(screen.queryByText('Sign Out')).not.toBeInTheDocument()
     expect(screen.queryByText('U')).not.toBeInTheDocument()
+  })
+
+  it('renders the brand logo and no theme toggle', () => {
+    renderNavbar()
+
+    const logo = document.querySelector('img[src="/ticketera-logo.webp"]')
+    expect(logo).toBeTruthy()
+    expect(logo).toHaveAttribute('alt', '')
+    expect(screen.getByText('TicketStart')).toBeInTheDocument()
+    // Light-only MVP: no theme toggle button should be present.
+    expect(
+      screen.queryByRole('button', { name: /cambiar a modo/i })
+    ).not.toBeInTheDocument()
   })
 
   it('renders user dropdown trigger when authenticated', () => {

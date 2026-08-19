@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/auth.js'
-import ThemeToggle from './ThemeToggle.jsx'
 
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth()
@@ -53,12 +52,18 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
-          {/* ── Brand wordmark ── */}
-          <Link
-            to="/"
-            className="text-xl font-display font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent"
-          >
-            TicketStart
+          {/* ── Brand logo + wordmark ── */}
+          <Link to="/" className="inline-flex items-center gap-2">
+            <img
+              src="/ticketera-logo.webp"
+              alt=""
+              width="32"
+              height="32"
+              className="h-8 w-auto"
+            />
+            <span className="font-display font-bold text-xl text-gris-oscuro">
+              TicketStart
+            </span>
           </Link>
 
           {/* ── Desktop nav links ── */}
@@ -91,7 +96,6 @@ export default function Navbar() {
 
           {/* ── Desktop right side ── */}
           <div className="hidden md:flex items-center gap-3">
-            <ThemeToggle />
             {isAuthenticated ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -144,7 +148,6 @@ export default function Navbar() {
 
           {/* ── Mobile hamburger ── */}
           <div className="md:hidden flex items-center gap-2">
-            <ThemeToggle />
             <button
               type="button"
               onClick={() => setMobileOpen((prev) => !prev)}

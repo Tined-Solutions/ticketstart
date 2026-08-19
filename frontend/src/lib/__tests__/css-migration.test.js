@@ -31,4 +31,35 @@ describe('CSS Migration Cleanup', () => {
     expect(content).toContain('--color-canvas')
     expect(content).toContain('data-theme')
   })
+
+  it('tokens.css exposes the brand palette and dark variants', () => {
+    const tokensPath = resolve(srcDir, 'tokens.css')
+    const content = readFileSync(tokensPath, 'utf-8')
+
+    expect(content).toContain('--color-naranja')
+    expect(content).toContain('--color-naranja-dark')
+    expect(content).toContain('--color-purpura')
+    expect(content).toContain('--color-purpura-dark')
+    expect(content).toContain('--color-verde-dark')
+    expect(content).toContain('--color-cian-dark')
+    expect(content).toContain('--color-amarillo-dark')
+    expect(content).toContain('--color-gris-oscuro')
+  })
+
+  it('tokens.css uses Poppins for display and drops Space Grotesk', () => {
+    const tokensPath = resolve(srcDir, 'tokens.css')
+    const content = readFileSync(tokensPath, 'utf-8')
+
+    expect(content).toContain('Poppins')
+    expect(content).not.toContain('Space Grotesk')
+  })
+
+  it('index.html loads Poppins + Inter and no Space Grotesk', () => {
+    const htmlPath = resolve(srcDir, '..', 'index.html')
+    const content = readFileSync(htmlPath, 'utf-8')
+
+    expect(content).toContain('Poppins')
+    expect(content).toContain('Inter')
+    expect(content).not.toContain('Space Grotesk')
+  })
 })
