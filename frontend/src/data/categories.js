@@ -1,7 +1,8 @@
 // Frontend-only category taxonomy (REQ-BDS-8). No backend category model/API
 // exists, so the Home chips come from this local list and are purely decorative.
-// Each chip pairs a 15% brand tint background with its dark-variant text for
-// WCAG AA contrast on white (brand 2.4).
+// Each chip pairs a brand tint background with its dark-variant text for
+// WCAG AA contrast on white (brand 2.4). Tints are tuned per chip so the
+// dark-variant text clears 4.5:1 (naranja uses /10; the rest use /15).
 
 export const categories = [
   { id: 'musica',     label: 'Música',     colorKey: 'naranja',  hex: '#F78B2D', darkHex: '#B45309' },
@@ -12,7 +13,7 @@ export const categories = [
 ]
 
 export const chipClass = {
-  naranja:  'bg-naranja/15 text-naranja-dark',
+  naranja:  'bg-naranja/10 text-naranja-dark',
   purpura:  'bg-purpura/15 text-purpura-dark',
   verde:    'bg-verde/15 text-verde-dark',
   amarillo: 'bg-amarillo/15 text-amarillo-dark',
