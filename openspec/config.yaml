@@ -8,7 +8,8 @@ context: |
     and /frontend (Vite + React). Backend uses interface-based service layer,
     custom auth policies, background hosted services, and Cloudflare R2 for images.
   Testing: xUnit + Moq + FsCheck (property-based) + Microsoft.AspNetCore.Mvc.Testing
-    for backend. Frontend has NO test runner configured — only ESLint linting.
+    for backend. Frontend uses Vitest via React Testing Library (npm test / npx vitest run)
+    plus ESLint linting. (Corrected at archive time — init claimed no frontend test runner.)
   Style: C# with implicit usings, nullable enabled; JSX without TypeScript.
   Test count: ~202 passing, 1 flaky (VerifyDatabaseSchema needs live Supabase). No coverage configured.
   Existing SDD change: ticketera-online fully lifecycle-tracked in openspec/changes/ticketera-online/.
@@ -56,6 +57,10 @@ testing:
     type_checker: false
     formatter: dotnet format (built-in)
   notes: |
-    Frontend has no test infrastructure — no vitest, jest, or test script.
-    Strict TDD applies to backend work only. Frontend changes cannot
-    use TDD until a test runner is added.
+    Backend: dotnet test (xUnit); Strict TDD applies to backend work.
+    Frontend: npm test / npx vitest run (Vitest + React Testing Library) — added before
+    the brand-design-system change; vitest IS the frontend test runner.
+    test_command: dotnet test fields below remain the backend default; frontend
+    verify/apply phases must override with `npm test` (per brand-design-system
+    REQ-BDS-11). Corrected at archive time — init claimed no frontend test
+    infrastructure, which was stale before brand-design-system.
