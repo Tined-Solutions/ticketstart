@@ -19,7 +19,6 @@ export default function Home() {
         imageUrl={null}
         logo="/ticketera-logo.webp"
         chips={categoriesWithChipClass}
-        title="TicketStart"
         subtitle="La plataforma mas simple para descubrir eventos, reservar entradas y gestionar tus propios shows."
         cta={
           <Link to="/events">
@@ -36,47 +35,64 @@ export default function Home() {
         initial="initial"
         whileInView="animate"
         viewport={{ once: true, margin: '-100px' }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
+        className="relative overflow-hidden bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10 px-4 py-16 sm:px-6 lg:px-8"
       >
-        <motion.h2
-          variants={staggerItem}
-          className="text-3xl md:text-4xl font-display font-bold text-gris-oscuro text-center mb-12"
-        >
-          Eventos destacados
-        </motion.h2>
-
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="glass-surface p-0 overflow-hidden rounded-[var(--radius-card)]">
-                <Skeleton width="100%" height="200px" variant="rectangular" />
-                <div className="p-4 space-y-3">
-                  <Skeleton width="75%" height="20px" variant="text" />
-                  <Skeleton width="50%" height="14px" variant="text" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
+        <div className="relative z-10 max-w-7xl mx-auto">
           <motion.div
-            variants={staggerContainer}
-            initial="initial"
-            animate="animate"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            variants={staggerItem}
+            className="mb-12 flex items-center justify-center gap-3"
           >
-            {featured.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
+            <div aria-hidden="true" className="hidden items-center gap-1.5 sm:flex">
+              <span className="h-8 w-1.5 -rotate-12 rounded-full bg-naranja" />
+              <span className="h-5 w-1.5 -rotate-12 rounded-full bg-amarillo" />
+              <span className="h-3 w-1.5 -rotate-12 rounded-full bg-cian" />
+            </div>
+            <motion.h2
+              variants={staggerItem}
+              className="text-center text-3xl font-display font-bold text-gris-oscuro md:text-4xl"
+            >
+              Eventos destacados
+            </motion.h2>
+            <div aria-hidden="true" className="hidden items-center gap-1.5 sm:flex">
+              <span className="h-3 w-1.5 rotate-12 rounded-full bg-verde" />
+              <span className="h-5 w-1.5 rotate-12 rounded-full bg-purpura" />
+              <span className="h-8 w-1.5 rotate-12 rounded-full bg-naranja" />
+            </div>
           </motion.div>
-        )}
 
-        <motion.div variants={staggerItem} className="text-center mt-12">
-          <Link to="/events">
-            <Button variant="secondary" size="lg">
-              Ver todos
-            </Button>
-          </Link>
-        </motion.div>
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="glass-surface p-0 overflow-hidden rounded-[var(--radius-card)]">
+                  <Skeleton width="100%" height="200px" variant="rectangular" />
+                  <div className="p-4 space-y-3">
+                    <Skeleton width="75%" height="20px" variant="text" />
+                    <Skeleton width="50%" height="14px" variant="text" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <motion.div
+              variants={staggerContainer}
+              initial="initial"
+              animate="animate"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            >
+              {featured.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </motion.div>
+          )}
+
+          <motion.div variants={staggerItem} className="text-center mt-12">
+            <Link to="/events">
+              <Button variant="secondary" size="lg">
+                Ver todos
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
       </motion.section>
     </div>
   )

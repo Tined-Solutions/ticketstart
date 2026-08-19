@@ -29,10 +29,11 @@ export default function EventCard({ event }) {
         whileHover={{ y: -6, scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={{ duration: 0.2, ease: [0.2, 0.6, 0.2, 1] }}
+        className="group relative"
       >
-        <GlassCard className="overflow-hidden p-0 h-full flex flex-col">
+        <GlassCard className="h-full overflow-hidden border-white/75 bg-white/80 p-0 shadow-[0_14px_34px_rgba(74,74,74,0.12)] ring-1 ring-white/50 transition-[border-color,box-shadow] duration-300 group-hover:border-purpura/40 group-hover:shadow-[0_22px_48px_rgba(74,74,74,0.2)]">
           {/* Event image */}
-          <div className="relative aspect-[16/10] overflow-hidden">
+          <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-naranja/20 via-cian/10 to-purpura/20">
             {event.imageUrl ? (
               <img
                 src={event.imageUrl}
@@ -40,29 +41,43 @@ export default function EventCard({ event }) {
                 loading="lazy"
                 width="640"
                 height="400"
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
               />
             ) : (
-              <div className="w-full h-full bg-surface-elevated flex items-center justify-center">
+              <div className="flex h-full w-full items-center justify-center bg-surface-elevated">
                 <span className="text-text-muted text-sm">Sin imagen</span>
               </div>
             )}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-gris-oscuro/25 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            />
             {/* Date overlay badge */}
             <div className="absolute top-3 right-3">
               <Badge variant="info">{formatEventDate(event.date)}</Badge>
             </div>
+            {/* Five-color ticket signature */}
+            <div aria-hidden="true" className="absolute inset-x-0 bottom-0 flex h-1.5">
+              <span className="flex-1 bg-naranja" />
+              <span className="flex-1 bg-amarillo" />
+              <span className="flex-1 bg-verde" />
+              <span className="flex-1 bg-cian" />
+              <span className="flex-1 bg-purpura" />
+            </div>
           </div>
 
           {/* Card body */}
-          <div className="p-4 flex flex-col flex-1">
-            <h2 className="font-display font-semibold text-lg text-gris-oscuro leading-snug line-clamp-2">
+          <div className="flex flex-1 flex-col bg-white/45 p-5">
+            <h2 className="line-clamp-2 font-display text-lg font-semibold leading-snug text-gris-oscuro">
               {event.name}
             </h2>
-            <p className="text-text-2 text-sm mt-1">{event.location}</p>
+            <p className="mt-1 text-sm text-text-2">{event.location}</p>
             {ticketRange && (
-              <p className="text-brand-1 font-semibold text-sm mt-auto pt-3">
-                {ticketRange}
-              </p>
+              <div className="mt-auto pt-4">
+                <p className="inline-flex rounded-full border border-purpura/20 bg-purpura/10 px-3 py-1 text-sm font-semibold text-purpura-dark">
+                  {ticketRange}
+                </p>
+              </div>
             )}
           </div>
         </GlassCard>
