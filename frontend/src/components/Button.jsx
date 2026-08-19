@@ -1,23 +1,24 @@
 import { forwardRef } from 'react'
 
 const variantClasses = {
-  primary: 'bg-primary text-primary-content hover:opacity-90 focus-visible:ring-primary',
+  primary:
+    'bg-primary text-primary-content hover:bg-primary-hover focus-visible:ring-primary',
   secondary:
-    'bg-primary/10 text-primary hover:opacity-85 focus-visible:ring-primary',
+    'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary',
   danger:
     'bg-danger text-white hover:opacity-90 focus-visible:ring-danger',
   ghost:
     'bg-transparent text-neutral-700 hover:bg-neutral-100 focus-visible:ring-primary',
   glass:
-    'backdrop-blur-md bg-white/10 border border-white/20 hover:bg-white/20 text-text-1 focus-visible:ring-brand-1',
+    'backdrop-blur-md bg-white/60 border border-gris-oscuro/10 hover:bg-gris-oscuro/10 hover:border-gris-oscuro/20 text-gris-oscuro focus-visible:ring-brand-1',
   gradient:
-    'bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white focus-visible:ring-brand-1',
+    'bg-gradient-to-r from-brand-1 to-brand-2 hover:brightness-95 text-white focus-visible:ring-brand-1',
 }
 
 const sizeClasses = {
-  sm: 'px-3 py-1.5 text-sm rounded',
-  md: 'px-5 py-2.5 text-base rounded-md',
-  lg: 'px-7 py-3.5 text-lg rounded-lg',
+  sm: 'px-3 py-1.5 text-sm rounded-full',
+  md: 'px-5 py-2.5 text-base rounded-full',
+  lg: 'px-7 py-3.5 text-lg rounded-full',
 }
 
 const Button = forwardRef(function Button(

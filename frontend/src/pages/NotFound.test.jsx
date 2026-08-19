@@ -48,6 +48,6 @@ describe('NotFound', () => {
     const link = screen.getByRole('link', { name: /go home/i })
     const btn = link.querySelector('button')
     expect(btn).toBeTruthy()
-    expect(btn.className).toContain('to-violet')
+    expect(btn.className).toContain('to-brand-2')
   })
 })

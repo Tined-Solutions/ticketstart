@@ -3,11 +3,12 @@ import { render, screen } from '@testing-library/react'
 import Card from '../Card.jsx'
 
 describe('Card — glass prop', () => {
-  it('renders default (non-glass) card with bg-surface', () => {
+  it('renders default (non-glass) card with bg-surface and card radius', () => {
     const { container } = render(<Card>Content</Card>)
     const cardEl = container.firstChild
     expect(cardEl.className).toContain('bg-surface')
     expect(cardEl.className).toContain('border')
+    expect(cardEl.className).toContain('rounded-[var(--radius-card)]')
     expect(cardEl.className).not.toContain('glass-surface')
   })
 

@@ -8,29 +8,32 @@ describe('Badge', () => {
     expect(screen.getByText('Active')).toBeInTheDocument()
   })
 
-  it('defaults to info variant', () => {
+  it('defaults to info variant with brand cian colors', () => {
     render(<Badge>Info</Badge>)
     const el = screen.getByText('Info')
-    expect(el.className).toContain('bg-sky-100')
+    expect(el.className).toContain('bg-cian/15')
+    expect(el.className).toContain('text-cian-dark')
   })
 
-  it('renders success variant with emerald colors', () => {
+  it('renders success variant with brand verde colors', () => {
     render(<Badge variant="success">Done</Badge>)
     const el = screen.getByText('Done')
-    expect(el.className).toContain('bg-emerald-100')
-    expect(el.className).toContain('text-emerald-700')
+    expect(el.className).toContain('bg-verde/15')
+    expect(el.className).toContain('text-verde-dark')
   })
 
-  it('renders warning variant with amber colors', () => {
+  it('renders warning variant with brand amarillo colors', () => {
     render(<Badge variant="warning">Notice</Badge>)
     const el = screen.getByText('Notice')
-    expect(el.className).toContain('bg-amber-100')
+    expect(el.className).toContain('bg-amarillo/15')
+    expect(el.className).toContain('text-amarillo-dark')
   })
 
   it('renders error variant with rose colors', () => {
     render(<Badge variant="error">Failed</Badge>)
     const el = screen.getByText('Failed')
     expect(el.className).toContain('bg-rose-100')
+    expect(el.className).toContain('text-rose-700')
   })
 
   it('merges custom className', () => {
