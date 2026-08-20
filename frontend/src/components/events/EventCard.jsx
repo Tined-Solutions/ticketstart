@@ -103,22 +103,21 @@ export default function EventCard({ event }) {
   return (
     <motion.div
       variants={staggerItem}
-      whileHover={prefersReducedMotion ? undefined : { y: -3, scale: 1.01 }}
       whileTap={prefersReducedMotion ? undefined : { scale: 0.995 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       className="group relative"
     >
       <GlassCard
         style={ticketCornerCutoutStyle}
-        className="h-full overflow-hidden rounded-none border-gris-oscuro/35 bg-[#fffdf8] p-0 shadow-[0_14px_34px_rgba(74,74,74,0.2)] ring-1 ring-gris-oscuro/10 transition-[border-color,box-shadow] duration-300 group-hover:border-purpura/55 group-hover:shadow-[0_22px_48px_rgba(74,74,74,0.28)]"
+        className="h-full overflow-hidden rounded-none border-gris-oscuro/35 bg-[#fffdf8] p-0 shadow-[0_14px_34px_rgba(74,74,74,0.22)] transition-[box-shadow] duration-300 group-hover:shadow-[0_22px_48px_rgba(74,74,74,0.3)]"
       >
         <div
-          className="relative aspect-[16/10] [perspective:1400px]"
+          className="relative aspect-[16/10] [perspective:1100px]"
           onPointerEnter={handlePointerEnter}
           onPointerLeave={handlePointerLeave}
         >
           <div
-            className="absolute inset-0 [transform-style:preserve-3d] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            className="absolute inset-0 [transform-style:preserve-3d] will-change-transform transition-transform duration-600 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
             style={{ transform: revealBack ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
           >
             {/* Front face: image-led discovery view */}
@@ -143,7 +142,7 @@ export default function EventCard({ event }) {
                     loading="lazy"
                     width="640"
                     height="400"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.02] motion-reduce:transition-none"
+                    className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-naranja/20 via-cian/10 to-purpura/20">
@@ -161,12 +160,12 @@ export default function EventCard({ event }) {
               inert={!revealBack}
               className="absolute inset-0 overflow-hidden [backface-visibility:hidden] [transform:rotateY(180deg)]"
             >
-              <div className="relative flex h-full flex-col bg-[#fffdf8]">
+              <div className="relative flex h-full flex-col bg-gradient-to-br from-[#fffdf8] via-[#fdf2ea] to-purpura/20">
                 <button
                   type="button"
                   aria-label={`Volver a la información de ${event.name}`}
                   onClick={handleReturnClick}
-                  className="absolute right-3 top-3 z-10 inline-flex min-h-9 min-w-9 items-center justify-center rounded-full bg-white/70 text-gris-oscuro shadow-sm transition-colors hover:bg-gris-oscuro/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 motion-reduce:transition-none"
+                  className="absolute right-3 top-3 z-10 inline-flex min-h-9 min-w-9 items-center justify-center rounded-full bg-white/70 text-gris-oscuro shadow-sm transition-colors hover:bg-gris-oscuro/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 motion-reduce:transition-none pointer-fine:opacity-0 pointer-fine:pointer-events-none pointer-fine:focus-visible:opacity-100 pointer-fine:focus-visible:pointer-events-auto"
                 >
                   <span aria-hidden="true">←</span>
                 </button>

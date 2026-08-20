@@ -21,10 +21,21 @@ export default function Home() {
         chips={categoriesWithChipClass}
         subtitle="La plataforma mas simple para descubrir eventos, reservar entradas y gestionar tus propios shows."
         cta={
-          <Link to="/events">
-            <Button variant="gradient" size="lg">
-              Ver catalogo de eventos
-            </Button>
+          <Link
+            to="/events"
+            className="group inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 rounded-full"
+          >
+            <span className="rounded-full bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)] p-[2px] shadow-[0_12px_30px_rgba(74,74,74,0.28)] transition-transform duration-300 group-hover:-translate-y-0.5 motion-reduce:transition-none">
+              <span className="inline-flex items-center gap-2.5 rounded-full bg-white px-8 py-3.5 font-display text-base font-semibold text-gris-oscuro md:px-9 md:text-lg">
+                Ver catálogo de eventos
+                <span
+                  aria-hidden="true"
+                  className="text-lg text-purpura-dark transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                >
+                  →
+                </span>
+              </span>
+            </span>
           </Link>
         }
       />
