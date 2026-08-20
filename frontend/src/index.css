@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* ── Brand wordmark display font (Beckman FREE) ─────────────────────────── */
+@font-face {
+  font-family: "Beckman";
+  src: url("/fonts/Beckman-FREE.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Buttons (legacy — EventForm & StaffScan) ──────────────────────────── */
 
 button {

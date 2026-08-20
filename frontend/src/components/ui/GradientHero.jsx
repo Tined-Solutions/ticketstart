@@ -1,5 +1,15 @@
 import { motion } from 'framer-motion'
+import { Music, Drama, Laugh, PartyPopper } from 'lucide-react'
 import { fadeInUp, heroTransition, useReducedMotion } from '../../lib/motion.js'
+
+// Representative icon per category, rendered as decorative hero chips.
+const categoryIcons = {
+  musica: Music,
+  teatro: Drama,
+  standup: Laugh,
+  festivales: PartyPopper,
+}
+
 
 /**
  * Light Confetti hero (brand 2.5 / 9).
@@ -111,16 +121,55 @@ export default function GradientHero({
         )}
 
         {chips.length > 0 && (
-          <div className="flex flex-wrap justify-center gap-2 mb-8">
-            {chips.map((chip) => (
-              <span
-                key={chip.id}
-                className={`${chip.chipClass} rounded-full px-4 py-1.5 font-medium text-sm`}
-              >
-                {chip.label}
-              </span>
-            ))}
-          </div>
+          <motion.div
+            initial={shouldReduceMotion ? false : 'hidden'}
+            animate={shouldReduceMotion ? undefined : 'show'}
+            className="flex flex-wrap items-center justify-center gap-3 mb-8"
+          >
+            {chips.map((chip, index) => {
+              const Icon = categoryIcons[chip.id]
+              return (
+                <motion.span
+                  key={chip.id}
+                  variants={{
+                    hidden: { opacity: 0, y: -22 },
+                    show: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: 0.5,
+                        ease: [0.16, 1, 0.3, 1],
+                        // Wait until the title/logo has been read, then fall in one by one.
+                        delay: 0.7 + index * 0.08,
+                      },
+                    },
+                  }}
+                  className="group relative flex h-11 w-11 items-center justify-center rounded-full border border-gris-oscuro/10 bg-white/60 text-gris-oscuro/70 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/90 hover:text-gris-oscuro motion-reduce:transition-none"
+                  role="img"
+                  aria-label={chip.label}
+                >
+                  {Icon && (
+                    <Icon
+                      strokeWidth={2}
+                      className="relative h-5 w-5 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none"
+                    />
+                  )}
+
+                  {/* Tooltip with the category name on hover */}
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gris-oscuro px-2 py-1 text-xs font-medium text-white opacity-0 shadow-md transition-all duration-200 group-hover:-translate-y-0.5 group-hover:opacity-100 motion-reduce:transition-none"
+                  >
+                    {chip.label}
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gris-oscuro"
+                    />
+                  </span>
+                </motion.span>
+              )
+            })}
+          </motion.div>
         )}
 
         {cta && <div>{cta}</div>}

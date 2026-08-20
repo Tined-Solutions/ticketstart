@@ -7,7 +7,6 @@
 export const categories = [
   { id: 'musica',     label: 'Música',     colorKey: 'naranja',  hex: '#F78B2D', darkHex: '#B45309' },
   { id: 'teatro',     label: 'Teatro',     colorKey: 'purpura',  hex: '#B65DC2', darkHex: '#6A2176' },
-  { id: 'deportes',   label: 'Deportes',   colorKey: 'verde',    hex: '#67CF65', darkHex: '#166534' },
   { id: 'standup',    label: 'Stand-up',   colorKey: 'amarillo', hex: '#F5C01F', darkHex: '#6B5300' },
   { id: 'festivales', label: 'Festivales', colorKey: 'cian',     hex: '#18C8DB', darkHex: '#0B6170' },
 ]

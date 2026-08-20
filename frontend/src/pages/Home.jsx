@@ -23,14 +23,19 @@ export default function Home() {
         cta={
           <Link
             to="/events"
-            className="group inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 rounded-full"
+            className="group relative inline-flex items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.03] active:translate-y-0 active:scale-100 motion-reduce:transition-none"
           >
-            <span className="rounded-full bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)] p-[2px] shadow-[0_12px_30px_rgba(74,74,74,0.28)] transition-transform duration-300 group-hover:-translate-y-0.5 motion-reduce:transition-none">
-              <span className="inline-flex items-center gap-2.5 rounded-full bg-white px-8 py-3.5 font-display text-base font-semibold text-gris-oscuro md:px-9 md:text-lg">
+            {/* Soft gradient halo behind the button, glows in on hover */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -inset-1 rounded-full bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)] opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-40 motion-reduce:transition-none"
+            />
+            <span className="relative rounded-full bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)] p-[1.5px] shadow-[0_8px_22px_rgba(74,74,74,0.22)] transition-shadow duration-300 group-hover:shadow-[0_12px_30px_rgba(74,74,74,0.32)] motion-reduce:transition-none">
+              <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 font-display text-sm font-semibold text-gris-oscuro transition-colors duration-300 group-hover:bg-[#fffdf8] md:px-6 md:text-base motion-reduce:transition-none">
                 Ver catálogo de eventos
                 <span
                   aria-hidden="true"
-                  className="text-lg text-purpura-dark transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                  className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none"
                 >
                   →
                 </span>
