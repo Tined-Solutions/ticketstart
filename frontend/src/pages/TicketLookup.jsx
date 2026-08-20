@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Turnstile } from '@marsidev/react-turnstile'
 import apiClient from '../api/client.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
@@ -42,17 +42,17 @@ function TicketCard({ ticket }) {
           </Badge>
         </div>
 
-        <h3 className="font-display font-semibold text-lg text-text-1 mb-2 pr-20">
+        <h3 className="font-display font-semibold text-lg text-gris-oscuro mb-2 pr-20">
           {ticket.eventName}
         </h3>
         <p className="text-text-2 text-sm">{formatEventDate(ticket.eventDate)}</p>
         <p className="text-text-2 text-sm mb-3">{ticket.eventLocation}</p>
 
-        <hr className="border-white/10 my-3" />
+        <hr className="border-gris-oscuro/10 my-3" />
 
         <div className="flex justify-between items-center">
           <span className="text-text-2 text-sm">{ticket.ticketTypeName}</span>
-          <span className="font-semibold text-brand-1">{formatCurrency(ticket.price)}</span>
+          <span className="font-semibold text-purpura-dark">{formatCurrency(ticket.price)}</span>
         </div>
 
         {ticket.quantity !== undefined && ticket.quantity !== null && (
@@ -206,17 +206,24 @@ export default function TicketLookup() {
   // -- Render -----------------------------------------------------------
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-10"
-    >
+    <div className="relative">
+      {/* Scrolling gradient background identical to the "Eventos destacados"
+          section on the home page. It extends behind the fixed navbar (so they
+          connect without a second border) but scrolls with the content like a
+          normal section background. */}
+      <div aria-hidden="true" className="absolute inset-x-0 -top-16 bottom-0 -z-10 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10" />
+
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 py-12 space-y-10"
+      >
       {/* ── Lookup section ──────────────────────────────────────────── */}
 
       <section>
         <header className="text-center mb-6">
-          <h1 className="text-3xl font-display font-bold text-text-1 mb-2">
+          <h1 className="text-3xl font-display font-bold text-gris-oscuro mb-2">
             Buscar mis entradas
           </h1>
           <p className="text-text-2">
@@ -241,16 +248,16 @@ export default function TicketLookup() {
                 placeholder="tu@email.com"
                 disabled={loading}
                 aria-invalid={errors.email ? 'true' : undefined}
-                className={`w-full px-4 py-2.5 bg-surface-elevated border rounded-lg
-                  text-text-1 placeholder:text-text-muted
+                className={`w-full px-4 py-2.5 bg-white/60 border rounded-lg backdrop-blur-sm
+                  text-gris-oscuro placeholder:text-text-muted
                   focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
                   transition-all duration-200
                   disabled:opacity-60 disabled:cursor-not-allowed
-                  ${errors.email ? 'border-rose-400' : 'border-white/10'}`}
+                  ${errors.email ? 'border-rose-400' : 'border-gris-oscuro/15'}`}
               />
               {errors.email && (
                 <p
-                  className="text-rose-400 text-xs mt-1"
+                  className="text-rose-600 text-xs mt-1"
                   role="alert"
                 >
                   {errors.email}
@@ -276,7 +283,7 @@ export default function TicketLookup() {
               />
               {errors.dni && (
                 <p
-                  className="text-rose-400 text-xs mt-1"
+                  className="text-rose-600 text-xs mt-1"
                   role="alert"
                 >
                   {errors.dni}
@@ -284,15 +291,19 @@ export default function TicketLookup() {
               )}
             </div>
 
-            <Button
-              type="submit"
-              variant="gradient"
-              size="lg"
-              loading={loading}
-              className="w-full"
-            >
-              {loading ? 'Buscando...' : 'Buscar entradas'}
-            </Button>
+            <div className="flex justify-center pt-1">
+              <Button
+                type="submit"
+                variant="glass"
+                size="md"
+                loading={loading}
+              >
+                {loading ? 'Buscando...' : 'Buscar entradas'}
+                {!loading && (
+                  <span aria-hidden="true" className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">→</span>
+                )}
+              </Button>
+            </div>
           </form>
         </GlassCard>
 
@@ -301,7 +312,7 @@ export default function TicketLookup() {
           <div className="mt-4">
             <GlassCard className="text-center px-4 py-6 md:px-6">
               <p className="text-text-1 mb-3">{error}</p>
-              <Button variant="secondary" onClick={handleClearLookupError}>
+              <Button variant="glass" onClick={handleClearLookupError}>
                 Reintentar
               </Button>
             </GlassCard>
@@ -330,7 +341,10 @@ export default function TicketLookup() {
               description="No se encontraron entradas con ese email y DNI. Verifica que los datos sean correctos."
               action={
                 <Link to="/events">
-                  <Button variant="secondary">Ver eventos</Button>
+                  <Button variant="glass">
+                    Ver eventos{' '}
+                    <span aria-hidden="true" className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">→</span>
+                  </Button>
                 </Link>
               }
             />
@@ -340,7 +354,7 @@ export default function TicketLookup() {
         {/* Ticket results */}
         {tickets && tickets.length > 0 && (
           <div className="mt-6">
-            <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
+            <h2 className="text-xl font-display font-bold text-gris-oscuro mb-4">
               {tickets.length === 1
                 ? '1 entrada encontrada'
                 : `${tickets.length} entradas encontradas`}
@@ -359,7 +373,7 @@ export default function TicketLookup() {
       <section>
         <GlassCard className="p-4 md:p-6">
           <header className="mb-4">
-            <h2 className="text-xl font-heading font-semibold text-text-1 mb-1">
+            <h2 className="text-xl font-display font-bold text-gris-oscuro mb-1">
               Reenviar entradas
             </h2>
             <p className="text-text-2 text-sm">
@@ -384,16 +398,16 @@ export default function TicketLookup() {
                 placeholder="tu@email.com"
                 disabled={resendLoading}
                 aria-invalid={resendErrors.email ? 'true' : undefined}
-                className={`w-full px-4 py-2.5 bg-surface-elevated border rounded-lg
-                  text-text-1 placeholder:text-text-muted
+                className={`w-full px-4 py-2.5 bg-white/60 border rounded-lg backdrop-blur-sm
+                  text-gris-oscuro placeholder:text-text-muted
                   focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
                   transition-all duration-200
                   disabled:opacity-60 disabled:cursor-not-allowed
-                  ${resendErrors.email ? 'border-rose-400' : 'border-white/10'}`}
+                  ${resendErrors.email ? 'border-rose-400' : 'border-gris-oscuro/15'}`}
               />
               {resendErrors.email && (
                 <p
-                  className="text-rose-400 text-xs mt-1"
+                  className="text-rose-600 text-xs mt-1"
                   role="alert"
                 >
                   {resendErrors.email}
@@ -415,16 +429,20 @@ export default function TicketLookup() {
               )}
             </div>
 
-            <Button
-              type="submit"
-              variant="secondary"
-              size="lg"
-              loading={resendLoading}
-              disabled={resendLoading || !turnstileToken}
-              className="w-full"
-            >
-              {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
-            </Button>
+            <div className="flex justify-center pt-1">
+              <Button
+                type="submit"
+                variant="glass"
+                size="md"
+                loading={resendLoading}
+                disabled={resendLoading || !turnstileToken}
+              >
+                {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
+                {!resendLoading && (
+                  <span aria-hidden="true" className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">→</span>
+                )}
+              </Button>
+            </div>
           </form>
 
           {/* Resend feedback */}
@@ -445,6 +463,7 @@ export default function TicketLookup() {
           )}
         </GlassCard>
       </section>
-    </motion.div>
+      </motion.div>
+    </div>
   )
 }

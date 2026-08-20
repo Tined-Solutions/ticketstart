@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components --
+   This is a context module: the useTheme hook and ThemeProvider are inherently
+   coupled (they share ThemeContext). Fast Refresh is a DX optimization, not a
+   runtime concern, so the coupled exports are acceptable here. */
 import { createContext, useContext, useEffect, useCallback } from 'react'
 
 const ThemeContext = createContext(null)

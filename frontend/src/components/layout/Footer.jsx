@@ -10,14 +10,14 @@ export default function Footer() {
         <nav className="flex items-center gap-4" aria-label="Enlaces del pie de página">
           <Link
             to="/faq"
-            className="text-text-2 hover:text-brand-1 transition-colors duration-[var(--dur-micro)]"
+            className="text-text-2 hover:text-brand-1 transition-colors duration-(--dur-micro)"
           >
             Preguntas frecuentes
           </Link>
         </nav>
         <a
           href="/"
-          className="text-brand-1 hover:text-brand-2 transition-colors duration-[var(--dur-micro)]"
+          className="text-brand-1 hover:text-brand-2 transition-colors duration-(--dur-micro)"
         >
           Powered by TicketStart
         </a>

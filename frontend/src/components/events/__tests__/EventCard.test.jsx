@@ -50,7 +50,8 @@ describe('EventCard', () => {
 
     fireEvent.click(flipButton)
 
-    expect(flipButton.parentElement?.parentElement).toHaveStyle({
+    // The whole ticket (the rotating container) flips in 3D, not just the faces.
+    expect(screen.getByTestId('event-card-ticket')).toHaveStyle({
       transform: 'rotateY(180deg)',
     })
     expect(screen.getByText(/desde \$\s*15\.000/i)).toBeInTheDocument()

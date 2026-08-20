@@ -45,7 +45,7 @@ export default function Navbar() {
   const navLinkClass = ({ isActive }) =>
     [
       'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-      'duration-[var(--dur-micro)]',
+      'duration-(--dur-micro)',
       isActive
         ? 'text-purpura-dark bg-purpura/10'
         : 'text-text-2 hover:text-gris-oscuro hover:bg-black/5',
@@ -59,7 +59,7 @@ export default function Navbar() {
 
   return (
     <nav
-      className={`fixed inset-x-0 top-0 z-50 will-change-transform transition-[box-shadow] duration-300 ${
+      className={`fixed inset-x-0 top-0 z-50 will-change-transform transition-shadow duration-300 ${
         scrolled ? 'shadow-lg shadow-black/20' : ''
       }`}
       style={{ transform: `translateY(${translateY})` }}
@@ -68,7 +68,7 @@ export default function Navbar() {
         {/* Brand signature: 5-color gradient accent line along the bottom */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[3px] bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)]"
+          className="absolute inset-x-0 bottom-0 h-0.75 bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)]"
         />
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center h-14">
@@ -131,7 +131,7 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen((prev) => !prev)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
                       text-text-1 hover:bg-surface-elevated transition-colors
-                      duration-[var(--dur-micro)]"
+                      duration-(--dur-micro)"
                     aria-expanded={dropdownOpen}
                     aria-haspopup="true"
                   >
@@ -153,7 +153,7 @@ export default function Navbar() {
                           setDropdownOpen(false)
                         }}
                         className="w-full text-left px-4 py-2 text-sm text-text-1
-                          hover:bg-white/10 transition-colors duration-[var(--dur-micro)]"
+                          hover:bg-white/10 transition-colors duration-(--dur-micro)"
                       >
                         Cerrar sesión
                       </button>
@@ -169,7 +169,7 @@ export default function Navbar() {
                 type="button"
                 onClick={() => setMobileOpen((prev) => !prev)}
                 className="p-2 rounded-md text-text-2 hover:text-text-1
-                  hover:bg-surface-elevated transition-colors duration-[var(--dur-micro)]"
+                  hover:bg-surface-elevated transition-colors duration-(--dur-micro)"
                 aria-label={mobileOpen ? 'Cerrar menú' : 'Abrir menú'}
                 aria-expanded={mobileOpen}
               >

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import GradientHero from '../components/ui/GradientHero.jsx'
-import Button from '../components/Button.jsx'
 import EventCard from '../components/events/EventCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import { useEvents } from '../hooks/useEvents.js'
@@ -102,10 +101,19 @@ export default function Home() {
           )}
 
           <motion.div variants={staggerItem} className="text-center mt-12">
-            <Link to="/events">
-              <Button variant="secondary" size="lg">
+            <Link
+              to="/events"
+              className="group relative inline-flex items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 transition-transform duration-300 hover:-translate-y-0.5 active:translate-y-0 motion-reduce:transition-none"
+            >
+              <span className="relative inline-flex items-center gap-2 rounded-full border border-gris-oscuro/15 bg-white/60 px-6 py-2.5 font-display text-sm font-semibold text-purpura-dark backdrop-blur-sm transition-all duration-300 group-hover:border-purpura/40 group-hover:bg-white/80 group-hover:shadow-[0_10px_24px_rgba(74,74,74,0.16)] motion-reduce:transition-none">
                 Ver todos
-              </Button>
+                <span
+                  aria-hidden="true"
+                  className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none"
+                >
+                  →
+                </span>
+              </span>
             </Link>
           </motion.div>
         </div>

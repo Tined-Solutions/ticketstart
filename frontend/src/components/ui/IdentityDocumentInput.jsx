@@ -84,8 +84,8 @@ export default function IdentityDocumentInput({
           onChange={handleCountryChange}
           disabled={disabled}
           aria-label="País del documento"
-          className="px-3 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-            text-text-1 text-sm
+          className="px-3 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
+            text-gris-oscuro text-sm
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
             transition-[border-color,box-shadow] duration-200 disabled:opacity-50"
         >
@@ -109,8 +109,8 @@ export default function IdentityDocumentInput({
           placeholder={country === 'AR' ? '12.345.678' : '1.234.567-8'}
           aria-invalid={isInvalid ? 'true' : undefined}
           aria-describedby={describedBy}
-          className={`flex-1 px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg
-            text-text-1 placeholder:text-text-muted
+          className={`flex-1 px-4 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
+            text-gris-oscuro placeholder:text-text-muted
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
             transition-[border-color,box-shadow] duration-200 disabled:opacity-50
             ${className}`}

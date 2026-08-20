@@ -14,7 +14,7 @@ export default function EmptyState({
       )}
 
       {title && (
-        <h2 className="text-xl font-heading text-text-1 mb-2">
+        <h2 className="text-xl font-display font-bold text-gris-oscuro mb-2">
           {title}
         </h2>
       )}

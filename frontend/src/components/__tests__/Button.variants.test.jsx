@@ -10,13 +10,14 @@ describe('Button — glass & gradient variants', () => {
   it('renders glass variant with light glass classes', () => {
     render(<Button variant="glass">Glass</Button>)
     const btn = screen.getByRole('button', { name: 'Glass' })
-    expect(btn.className).toContain('backdrop-blur-md')
+    expect(btn.className).toContain('backdrop-blur-sm')
     expect(btn.className).toContain('bg-white/60')
-    expect(btn.className).toContain('border-gris-oscuro/10')
-    expect(btn.className).toContain('text-gris-oscuro')
-    // Hover darkens with a gris-oscuro tint — never lightens toward white
-    // (brand 2.4: hover/pressed use dark variants, never lighten on white).
-    expect(btn.className).toContain('hover:bg-gris-oscuro/10')
+    expect(btn.className).toContain('border-gris-oscuro/15')
+    expect(btn.className).toContain('text-purpura-dark')
+    // Hover brightens toward white and tints the border with the brand purple,
+    // matching the "Ver todos" pill used across the site.
+    expect(btn.className).toContain('hover:bg-white/80')
+    expect(btn.className).toContain('hover:border-purpura/40')
   })
 
   it('renders gradient variant with brand gradient classes', () => {

@@ -12,38 +12,23 @@
 
 /* ── Buttons (legacy — EventForm & StaffScan) ──────────────────────────── */
 
-button {
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 16px;
-  border-radius: var(--radius-pill);
-  padding: 10px 20px;
-  border: none;
-  transition: opacity 0.2s, box-shadow 0.2s;
+/* The element-level reset lives in @layer base so Tailwind utilities (in the
+   utilities layer) can override it. Without a layer, this plain CSS would win
+   over every button utility and kill the Button component's colors/animations. */
+@layer base {
+  button { cursor: pointer; font-family: inherit; font-size: 16px; border-radius: var(--radius-pill); padding: 10px 20px; border: none; transition: opacity 0.2s, box-shadow 0.2s; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
-button:disabled { opacity: 0.6; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.button-primary {
-  background: var(--primary);
-  color: #fff;
-  font-weight: 500;
+@layer components {
+  .button-primary { background: var(--primary); color: #fff; font-weight: 500; }
+  .button-primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .button-secondary { background: var(--accent-light); color: var(--accent); font-weight: 500; }
+  .button-secondary:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
+  .button-danger { background: #dc2626; color: #fff; font-weight: 500; }
+  .button-danger:hover:not(:disabled) { opacity: 0.9; }
 }
-.button-primary:hover:not(:disabled) { background: var(--primary-hover); }
-
-.button-secondary {
-  background: var(--accent-light);
-  color: var(--accent);
-  font-weight: 500;
-}
-.button-secondary:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
-
-.button-danger {
-  background: #dc2626;
-  color: #fff;
-  font-weight: 500;
-}
-.button-danger:hover:not(:disabled) { opacity: 0.9; }
 
 /* ── Form patterns ──────────────────────────────────────────────────────── */
 
