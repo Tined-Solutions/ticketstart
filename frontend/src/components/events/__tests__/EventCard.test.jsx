@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import EventCard from '../EventCard.jsx'
 
@@ -24,11 +24,14 @@ function renderCard(cardEvent = event) {
 }
 
 describe('EventCard', () => {
-  it('links to the event detail page', () => {
+  it('starts with an accessible flip control and hides the back link', () => {
     renderCard()
-    const link = screen.getByRole('link', { name: /ver detalle de recital de rock nacional/i })
-    expect(link).toHaveAttribute('href', '/events/event-1')
-    expect(link.tagName).toBe('A')
+    const flipButton = screen.getByRole('button', {
+      name: /ver precio y opciones de recital de rock nacional/i,
+    })
+
+    expect(flipButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('link', { name: /comprar entradas/i })).not.toBeInTheDocument()
   })
 
   it('renders the event image with the event name as alt', () => {
@@ -39,20 +42,66 @@ describe('EventCard', () => {
     )
   })
 
-  it('renders the price range from ticket types', () => {
+  it('renders the starting price in the ticket stub', () => {
     renderCard()
-    expect(screen.getByText(/\$\s*15\.000 — \$\s*25\.000/)).toBeInTheDocument()
+    const flipButton = screen.getByRole('button', {
+      name: /ver precio y opciones de recital de rock nacional/i,
+    })
+
+    fireEvent.click(flipButton)
+
+    expect(flipButton.parentElement?.parentElement).toHaveStyle({
+      transform: 'rotateY(180deg)',
+    })
+    expect(screen.getByText(/desde \$\s*15\.000/i)).toBeInTheDocument()
+    expect(screen.queryByText(/\$\s*15\.000 — \$\s*25\.000/)).not.toBeInTheDocument()
   })
 
-  it('renders a date badge', () => {
+  it('reveals a detail link after flipping and can return to the front', () => {
     renderCard()
-    // Badge renders the formatted event date
-    expect(screen.getByText(/agosto de 2026/i)).toBeInTheDocument()
+    const flipButton = screen.getByRole('button', {
+      name: /ver precio y opciones de recital de rock nacional/i,
+    })
+
+    fireEvent.click(flipButton)
+
+    const detailLink = screen.getByRole('link', { name: /comprar entradas/i })
+    expect(detailLink).toHaveAttribute('href', '/events/event-1')
+    expect(detailLink).toHaveAttribute('tabindex', '0')
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /volver a la información de recital de rock nacional/i,
+      })
+    )
+
+    expect(flipButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('link', { name: /comprar entradas/i })).not.toBeInTheDocument()
+  })
+
+  it('reveals the event date without a time', () => {
+    renderCard()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /ver precio y opciones de recital de rock nacional/i,
+      })
+    )
+    expect(screen.getByText('15')).toBeInTheDocument()
+    expect(screen.getByText(/ago/i)).toBeInTheDocument()
+    expect(screen.queryByText(/2026/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/:\d{2}/)).not.toBeInTheDocument()
   })
 
   it('renders event name and location', () => {
     renderCard()
-    expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /ver precio y opciones de recital de rock nacional/i,
+      })
+    )
+    expect(
+      screen.getByRole('heading', { name: /recital de rock nacional/i })
+    ).toBeInTheDocument()
     expect(screen.getByText(/estadio luna park/i)).toBeInTheDocument()
   })
 

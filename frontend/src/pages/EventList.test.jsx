@@ -58,18 +58,24 @@ describe('EventList', () => {
     renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: /ver precio y opciones de recital de rock nacional/i,
+        })
+      ).toBeInTheDocument()
     })
-    expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
-    expect(screen.getByText(/estadio luna park/i)).toBeInTheDocument()
-    expect(screen.getByText(/la rural/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: /ver precio y opciones de feria de emprendedores/i,
+      })
+    ).toBeInTheDocument()
+    expect(screen.getAllByText(/estadio luna park/i)).not.toHaveLength(0)
+    expect(screen.getAllByText(/la rural/i)).not.toHaveLength(0)
     expect(screen.getByAltText(/recital de rock nacional/i)).toHaveAttribute(
       'src',
       'https://example.com/rock.jpg'
     )
-    expect(
-      screen.getByText(/\$\s*15\.000 — \$\s*25\.000/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/desde \$\s*15\.000/i)).toBeInTheDocument()
   })
 
   it('shows loading state while fetching', () => {
@@ -96,7 +102,11 @@ describe('EventList', () => {
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: /ver precio y opciones de recital de rock nacional/i,
+        })
+      ).toBeInTheDocument()
     })
   })
 
@@ -111,31 +121,64 @@ describe('EventList', () => {
     expect(screen.getByRole('link', { name: /volver al inicio/i })).toHaveAttribute('href', '/')
   })
 
-  it('links each card to its event detail page', async () => {
+  it('reveals each event detail link after flipping its card', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
     renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: /ver precio y opciones de recital de rock nacional/i,
+        })
+      ).toBeInTheDocument()
     })
 
-    const rockCard = screen.getByRole('link', { name: /ver detalle de recital de rock nacional/i })
-    expect(rockCard).toHaveAttribute('href', '/events/event-1')
-    const feriaCard = screen.getByRole('link', { name: /ver detalle de feria de emprendedores/i })
-    expect(feriaCard).toHaveAttribute('href', '/events/event-2')
+    const rockFlip = screen.getByRole('button', {
+      name: /ver precio y opciones de recital de rock nacional/i,
+    })
+    await userEvent.click(rockFlip)
+
+    expect(screen.getByRole('link', { name: /comprar entradas/i })).toHaveAttribute(
+      'href',
+      '/events/event-1'
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: /volver a la información de recital de rock nacional/i,
+      })
+    )
+
+    const feriaFlip = screen.getByRole('button', {
+      name: /ver precio y opciones de feria de emprendedores/i,
+    })
+    await userEvent.click(feriaFlip)
+
+    const detailLinks = screen.getAllByRole('link', { name: /comprar entradas/i })
+    expect(detailLinks).toHaveLength(2)
+    expect(detailLinks.map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['/events/event-1', '/events/event-2'])
+    )
   })
 
-  it('event cards are native <a> links', async () => {
+  it('event cards expose native button flip controls', async () => {
     mockGet.mockResolvedValue({ data: mockEvents })
 
     renderWithQueryClient(<EventList />)
 
     await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: /ver precio y opciones de recital de rock nacional/i,
+        })
+      ).toBeInTheDocument()
     })
 
-    const eventCard = screen.getByRole('link', { name: /ver detalle de recital de rock nacional/i })
-    expect(eventCard.tagName).toBe('A')
+    const flipControls = screen.getAllByRole('button', {
+      name: /ver precio y opciones/i,
+    })
+    expect(flipControls).toHaveLength(2)
+    expect(flipControls.every((control) => control.tagName === 'BUTTON')).toBe(true)
   })
 })
