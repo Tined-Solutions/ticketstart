@@ -23,12 +23,18 @@ vi.mock('../context/auth.js', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
+// Far-future dates computed at runtime so the mock events never become "past"
+// and trip the isPast/read-only UI logic (PEM-002), which would break the
+// mutable-path tests for reasons unrelated to what they assert.
+const futureDate = (days) =>
+  new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+
 const mockMetrics = [
   {
     id: 'metrics-1',
     eventId: 'event-1',
     eventName: 'Recital de Rock Nacional',
-    eventDate: '2026-08-15T21:00:00Z',
+    eventDate: futureDate(400),
     ticketsSold: 120,
     totalRevenue: 1800000,
     remainingInventory: 30,
@@ -39,7 +45,7 @@ const mockMetrics = [
     id: 'metrics-2',
     eventId: 'event-2',
     eventName: 'Feria de Emprendedores',
-    eventDate: '2026-09-01T14:00:00Z',
+    eventDate: futureDate(300),
     ticketsSold: 300,
     totalRevenue: 0,
     remainingInventory: 200,
@@ -50,7 +56,7 @@ const mockMetrics = [
     id: 'metrics-3',
     eventId: 'event-3',
     eventName: 'Workshop de Fotografia',
-    eventDate: '2026-10-10T10:00:00Z',
+    eventDate: futureDate(365),
     ticketsSold: 0,
     totalRevenue: 0,
     remainingInventory: 50,

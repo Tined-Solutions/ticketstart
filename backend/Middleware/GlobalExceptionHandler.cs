@@ -82,6 +82,16 @@ public class GlobalExceptionHandler : IExceptionHandler
                 problemDetails.Title = "Event has already started";
             }
 
+            // PEM-002/ADR-5 Option (a) — belt-and-suspenders fallback: if EventFinalizedException
+            // ever escapes the controller catches, the middleware still emits the spec-compliant
+            // ProblemDetails shape (409, type "event-finalized", title "Event has already finished")
+            // matching the Problem(...) controller path.
+            if (exception is Models.EventFinalizedException)
+            {
+                problemDetails.Type = "event-finalized";
+                problemDetails.Title = "Event has already finished";
+            }
+
             await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
 
             return true;
@@ -111,6 +121,8 @@ public class GlobalExceptionHandler : IExceptionHandler
             KeyNotFoundException => (StatusCodes.Status404NotFound, "NOT_FOUND", "The requested resource was not found."),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "CONFLICT", "The resource was modified by another request. Please try again."),
             Models.EventExpiredException => (StatusCodes.Status409Conflict, "EVENT_EXPIRED", "This event has already started and is no longer purchasable."),
+            Models.EventFinalizedException => (StatusCodes.Status409Conflict, "EVENT_FINALIZED",
+                "This event has already finished and can no longer be modified."),
             _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "An unexpected error occurred. Please try again later.")
         };
     }

@@ -198,6 +198,15 @@ public class AdminController : TicketeraControllerBase
         catch (KeyNotFoundException) { return NotFound(new { error = "Event or ticket type not found" }); }
         catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807, no audit.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
+        }
         catch (Exception ex) { _logger.LogError(ex, "Error adding ticket stock"); return StatusCode(500, new { error = "An error occurred while adding ticket stock" }); }
     }
 
@@ -222,6 +231,15 @@ public class AdminController : TicketeraControllerBase
         catch (KeyNotFoundException) { return NotFound(new { error = "Event not found" }); }
         catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807, no audit.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
+        }
         catch (Exception ex) { _logger.LogError(ex, "Error adding ticket type"); return StatusCode(500, new { error = "An error occurred while adding the ticket type" }); }
     }
 
@@ -329,6 +347,15 @@ public class AdminController : TicketeraControllerBase
         {
             return NotFound(new { error = "Event not found" });
         }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807, no audit.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error approving event {EventId}", eventId);
@@ -366,6 +393,15 @@ public class AdminController : TicketeraControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { error = "Event not found" });
+        }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807, no audit.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
         }
         catch (Exception ex)
         {

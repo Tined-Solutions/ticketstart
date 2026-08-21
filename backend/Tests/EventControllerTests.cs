@@ -462,6 +462,179 @@ public class EventControllerTests
     }
 
     #endregion
+
+    #region PEM-002 — Past-event mutation endpoints → 409 event-finalized (WAF)
+
+    private static async Task<ProblemDetails?> ReadProblemDetailsAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<ProblemDetails>(body,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+
+    [Fact]
+    public async Task UpdateEvent_PastEvent_409_EventFinalized_NoSave()
+    {
+        // PEM-002/003: PUT on a past event → 409 event-finalized, no row change.
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past To Update", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        // PEM-005: consultation on the same past event stays 200 (carve-out)
+        var manage = await client.GetAsync($"/api/events/{pastId}/manage");
+        Assert.Equal(HttpStatusCode.OK, manage.StatusCode);
+
+        // Act — PUT on the past event
+        var response = await client.PutAsJsonAsync($"/api/events/{pastId}", new
+        {
+            name = "Mutated Name",
+            description = "x",
+            date = factory.Clock.GetUtcNow().UtcDateTime.AddDays(5),
+            location = "Y"
+        });
+
+        // Assert — 409 RFC 7807 with type "event-finalized"
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.NotNull(problem);
+        Assert.Equal("event-finalized", problem!.Type);
+        Assert.Equal("Event has already finished", problem.Title);
+        Assert.Equal(409, problem.Status);
+
+        // PEM-003: no save — the row still carries its original name
+        var after = await client.GetAsync($"/api/events/{pastId}/manage");
+        var body = await after.Content.ReadFromJsonAsync<EventWithAvailability>();
+        Assert.Equal("Past To Update", body!.Name);
+    }
+
+    [Fact]
+    public async Task DeleteEvent_PastEvent_409_EventFinalized()
+    {
+        // PEM-002: DELETE on a past event → 409; the row survives.
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past To Delete", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.DeleteAsync($"/api/events/{pastId}");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+
+        var after = await client.GetAsync($"/api/events/{pastId}/manage");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadEventImage_PastEvent_409_EventFinalized()
+    {
+        // PEM-002: POST image on a past event → 409 (before any R2 upload).
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past With Image", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        using var content = new MultipartFormDataContent();
+        content.Add(new ByteArrayContent(new byte[] { 1, 2, 3 }), "image", "img.jpg");
+
+        var response = await client.PostAsync($"/api/events/{pastId}/image", content);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+    }
+
+    [Fact]
+    public async Task AddTicketStock_PastEvent_409_EventFinalized()
+    {
+        // PEM-002: POST stock on a past event → 409.
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past Stock", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var ttId = factory.SeedTicketType(pastId, 100);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PostAsJsonAsync($"/api/admin/events/{pastId}/ticket-types/{ttId}/stock", new { additionalQuantity = 50 });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+    }
+
+    [Fact]
+    public async Task AddTicketType_PastEvent_409_EventFinalized()
+    {
+        // PEM-002: POST new ticket type on a past event → 409.
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past Type", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PostAsJsonAsync($"/api/admin/events/{pastId}/ticket-types", new { name = "VIP", price = 150m, quantity = 20 });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+    }
+
+    [Fact]
+    public async Task ApproveEvent_PastEvent_409_EventFinalized()
+    {
+        // PEM-002/EA-003: POST approve on a past event → 409; GET manage stays 200.
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past Approve", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId, EventStatus.Pending);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PostAsync($"/api/admin/events/{pastId}/approve", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+
+        // Consultation carve-out with an admin cookie on the same past event
+        var manage = await client.GetAsync($"/api/events/{pastId}/manage");
+        Assert.Equal(HttpStatusCode.OK, manage.StatusCode);
+    }
+
+    [Fact]
+    public async Task RejectEvent_PastEvent_409_EventFinalized()
+    {
+        // PEM-002/EA-004: POST reject on a past event → 409.
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past Reject", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId, EventStatus.Pending);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PostAsJsonAsync($"/api/admin/events/{pastId}/reject", new { reason = "too late" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-finalized", problem!.Type);
+    }
+
+    #endregion
 }
 
 /// <summary>
@@ -513,7 +686,12 @@ public class EventCatalogApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ApplicationDbContext>();
             services.RemoveAll<DbContextOptions<ApplicationDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
-            services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase(_dbName));
+            services.AddDbContext<ApplicationDbContext>(options => options
+                .UseInMemoryDatabase(_dbName)
+                // Stock/ticket-type endpoints open a FOR UPDATE transaction; the
+                // InMemory provider no-ops it and promotes TransactionIgnoredWarning
+                // to an exception unless ignored (mirrors AdminPropertyTests).
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)));
 
             // Replace TimeProvider.System with the frozen fake clock (ADR-3).
             var tpDescriptor = services.Single(d => d.ServiceType == typeof(TimeProvider));
@@ -541,6 +719,8 @@ public class EventCatalogApiFactory : WebApplicationFactory<Program>
     public Guid SeedOrganizer() => SeedUser(UserRole.Organizador);
 
     public Guid SeedStaff() => SeedUser(UserRole.Staff);
+
+    public Guid SeedAdmin() => SeedUser(UserRole.Admin);
 
     private Guid SeedUser(UserRole role)
     {
@@ -573,6 +753,24 @@ public class EventCatalogApiFactory : WebApplicationFactory<Program>
             CreatedAt = date,
             UpdatedAt = date,
             Status = status
+        });
+        db.SaveChanges();
+        return id;
+    }
+
+    public Guid SeedTicketType(Guid eventId, int quantity = 100)
+    {
+        var id = Guid.NewGuid();
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.TicketTypes.Add(new TicketType
+        {
+            Id = id,
+            EventId = eventId,
+            Name = "General",
+            Price = 50m,
+            Quantity = quantity,
+            CreatedAt = Clock.GetUtcNow().UtcDateTime
         });
         db.SaveChanges();
         return id;

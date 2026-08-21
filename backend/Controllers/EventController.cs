@@ -155,6 +155,16 @@ public class EventController : TicketeraControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807
+        // (type "event-finalized") BEFORE any save/audit/notification.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating event {EventId} for user {UserId}", id, userId);
@@ -190,6 +200,15 @@ public class EventController : TicketeraControllerBase
         catch (UnauthorizedAccessException)
         {
             return Forbid();
+        }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
         }
         catch (Exception ex)
         {
@@ -240,6 +259,16 @@ public class EventController : TicketeraControllerBase
         catch (UnauthorizedAccessException)
         {
             return Forbid();
+        }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807
+        // (fires BEFORE any R2 upload, so a 409 never leaves an orphan image).
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
         }
         catch (Exception ex)
         {

@@ -536,3 +536,55 @@ describe('EventForm — edit mode', () => {
     expect(mockOnSuccess).not.toHaveBeenCalled()
   })
 })
+
+describe('EventForm — readOnly mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPost.mockReset()
+    mockPut.mockReset()
+    mockOnSuccess.mockReset()
+  })
+
+  it('disables every editable input and hides submit + image upload controls', () => {
+    const event = buildEvent()
+
+    render(<EventForm mode="edit" readOnly initialData={event} />)
+
+    // All editable inputs are disabled (D-6 / PEM-002).
+    expect(screen.getByLabelText(/nombre del evento/i)).toBeDisabled()
+    expect(screen.getByLabelText(/fecha y hora/i)).toBeDisabled()
+    expect(screen.getByLabelText(/^ubicacion/i)).toBeDisabled()
+    expect(screen.getByLabelText(/descripcion/i)).toBeDisabled()
+
+    // Submit button and image upload input are not rendered.
+    expect(
+      screen.queryByRole('button', { name: /guardar cambios/i })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/imagen del evento/i)).not.toBeInTheDocument()
+
+    // Existing data is pre-filled for consultation, and the image preview stays.
+    expect(screen.getByLabelText(/nombre del evento/i)).toHaveValue(
+      'Recital de Rock Nacional'
+    )
+    expect(screen.getByAltText(/vista previa/i)).toBeInTheDocument()
+  })
+
+  it('does not call the API when readOnly (no submit path exists)', () => {
+    const event = buildEvent()
+
+    render(<EventForm mode="edit" readOnly initialData={event} />)
+
+    expect(mockPut).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('disables the ticket-type fieldset in readOnly create mode', () => {
+    render(<EventForm mode="create" readOnly />)
+
+    const fieldset = screen.getByRole('group', { name: /tipos de entrada/i })
+    expect(fieldset).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: /crear evento/i })
+    ).not.toBeInTheDocument()
+  })
+})

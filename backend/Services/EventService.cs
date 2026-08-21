@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
+using TicketeraOnline.Api.Services.Guards;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
@@ -342,6 +343,13 @@ public class EventService : IEventService
                     throw new KeyNotFoundException($"Ticket type {ticketTypeId} not found for event {eventId}");
                 }
 
+                // PEM-001/ADR-7: the guard MUST run INSIDE the FOR UPDATE critical
+                // section on the loaded row — load the event (identity-map hit after
+                // the TT load) and throw before any capacity mutation.
+                var eventEntity = await _context.Events.FindAsync(eventId)
+                    ?? throw new KeyNotFoundException($"Event with ID {eventId} not found");
+                EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
+
                 ticketType.Quantity += additionalQuantity;
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -384,6 +392,10 @@ public class EventService : IEventService
                     _logger.LogWarning("Event {EventId} not found", eventId);
                     throw new KeyNotFoundException($"Event with ID {eventId} not found");
                 }
+
+                // PEM-001/ADR-6: a finalized event is immutable — the guard throws
+                // BEFORE the validation/insert + SaveChanges inside the transaction.
+                EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
                 // Validate inside the transaction (D-7; mirrors CreateEventAsync guards)
                 if (string.IsNullOrWhiteSpace(name))
@@ -474,6 +486,11 @@ public class EventService : IEventService
                 userId, eventId, eventEntity.OrganizerId);
             throw new UnauthorizedAccessException("You do not have permission to update this event");
         }
+
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // any SaveChanges/audit/notification (the EDC-001 date-change buyer emails
+        // below become unreachable for past events). Hard rule, flag-independent.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         // Validate required fields
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -601,6 +618,10 @@ public class EventService : IEventService
                 userId, eventId, eventEntity.OrganizerId);
             throw new UnauthorizedAccessException("You do not have permission to delete this event");
         }
+
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // the Remove + SaveChanges + R2 image cleanup below.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         // Store image URL for cleanup
         var imageUrl = eventEntity.ImageUrl;
@@ -742,6 +763,10 @@ public class EventService : IEventService
                 userId, eventId, eventEntity.OrganizerId);
             throw new UnauthorizedAccessException("You do not have permission to update this event");
         }
+
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // the R2 upload, the ImageUrl swap, and the SaveChanges below.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         var previousImageUrl = eventEntity.ImageUrl;
 

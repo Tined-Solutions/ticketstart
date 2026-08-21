@@ -209,8 +209,14 @@ export default function OrganizerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {metrics.map((m) => (
-                  <tr
+                {metrics.map((m) => {
+                      // D-7: past events are immutable (PEM-002) — computed per row
+                      // in UTC (m.eventDate is an ISO UTC DateTime). Backend guard is
+                      // authoritative; this disables mutation affordances cosmetically.
+                      const isPast = new Date(m.eventDate) < new Date()
+                      const readonlyTitle = 'Evento finalizado — solo lectura'
+                      return (
+                      <tr
                     key={m.eventId}
                     className="border-b border-border hover:bg-surface-elevated transition-colors"
                   >
@@ -220,6 +226,11 @@ export default function OrganizerDashboard() {
                       <Badge variant={statusBadgeVariant(m.status)}>
                         {statusLabel(m.status)}
                       </Badge>
+                      {isPast && (
+                        <Badge variant="info" className="ml-1.5">
+                          Finalizado
+                        </Badge>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Entradas vendidas">{m.ticketsSold}</td>
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ingresos">{formatCurrency(m.totalRevenue)}</td>
@@ -227,16 +238,28 @@ export default function OrganizerDashboard() {
                     <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Escaneados">{m.ticketsScanned}</td>
                     <td className="py-3.5 px-4 align-middle" data-label="Acciones">
                       <div className="flex gap-2 flex-nowrap">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/organizer/events/${m.eventId}/view`)}
+                          aria-label={`Ver ${m.eventName}`}
+                          className="min-h-[44px]"
+                        >
+                          Ver
+                        </Button>
                         {canEdit && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => navigate(`/organizer/events/${m.eventId}`)}
-                            aria-label={`Editar ${m.eventName}`}
-                            className="min-h-[44px]"
-                          >
-                            Editar
-                          </Button>
+                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => navigate(`/organizer/events/${m.eventId}`)}
+                              disabled={isPast}
+                              aria-label={`Editar ${m.eventName}`}
+                              className="min-h-[44px]"
+                            >
+                              Editar
+                            </Button>
+                          </span>
                         )}
                         <Button
                           variant="secondary"
@@ -247,19 +270,23 @@ export default function OrganizerDashboard() {
                         >
                           Metricas
                         </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteClick(m)}
-                          aria-label={`Eliminar ${m.eventName}`}
-                          className="min-h-[44px]"
-                        >
-                          Eliminar
-                        </Button>
+                        <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteClick(m)}
+                            disabled={isPast}
+                            aria-label={`Eliminar ${m.eventName}`}
+                            className="min-h-[44px]"
+                          >
+                            Eliminar
+                          </Button>
+                        </span>
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

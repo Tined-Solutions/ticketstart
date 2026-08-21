@@ -25,11 +25,17 @@ vi.mock('../api/client.js', () => ({
   },
 }))
 
+// Far-future dates computed at runtime so the mock events never become "past"
+// and trip the isPast/read-only UI logic (PEM-002), which would break the
+// mutable-path tests for reasons unrelated to what they assert.
+const futureDate = (days) =>
+  new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+
 const mockEvents = [
   {
     id: 'event-1',
     name: 'Recital de Rock Nacional',
-    date: '2026-08-15T21:00:00Z',
+    date: futureDate(400),
     location: 'Estadio Luna Park, Buenos Aires',
     organizerId: 'user-2',
     createdAt: '2026-06-01T10:00:00Z',
@@ -38,7 +44,7 @@ const mockEvents = [
   {
     id: 'event-2',
     name: 'Feria de Emprendedores',
-    date: '2026-09-01T14:00:00Z',
+    date: futureDate(300),
     location: 'La Rural, Buenos Aires',
     organizerId: 'user-3',
     createdAt: '2026-06-15T10:00:00Z',
@@ -47,7 +53,7 @@ const mockEvents = [
   {
     id: 'event-3',
     name: 'Workshop de Fotografia',
-    date: '2026-10-10T10:00:00Z',
+    date: futureDate(365),
     location: null,
     organizerId: 'user-2',
     createdAt: '2026-07-01T10:00:00Z',
@@ -514,7 +520,7 @@ describe('AdminPanel', () => {
               {
                 id: 'event-x',
                 name: 'Evento Sin Organizador',
-                date: '2026-10-10T10:00:00Z',
+                date: futureDate(365),
                 location: 'Algun lugar',
                 organizerId: 'unknown-user',
                 createdAt: '2026-07-01T10:00:00Z',

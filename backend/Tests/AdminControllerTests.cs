@@ -776,6 +776,92 @@ public class AdminControllerTests
 
     #endregion
 
+    #region PEM-002 — Past-event mutations → 409 event-finalized, no audit
+
+    [Fact]
+    public async Task ApproveEvent_PastEvent_Returns409EventFinalized_NoAudit()
+    {
+        // EA-003 MODIFIED: a past event throws EventFinalizedException from the
+        // service; the controller maps it to 409 ProblemDetails and writes NO audit.
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.ApproveEventAsync(eventId))
+            .ThrowsAsync(new EventFinalizedException());
+
+        var result = await _controller.ApproveEvent(eventId);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal("event-finalized", problem.Type);
+        Assert.Equal("Event has already finished", problem.Title);
+        Assert.Contains("no longer be modified", problem.Detail);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RejectEvent_PastEvent_Returns409EventFinalized_NoAudit()
+    {
+        // EA-004 MODIFIED: same 409 mapping for reject, no audit entry.
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAdminService.Setup(s => s.RejectEventAsync(eventId, It.IsAny<string?>()))
+            .ThrowsAsync(new EventFinalizedException());
+
+        var result = await _controller.RejectEvent(eventId, new RejectEventRequest("too late"));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("event-finalized", problem.Type);
+        Assert.Equal("Event has already finished", problem.Title);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddTicketStock_PastEvent_Returns409EventFinalized_NoAudit()
+    {
+        // ATS-002 MODIFIED: stock increment on a past event → 409, no audit.
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var ttId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService.Setup(s => s.AddTicketStockAsync(eventId, ttId, 50))
+            .ThrowsAsync(new EventFinalizedException());
+
+        var result = await _controller.AddTicketStock(eventId, ttId, new AddTicketStockRequest(50));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("event-finalized", problem.Type);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddTicketType_PastEvent_Returns409EventFinalized_NoAudit()
+    {
+        // ATS-004 MODIFIED: new ticket type on a past event → 409, no audit.
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService.Setup(s => s.AddTicketTypeAsync(eventId, "VIP", 150m, 20))
+            .ThrowsAsync(new EventFinalizedException());
+
+        var result = await _controller.AddTicketType(eventId, new AddTicketTypeRequest("VIP", 150m, 20));
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("event-finalized", problem.Type);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    #endregion
+
     private void SetAuthenticatedUser(Guid userId, UserRole role)
     {
         var claims = new List<Claim>
