@@ -40,12 +40,12 @@ Chain strategy: pending
 
 ## Phase 3: Controllers + Middleware (TDD)
 
-- [ ] 3.1 RED: `backend/Tests/EventControllerTests.cs` — integration (EventCatalogApiFactory frozen Clock + cookie): all 7 endpoints → 409 `type:"event-finalized"` on seeded past event; `GET /events/{id}/manage` → 200 (PEM-005, EHE-006); keep both expired-GET-200 tests green.
-- [ ] 3.2 RED: `backend/Tests/AdminControllerTests.cs` — mock `.ThrowsAsync(new EventFinalizedException())` → `Problem(409, "event-finalized")` for Approve/Reject/AddTicketStock/AddTicketType; audit `Verify(LogActionAsync, Never)`.
-- [ ] 3.3 RED: `backend/Tests/ErrorHandlingPropertyTests.cs` — handler payload test mirroring :206.
-- [ ] 3.4 GREEN: `backend/Controllers/EventController.cs` — add `catch (EventFinalizedException) → Problem(409, "event-finalized")` above generic catch: Update(:146), Delete(:186), UploadEventImage(:232).
-- [ ] 3.5 GREEN: `backend/Controllers/AdminController.cs` — same catch: AddTicketStock(:198), AddTicketType(:222), ApproveEvent(:328), RejectEvent(:366).
-- [ ] 3.6 GREEN: `backend/Middleware/GlobalExceptionHandler.cs` — MapException case `EVENT_FINALIZED` + TryHandleAsync `type:"event-finalized"` special-case.
+- [x] 3.1 RED: `backend/Tests/EventControllerTests.cs` — integration (EventCatalogApiFactory frozen Clock + cookie): all 7 endpoints → 409 `type:"event-finalized"` on seeded past event; `GET /events/{id}/manage` → 200 (PEM-005, EHE-006); keep both expired-GET-200 tests green.
+- [x] 3.2 RED: `backend/Tests/AdminControllerTests.cs` — mock `.ThrowsAsync(new EventFinalizedException())` → `Problem(409, "event-finalized")` for Approve/Reject/AddTicketStock/AddTicketType; audit `Verify(LogActionAsync, Never)`.
+- [x] 3.3 RED: `backend/Tests/ErrorHandlingPropertyTests.cs` — handler payload test mirroring :206.
+- [x] 3.4 GREEN: `backend/Controllers/EventController.cs` — add `catch (EventFinalizedException) → Problem(409, "event-finalized")` above generic catch: Update(:146), Delete(:186), UploadEventImage(:232).
+- [x] 3.5 GREEN: `backend/Controllers/AdminController.cs` — same catch: AddTicketStock(:198), AddTicketType(:222), ApproveEvent(:328), RejectEvent(:366).
+- [x] 3.6 GREEN: `backend/Middleware/GlobalExceptionHandler.cs` — MapException case `EVENT_FINALIZED` + TryHandleAsync `type:"event-finalized"` special-case.
 
 ## Phase 4: Frontend (manual verification)
 
