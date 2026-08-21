@@ -367,7 +367,14 @@ export default function AdminPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((event) => (
+                    {events.map((event) => {
+                      // D-7: past events are immutable (PEM-002) — computed per row
+                      // in UTC (event.date is an ISO UTC DateTime; new Date() is
+                      // UTC-based). Backend guard is authoritative (EHE-010); this
+                      // only disables the mutation affordances (cosmetic defense).
+                      const isPast = new Date(event.date) < new Date()
+                      const readonlyTitle = 'Evento finalizado — solo lectura'
+                      return (
                       <tr key={event.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
                         <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{event.name}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(event.date)}</td>
@@ -379,42 +386,63 @@ export default function AdminPanel() {
                           <Badge variant={statusBadgeVariant(event.status)}>
                             {statusLabel(event.status)}
                           </Badge>
+                          {isPast && (
+                            <Badge variant="info" className="ml-1.5">
+                              Finalizado
+                            </Badge>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 align-middle" data-label="Acciones">
                           <div className="flex gap-2 flex-nowrap">
-                            {event.status !== 'Approved' && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleApprove(event)}
-                                disabled={busyApprovalId === event.id}
-                                aria-label={`Aprobar ${event.name}`}
-                                className="min-h-[44px]"
-                              >
-                                Aprobar
-                              </Button>
-                            )}
-                            {event.status !== 'Rejected' && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => handleReject(event)}
-                                disabled={busyApprovalId === event.id}
-                                aria-label={`Rechazar ${event.name}`}
-                                className="min-h-[44px]"
-                              >
-                                Rechazar
-                              </Button>
-                            )}
                             <Button
-                              variant="primary"
+                              variant="secondary"
                               size="sm"
-                              onClick={() => setAddTicketsTarget(event)}
-                              aria-label={`Agregar entradas a ${event.name}`}
+                              onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                              aria-label={`Ver ${event.name}`}
                               className="min-h-[44px]"
                             >
-                              Agregar entradas
+                              Ver
                             </Button>
+                            {event.status !== 'Approved' && (
+                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleApprove(event)}
+                                  disabled={isPast || busyApprovalId === event.id}
+                                  aria-label={`Aprobar ${event.name}`}
+                                  className="min-h-[44px]"
+                                >
+                                  Aprobar
+                                </Button>
+                              </span>
+                            )}
+                            {event.status !== 'Rejected' && (
+                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => handleReject(event)}
+                                  disabled={isPast || busyApprovalId === event.id}
+                                  aria-label={`Rechazar ${event.name}`}
+                                  className="min-h-[44px]"
+                                >
+                                  Rechazar
+                                </Button>
+                              </span>
+                            )}
+                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => setAddTicketsTarget(event)}
+                                disabled={isPast}
+                                aria-label={`Agregar entradas a ${event.name}`}
+                                className="min-h-[44px]"
+                              >
+                                Agregar entradas
+                              </Button>
+                            </span>
                             <Button
                               variant="secondary"
                               size="sm"
@@ -424,28 +452,35 @@ export default function AdminPanel() {
                             >
                               Compras
                             </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => navigate(`/organizer/events/${event.id}`)}
-                              aria-label={`Editar ${event.name}`}
-                              className="min-h-[44px]"
-                            >
-                              Editar
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => handleDeleteClick(event)}
-                              aria-label={`Eliminar ${event.name}`}
-                              className="min-h-[44px]"
-                            >
-                              Eliminar
-                            </Button>
+                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => navigate(`/organizer/events/${event.id}`)}
+                                disabled={isPast}
+                                aria-label={`Editar ${event.name}`}
+                                className="min-h-[44px]"
+                              >
+                                Editar
+                              </Button>
+                            </span>
+                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDeleteClick(event)}
+                                disabled={isPast}
+                                aria-label={`Eliminar ${event.name}`}
+                                className="min-h-[44px]"
+                              >
+                                Eliminar
+                              </Button>
+                            </span>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

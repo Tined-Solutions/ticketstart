@@ -28,7 +28,7 @@ const mockMetrics = [
     id: 'metrics-1',
     eventId: 'event-1',
     eventName: 'Recital de Rock Nacional',
-    eventDate: '2026-08-15T21:00:00Z',
+    eventDate: '2026-11-15T21:00:00Z',
     ticketsSold: 120,
     totalRevenue: 1800000,
     remainingInventory: 30,

@@ -23,6 +23,10 @@ export default function EventForm({
   initialData,
   mode,
   onSuccess,
+  // D-6: read-only consultation mode — disables every input, hides the submit
+  // button and the image upload control (preview stays). Used by
+  // EventReadOnlyView for past/finalized events.
+  readOnly = false,
 }) {
   const [name, setName] = useState(initialData?.name || '')
   const [date, setDate] = useState(formatDateForInput(initialData?.date) || '')
@@ -257,7 +261,7 @@ export default function EventForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          disabled={submitting}
+          disabled={submitting || readOnly}
           aria-invalid={errors.name ? 'true' : undefined}
           aria-describedby={errors.name ? 'eventName-error' : undefined}
         />
@@ -276,7 +280,7 @@ export default function EventForm({
           value={date}
           onChange={(e) => setDate(e.target.value)}
           required
-          disabled={submitting}
+          disabled={submitting || readOnly}
           aria-invalid={errors.date ? 'true' : undefined}
           aria-describedby={errors.date ? 'eventDate-error' : undefined}
         />
@@ -295,7 +299,7 @@ export default function EventForm({
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           required
-          disabled={submitting}
+          disabled={submitting || readOnly}
           aria-invalid={errors.location ? 'true' : undefined}
           aria-describedby={errors.location ? 'eventLocation-error' : undefined}
         />
@@ -313,7 +317,7 @@ export default function EventForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={4}
-          disabled={submitting}
+          disabled={submitting || readOnly}
           style={{
             padding: '10px 12px',
             border: '1px solid var(--border)',
@@ -329,17 +333,21 @@ export default function EventForm({
 
       <div className="form-group">
         <label htmlFor="eventImage">Imagen del evento (opcional)</label>
-        <input
-          id="eventImage"
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={handleImageChange}
-          disabled={submitting}
-          aria-describedby="eventImage-hint"
-        />
-        <small id="eventImage-hint" style={{ color: 'var(--text)', fontSize: '13px' }}>
-          Formatos: JPEG, PNG, WebP. Maximo 5 MB.
-        </small>
+        {!readOnly && (
+          <>
+            <input
+              id="eventImage"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageChange}
+              disabled={submitting}
+              aria-describedby="eventImage-hint"
+            />
+            <small id="eventImage-hint" style={{ color: 'var(--text)', fontSize: '13px' }}>
+              Formatos: JPEG, PNG, WebP. Maximo 5 MB.
+            </small>
+          </>
+        )}
         {imagePreview && (
           <div style={{ marginTop: '8px' }}>
             <img
@@ -358,7 +366,7 @@ export default function EventForm({
       </div>
 
       {isCreate ? (
-        <fieldset className="ticket-types-section" disabled={submitting}>
+        <fieldset className="ticket-types-section" disabled={submitting || readOnly}>
           <legend>
             <h2>Tipos de entrada</h2>
           </legend>
@@ -480,19 +488,21 @@ export default function EventForm({
         </div>
       )}
 
-      <div className="form-actions">
-        <button
-          type="submit"
-          className="button-primary"
-          disabled={submitting}
-        >
-          {submitting
-            ? 'Guardando...'
-            : isCreate
-              ? 'Crear evento'
-              : 'Guardar cambios'}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="form-actions">
+          <button
+            type="submit"
+            className="button-primary"
+            disabled={submitting}
+          >
+            {submitting
+              ? 'Guardando...'
+              : isCreate
+                ? 'Crear evento'
+                : 'Guardar cambios'}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

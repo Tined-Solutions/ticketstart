@@ -18,6 +18,7 @@ import OrganizerDashboard from './pages/OrganizerDashboard.jsx'
 import OrganizerEventNew from './pages/OrganizerEventNew.jsx'
 import OrganizerEventDetail from './pages/OrganizerEventDetail.jsx'
 import OrganizerEventMetrics from './pages/OrganizerEventMetrics.jsx'
+import EventReadOnlyView from './pages/EventReadOnlyView.jsx'
 import AdminPanel from './pages/AdminPanel.jsx'
 import AdminPurchases from './pages/AdminPurchases.jsx'
 import NotFound from './pages/NotFound.jsx'
@@ -76,6 +77,16 @@ function App() {
               <ProtectedRoute>
                 <RoleGuard allowedRoles={['Organizador', 'Admin']}>
                   <OrganizerEventMetrics />
+                </RoleGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organizer/events/:id/view"
+            element={
+              <ProtectedRoute>
+                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                  <EventReadOnlyView />
                 </RoleGuard>
               </ProtectedRoute>
             }

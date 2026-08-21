@@ -49,11 +49,11 @@ Chain strategy: pending
 
 ## Phase 4: Frontend (manual verification)
 
-- [ ] 4.1 `frontend/src/components/EventForm.jsx` — `readOnly` prop: disable inputs, hide submit + file input, keep image preview (D-6).
-- [ ] 4.2 Create `frontend/src/pages/EventReadOnlyView.jsx` — `useManagementEvent(id)` + `<EventForm mode="edit" readOnly />` + Volver (D-5); loading/error mirror OrganizerEventDetail.jsx:31-52.
-- [ ] 4.3 `frontend/src/App.jsx` — route `/organizer/events/:id/view`, RoleGuard `['Organizador','Admin']`.
-- [ ] 4.4 `frontend/src/pages/AdminPanel.jsx` — `isPast` per row; Ver → navigate; disable Aprobar/Rechazar/Agregar entradas/Editar/Eliminar + tooltip; Finalizado badge; keep Compras; row not grayed (D-7).
-- [ ] 4.5 `frontend/src/pages/OrganizerDashboard.jsx` — `isPast`; Ver; disable Editar/Eliminar + tooltip; Finalizado badge; keep Metricas.
+- [x] 4.1 `frontend/src/components/EventForm.jsx` — `readOnly` prop: disable inputs, hide submit + file input, keep image preview (D-6).
+- [x] 4.2 Create `frontend/src/pages/EventReadOnlyView.jsx` — `useManagementEvent(id)` + `<EventForm mode="edit" readOnly />` + Volver (D-5); loading/error mirror OrganizerEventDetail.jsx:31-52.
+- [x] 4.3 `frontend/src/App.jsx` — route `/organizer/events/:id/view`, RoleGuard `['Organizador','Admin']`.
+- [x] 4.4 `frontend/src/pages/AdminPanel.jsx` — `isPast` per row; Ver → navigate; disable Aprobar/Rechazar/Agregar entradas/Editar/Eliminar + tooltip; Finalizado badge; keep Compras; row not grayed (D-7).
+- [x] 4.5 `frontend/src/pages/OrganizerDashboard.jsx` — `isPast`; Ver; disable Editar/Eliminar + tooltip; Finalizado badge; keep Metricas.
 
 ## Phase 5: Verification & Cleanup
 

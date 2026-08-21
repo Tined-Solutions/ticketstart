@@ -29,7 +29,7 @@ const mockEvents = [
   {
     id: 'event-1',
     name: 'Recital de Rock Nacional',
-    date: '2026-08-15T21:00:00Z',
+    date: '2026-11-15T21:00:00Z',
     location: 'Estadio Luna Park, Buenos Aires',
     organizerId: 'user-2',
     createdAt: '2026-06-01T10:00:00Z',
