@@ -206,18 +206,17 @@ export default function TicketLookup() {
   // -- Render -----------------------------------------------------------
 
   return (
-    <div className="relative">
-      {/* Scrolling gradient background identical to the "Eventos destacados"
-          section on the home page. It extends behind the fixed navbar (so they
-          connect without a second border) but scrolls with the content like a
-          normal section background. */}
-      <div aria-hidden="true" className="absolute inset-x-0 -top-16 bottom-0 -z-10 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10" />
-
+    <div className="relative -mt-16 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Eventos destacados" section on
+          the home page. It starts at the very top, behind the fixed navbar
+          (which is translucent), so there is no white gap between the navbar
+          and the page background. Applied directly on the container (no
+          negative z-index) so it paints above the white body background. */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-        className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 py-12 space-y-10"
+        className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-28 pb-12 space-y-10"
       >
       {/* ── Lookup section ──────────────────────────────────────────── */}
 

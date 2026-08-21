@@ -118,7 +118,7 @@
   --brand-1: var(--purpura-dark);  /* single mapping — purpura dark (AA) */
   --brand-2: var(--naranja-dark);  /* single mapping — naranja dark (AA) */
   --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border: rgba(74, 74, 74, 0.16);
 
   /* ── Legacy semantic tokens (light, brand remap) ── */
   --primary: var(--naranja-dark);
@@ -247,6 +247,7 @@
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-glass);
+  box-shadow: 0 4px 20px rgba(74, 74, 74, 0.06);
 }
 
 @utility glass-navbar {
