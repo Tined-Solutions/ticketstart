@@ -8,16 +8,7 @@ vi.mock('../../../context/auth.js', () => ({
   useAuth: vi.fn(),
 }))
 
-vi.mock('../../../hooks/useTheme.jsx', async (importOriginal) => {
-  const original = await importOriginal()
-  return {
-    ...original,
-    useTheme: vi.fn(),
-  }
-})
-
 import { useAuth } from '../../../context/auth.js'
-import { useTheme } from '../../../hooks/useTheme.jsx'
 
 function renderNavbar() {
   return render(
@@ -34,19 +25,26 @@ describe('Navbar', () => {
       isAuthenticated: false,
       logout: vi.fn(),
     })
-    useTheme.mockReturnValue({
-      theme: 'dark',
-      setTheme: vi.fn(),
-      toggle: vi.fn(),
-    })
   })
 
-  it('renders Sign In link when unauthenticated', () => {
+  it('does not render a login link when unauthenticated', () => {
     renderNavbar()
 
-    expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument()
-    expect(screen.queryByText('Sign Out')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /iniciar sesión/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Cerrar sesión')).not.toBeInTheDocument()
     expect(screen.queryByText('U')).not.toBeInTheDocument()
+  })
+
+  it('renders the brand wordmark and no theme toggle', () => {
+    renderNavbar()
+
+    // The brand is a text-only wordmark (no logo image).
+    expect(document.querySelector('img[src="/ticketera-logo.webp"]')).toBeNull()
+    expect(screen.getByRole('link', { name: 'TicketStart' })).toBeInTheDocument()
+    // Light-only MVP: no theme toggle button should be present.
+    expect(
+      screen.queryByRole('button', { name: /cambiar a modo/i })
+    ).not.toBeInTheDocument()
   })
 
   it('renders user dropdown trigger when authenticated', () => {
@@ -59,7 +57,7 @@ describe('Navbar', () => {
 
     expect(screen.getByText('Test User')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /test user/i })).toHaveAttribute('aria-haspopup', 'true')
-    expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /iniciar sesión/i })).not.toBeInTheDocument()
   })
 
   it('closes the dropdown when clicking outside', async () => {
@@ -72,10 +70,10 @@ describe('Navbar', () => {
 
     const trigger = screen.getByRole('button', { name: /test user/i })
     await userEvent.click(trigger)
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
 
     await userEvent.click(document.body)
-    expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
   })
 
   it('toggles scroll shadow class based on window.scrollY', () => {
@@ -115,7 +113,7 @@ describe('Navbar', () => {
       logout: vi.fn(),
     })
     const { rerender } = renderNavbar()
-    expect(screen.queryByRole('link', { name: /scan/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /escanear/i })).not.toBeInTheDocument()
 
     useAuth.mockReturnValue({
       user: { email: 'staff@example.com', name: 'Staff', role: 'Staff' },
@@ -127,6 +125,6 @@ describe('Navbar', () => {
         <Navbar />
       </MemoryRouter>
     )
-    expect(screen.getByRole('link', { name: /scan/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /escanear/i })).toBeInTheDocument()
   })
 })

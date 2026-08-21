@@ -1,8 +1,8 @@
 const variantClasses = {
-  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
-  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
-  error: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400',
-  info: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400',
+  success: 'bg-verde/15 text-verde-dark',
+  warning: 'bg-amarillo/15 text-amarillo-dark',
+  error: 'bg-rose-100 text-rose-700',
+  info: 'bg-cian/15 text-cian-dark',
 }
 
 export default function Badge({ children, variant = 'info', className = '', ...rest }) {

@@ -6,9 +6,9 @@ import { useReducedMotion } from 'framer-motion'
 // for framer-motion compatibility; easings are cubic-bezier arrays.
 
 const DUR = {
-  micro: 0.2,
-  normal: 0.4,
-  slow: 0.6,
+  micro: 0.15,
+  normal: 0.25,
+  slow: 0.3,
 }
 
 const EASE = {

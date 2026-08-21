@@ -1,23 +1,26 @@
 <!doctype html>
-<html lang="es" data-theme="dark">
+<html lang="es" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TicketStart — Tickets Online</title>
 
-    <!-- Google Fonts: Space Grotesk (headings) + Inter (body) -->
+    <link rel="preload" as="image" href="/ticketera-logo.webp" />
+
+    <!-- Google Fonts: Poppins (display) + Inter (body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..700;1,14..32,400..700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..700;1,14..32,400..700&family=Poppins:wght@400;500;600;700;800&family=Bebas+Neue&display=swap"
       rel="stylesheet"
     />
 
-    <!-- FOUC guard: set data-theme BEFORE first paint by reading localStorage -->
+    <!-- FOUC guard: set data-theme BEFORE first paint. Light-only MVP keeps
+         the guard mechanism for future dark mode (brand 2.5). -->
     <script>
       (function () {
-        var t = localStorage.getItem('ticketera-theme') || 'dark';
+        var t = 'light';
         document.documentElement.setAttribute('data-theme', t);
       })();
     </script>

@@ -56,7 +56,7 @@ function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange })
 
         {/* Ticket info */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-heading font-semibold text-text-1">
+          <h3 className="font-display font-semibold text-text-1">
             {ticketType.name}
           </h3>
           <p className="text-brand-1 font-bold text-lg">
@@ -256,7 +256,7 @@ export default function EventDetail() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         className="relative w-full mt-4 mb-10 overflow-hidden rounded-xl"
       >
         {/* Background image */}
@@ -304,7 +304,7 @@ export default function EventDetail() {
 
       {/* Description */}
       <section className="px-4 mb-10">
-        <h2 className="text-xl font-heading font-semibold text-text-1 mb-3">
+        <h2 className="text-xl font-display font-semibold text-text-1 mb-3">
           Descripción
         </h2>
         <p className="text-text-2 leading-relaxed">
@@ -314,7 +314,7 @@ export default function EventDetail() {
 
       {/* Tickets section */}
       <section className="px-4 pb-12">
-        <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
+        <h2 className="text-xl font-display font-semibold text-text-1 mb-4">
           Entradas
         </h2>
 

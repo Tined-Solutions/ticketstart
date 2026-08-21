@@ -101,12 +101,12 @@ export default function Modal({
 
       {/* Content */}
       <div
-        className={`relative bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto z-10 ${className}`}
+        className={`relative bg-white rounded-[var(--radius-card)] shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto z-10 ${className}`}
       >
         {/* Header */}
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <h2 id="modal-title" className="text-lg font-semibold text-gray-900 m-0">
+            <h2 id="modal-title" className="text-lg font-semibold text-gris-oscuro m-0">
               {title}
             </h2>
             <button

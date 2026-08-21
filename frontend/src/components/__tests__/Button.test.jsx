@@ -61,7 +61,15 @@ describe('Button', () => {
   it('applies size classes', () => {
     render(<Button size="lg">Big</Button>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('text-lg')
+    expect(btn.className).toContain('text-base')
+    expect(btn.className).toContain('px-7')
+    expect(btn.className).toContain('py-3')
+  })
+
+  it('applies pill (rounded-full) shape for all sizes', () => {
+    render(<Button>Pill</Button>)
+    const btn = screen.getByRole('button', { name: 'Pill' })
+    expect(btn.className).toContain('rounded-full')
   })
 
   it('uses type="button" by default', () => {

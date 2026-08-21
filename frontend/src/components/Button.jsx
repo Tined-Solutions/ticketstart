@@ -1,23 +1,24 @@
 import { forwardRef } from 'react'
 
 const variantClasses = {
-  primary: 'bg-primary text-primary-content hover:opacity-90 focus-visible:ring-primary',
+  primary:
+    'bg-primary text-primary-content hover:bg-primary-hover focus-visible:ring-primary',
   secondary:
-    'bg-primary/10 text-primary hover:opacity-85 focus-visible:ring-primary',
+    'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary',
   danger:
     'bg-danger text-white hover:opacity-90 focus-visible:ring-danger',
   ghost:
     'bg-transparent text-neutral-700 hover:bg-neutral-100 focus-visible:ring-primary',
   glass:
-    'backdrop-blur-md bg-white/10 border border-white/20 hover:bg-white/20 text-text-1 focus-visible:ring-brand-1',
+    'backdrop-blur-sm bg-white/60 border border-gris-oscuro/15 text-purpura-dark hover:bg-white/80 hover:border-purpura/40 hover:shadow-[0_10px_24px_rgba(74,74,74,0.16)] focus-visible:ring-brand-1',
   gradient:
-    'bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white focus-visible:ring-brand-1',
+    'bg-gradient-to-r from-brand-1 to-brand-2 hover:brightness-95 text-white focus-visible:ring-brand-1',
 }
 
 const sizeClasses = {
-  sm: 'px-3 py-1.5 text-sm rounded',
-  md: 'px-5 py-2.5 text-base rounded-md',
-  lg: 'px-7 py-3.5 text-lg rounded-lg',
+  sm: 'px-4 py-1.5 text-sm rounded-full',
+  md: 'px-6 py-2.5 text-sm rounded-full',
+  lg: 'px-7 py-3 text-base rounded-full',
 }
 
 const Button = forwardRef(function Button(
@@ -40,8 +41,9 @@ const Button = forwardRef(function Button(
       ref={ref}
       type={type}
       disabled={isDisabled}
-      className={`inline-flex items-center justify-center font-medium transition-all
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1
+      className={`group inline-flex items-center justify-center gap-2 font-display font-semibold transition-all duration-300
+        enabled:hover:-translate-y-0.5 enabled:active:translate-y-0
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2
         disabled:opacity-60 disabled:cursor-not-allowed
         ${variantClasses[variant] || variantClasses.primary}
         ${sizeClasses[size] || sizeClasses.md}

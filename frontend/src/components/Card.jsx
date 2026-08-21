@@ -19,7 +19,7 @@ export default function Card({
 
   const baseClasses = glass
     ? 'glass-surface'
-    : 'border border-border rounded-xl bg-surface'
+    : 'border border-border rounded-[var(--radius-card)] bg-surface'
 
   return (
     <div
@@ -32,7 +32,7 @@ export default function Card({
       hidden={hidden}
     >
       {header && (
-        <div className="px-6 py-4 border-b border-border font-semibold text-text-1 font-heading">
+        <div className="px-6 py-4 border-b border-border font-semibold text-text-1 font-display">
           {header}
         </div>
       )}

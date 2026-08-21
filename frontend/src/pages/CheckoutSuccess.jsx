@@ -118,6 +118,10 @@ export default function CheckoutSuccess() {
   }, [preferenceId, queryClient])
 
   useEffect(() => {
+    // Confirming the payment is a one-time side effect on mount that only
+    // updates state after the async request resolves (not synchronously), so
+    // the effect is a legitimate external-system sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     confirmPayment()
   }, [confirmPayment])
 
