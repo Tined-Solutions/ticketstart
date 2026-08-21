@@ -32,7 +32,7 @@ public class AdminPropertyTests : IDisposable
         var logger = LoggerFactory.Create(builder => builder.AddConsole())
             .CreateLogger<AdminService>();
 
-        _adminService = new AdminService(_context, logger);
+        _adminService = new AdminService(_context, logger, TimeProvider.System);
         _auditLogService = new AuditLogService(_context, LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<AuditLogService>());
     }
 
@@ -63,7 +63,7 @@ public class AdminPropertyTests : IDisposable
 
                 using var context = new ApplicationDbContext(options);
                 using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-                var adminService = new AdminService(context, loggerFactory.CreateLogger<AdminService>());
+                var adminService = new AdminService(context, loggerFactory.CreateLogger<AdminService>(), TimeProvider.System);
 
                 context.Users.Add(scenario.Admin);
                 context.Users.AddRange(scenario.Organizers);
@@ -442,7 +442,7 @@ public class AdminPropertyTests : IDisposable
 
                 using var context = new ApplicationDbContext(options);
                 using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-                var adminService = new AdminService(context, loggerFactory.CreateLogger<AdminService>());
+                var adminService = new AdminService(context, loggerFactory.CreateLogger<AdminService>(), TimeProvider.System);
 
                 var eventEntity = CreateEvent(Guid.NewGuid(), "Transitions");
                 eventEntity.Status = startingStatus;

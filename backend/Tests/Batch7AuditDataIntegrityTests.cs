@@ -71,7 +71,7 @@ public class Batch7AuditDataIntegrityTests : IDisposable
         }
         await _context.SaveChangesAsync();
 
-        var adminService = new AdminService(_context, _adminLogger);
+        var adminService = new AdminService(_context, _adminLogger, TimeProvider.System);
 
         // Act: page 2, pageSize 20 → should return items 21-40
         var result = await adminService.GetAllLogsAsync(2, 20);
@@ -426,7 +426,7 @@ public class Batch7AuditDataIntegrityTests : IDisposable
     [Fact]
     public async Task AdminService_HasGetAllLogsAsync_Method()
     {
-        var adminService = new AdminService(_context, _adminLogger);
+        var adminService = new AdminService(_context, _adminLogger, TimeProvider.System);
 
         // Seed some logs
         _context.AuditLogs.Add(new AuditLog

@@ -222,6 +222,32 @@ public class ErrorHandlingPropertyTests
         Assert.Contains("no longer purchasable", problem.Detail);
     }
 
+    /// <summary>
+    /// ADR-5 Option (a) fallback for the past-event mutation guard: an escaped
+    /// <see cref="EventFinalizedException"/> MUST produce the same spec-compliant
+    /// ProblemDetails as the controller catch — 409 with type "event-finalized"
+    /// and title "Event has already finished" (PEM-002).
+    /// </summary>
+    [Fact]
+    public void GlobalExceptionHandler_EventFinalizedException_PayloadHasTypeEventFinalized()
+    {
+        var logger = new CollectingLogger<GlobalExceptionHandler>();
+        var handler = new GlobalExceptionHandler(logger);
+        var context = CreateHttpContext("/api/events", "PUT");
+        var exception = new EventFinalizedException();
+
+        var handled = handler.TryHandleAsync(context, exception, CancellationToken.None).AsTask().Result;
+        var problem = ReadResponseBody<ProblemDetails>(context);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        Assert.NotNull(problem);
+        Assert.Equal(409, problem!.Status);
+        Assert.Equal("event-finalized", problem.Type);
+        Assert.Equal("Event has already finished", problem.Title);
+        Assert.Contains("no longer be modified", problem.Detail);
+    }
+
     [Fact]
     public void Property47d_OperationCanceled_WithCancelledToken_ReturnsTrueWithoutWriting()
     {
