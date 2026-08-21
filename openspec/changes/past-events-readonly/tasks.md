@@ -33,10 +33,10 @@ Chain strategy: pending
 
 ## Phase 2: Backend Service Guards (TDD)
 
-- [ ] 2.1 RED: Create `backend/Tests/EventServiceImmutabilityTests.cs` (InMemory + FakeTimeProvider frozen T, seed T-2d): Update/Delete/ReplaceImage/AddTicketStock/AddTicketType throw `EventFinalizedException`, DB unchanged, `Verify(EnqueueAsync, Never)` for Update (PEM-002/003).
-- [ ] 2.2 RED: Create `backend/Tests/AdminServiceTests.cs`: Approve/Reject throw on past + no status flip; future still flips (EA-003/004).
-- [ ] 2.3 GREEN: `backend/Services/EventService.cs` — call guard after ownership/before write: UpdateEventAsync(:458), DeleteEventAsync(:585), ReplaceEventImageAsync(:727), AddTicketStockAsync(:290, inside FOR UPDATE txn), AddTicketTypeAsync(:368).
-- [ ] 2.4 GREEN: `backend/Services/AdminService.cs` — add `TimeProvider` ctor param (D-8); guard in ApproveEventAsync(:104), RejectEventAsync(:121) after load. Program.cs unchanged.
+- [x] 2.1 RED: Create `backend/Tests/EventServiceImmutabilityTests.cs` (InMemory + FakeTimeProvider frozen T, seed T-2d): Update/Delete/ReplaceImage/AddTicketStock/AddTicketType throw `EventFinalizedException`, DB unchanged, `Verify(EnqueueAsync, Never)` for Update (PEM-002/003).
+- [x] 2.2 RED: Create `backend/Tests/AdminServiceTests.cs`: Approve/Reject throw on past + no status flip; future still flips (EA-003/004).
+- [x] 2.3 GREEN: `backend/Services/EventService.cs` — call guard after ownership/before write: UpdateEventAsync(:458), DeleteEventAsync(:585), ReplaceEventImageAsync(:727), AddTicketStockAsync(:290, inside FOR UPDATE txn), AddTicketTypeAsync(:368).
+- [x] 2.4 GREEN: `backend/Services/AdminService.cs` — add `TimeProvider` ctor param (D-8); guard in ApproveEventAsync(:104), RejectEventAsync(:121) after load. Program.cs unchanged.
 
 ## Phase 3: Controllers + Middleware (TDD)
 

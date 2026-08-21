@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
+using TicketeraOnline.Api.Services.Guards;
 
 namespace TicketeraOnline.Api.Services;
 
@@ -12,11 +13,13 @@ public class AdminService : IAdminService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AdminService> _logger;
+    private readonly TimeProvider _clock;
 
-    public AdminService(ApplicationDbContext context, ILogger<AdminService> logger)
+    public AdminService(ApplicationDbContext context, ILogger<AdminService> logger, TimeProvider timeProvider)
     {
         _context = context;
         _logger = logger;
+        _clock = timeProvider;
     }
 
     /// <summary>
@@ -106,6 +109,10 @@ public class AdminService : IAdminService
         var eventEntity = await _context.Events.FindAsync(eventId)
             ?? throw new KeyNotFoundException($"Event {eventId} not found");
 
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // the status flip + SaveChanges, so no audit-worthy mutation can occur.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
+
         eventEntity.Status = EventStatus.Approved;
         await _context.SaveChangesAsync();
 
@@ -122,6 +129,10 @@ public class AdminService : IAdminService
     {
         var eventEntity = await _context.Events.FindAsync(eventId)
             ?? throw new KeyNotFoundException($"Event {eventId} not found");
+
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // the status flip + SaveChanges, so no audit-worthy mutation can occur.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         eventEntity.Status = EventStatus.Rejected;
         await _context.SaveChangesAsync();
