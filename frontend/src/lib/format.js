@@ -16,6 +16,9 @@ export function formatEventDate(dateString) {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    // es-AR defaults to h12 (e.g. "05:00 p. m."); force 24h for consistency
+    // across the app (StaffScan and email templates already use 24h).
+    hour12: false,
   })
 }
 
