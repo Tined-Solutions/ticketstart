@@ -12,7 +12,6 @@ import DropdownMenu from '../components/ui/DropdownMenu.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
-import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
 import { fadeIn } from '../lib/motion.js'
 
 // Shared hover treatment for the row action buttons (same classes as
@@ -32,10 +31,6 @@ export default function OrganizerDashboard() {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleting, setDeleting] = useState(false)
-  const [feedback, setFeedback] = useState({ type: '', message: '' })
 
   const loadMetrics = useCallback((controller) => {
     apiClient
@@ -66,40 +61,6 @@ export default function OrganizerDashboard() {
     loadMetrics(controller)
   }
 
-  const handleDeleteClick = (event) => {
-    setFeedback({ type: '', message: '' })
-    setDeleteTarget(event)
-  }
-
-  const handleDeleteCancel = () => {
-    setDeleteTarget(null)
-  }
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return
-
-    setDeleting(true)
-    setFeedback({ type: '', message: '' })
-
-    try {
-      await apiClient.delete(`/events/${deleteTarget.eventId}`)
-      setFeedback({
-        type: 'success',
-        message: `Evento "${deleteTarget.eventName}" eliminado correctamente`,
-      })
-
-      // Remove from local state immediately
-      setMetrics((prev) =>
-        prev.filter((m) => m.eventId !== deleteTarget.eventId)
-      )
-    } catch (err) {
-      setFeedback({ type: 'error', message: getErrorMessage(err) })
-    } finally {
-      setDeleting(false)
-      setDeleteTarget(null)
-    }
-  }
-
   // Display copy: upcoming events first (soonest-to-start at the very top),
   // then already-ended (past) events sorted descending so the OLDEST ended
   // event is last. Does NOT mutate `metrics` — the header count reads the
@@ -126,19 +87,6 @@ export default function OrganizerDashboard() {
         </h1>
         <p className="text-text-2 text-center">Gestiona tus eventos y consulta las metricas</p>
       </header>
-
-      {feedback.message && (
-        <div
-          className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
-            feedback.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-          }`}
-          role={feedback.type === 'error' ? 'alert' : 'status'}
-        >
-          {feedback.message}
-        </div>
-      )}
 
       {loading ? (
         <GlassCard className="py-12">
@@ -245,38 +193,26 @@ export default function OrganizerDashboard() {
                       >
                         Ver
                       </Button>
-                      <DropdownMenu
-                        triggerLabel="Acciones"
-                        align="right"
-                        items={[
-                          {
-                            label: 'Metricas',
-                            ariaLabel: `Ver metricas de ${m.eventName}`,
-                            onClick: () => navigate(`/organizer/events/${m.eventId}/metrics`),
-                          },
-                          // EA-009: organizers never see Editar; admins do
-                          // (disabled on past events per PEM-002).
-                          ...(canEdit
-                            ? [
-                                {
-                                  label: 'Editar',
-                                  ariaLabel: `Editar ${m.eventName}`,
-                                  onClick: () => navigate(`/organizer/events/${m.eventId}`),
-                                  disabled: isPast,
-                                  title: isPast ? readonlyTitle : undefined,
-                                },
-                              ]
-                            : []),
-                          {
-                            label: 'Eliminar',
-                            ariaLabel: `Eliminar ${m.eventName}`,
-                            onClick: () => handleDeleteClick(m),
-                            disabled: isPast,
-                            variant: 'danger',
-                            title: isPast ? readonlyTitle : undefined,
-                          },
-                        ]}
-                      />
+                      {/* ED-001/EHE-006 (D-4): the kebab only exists for admins —
+                          organizers would otherwise get a dead trigger opening an
+                          empty panel. It narrows to Editar: Metricas (page removed)
+                          and Eliminar (Admin-only via the backend service guard)
+                          are gone for every row regardless of status. */}
+                      {canEdit && (
+                        <DropdownMenu
+                          triggerLabel="Acciones"
+                          align="right"
+                          items={[
+                            {
+                              label: 'Editar',
+                              ariaLabel: `Editar ${m.eventName}`,
+                              onClick: () => navigate(`/organizer/events/${m.eventId}`),
+                              disabled: isPast,
+                              title: isPast ? readonlyTitle : undefined,
+                            },
+                          ]}
+                        />
+                      )}
                     </div>
                   </div>
                 )
@@ -284,15 +220,6 @@ export default function OrganizerDashboard() {
             </div>
           )}
         </GlassCard>
-      )}
-
-      {deleteTarget && (
-        <DeleteConfirmationDialog
-          eventName={deleteTarget.eventName}
-          onConfirm={handleDeleteConfirm}
-          onCancel={handleDeleteCancel}
-          deleting={deleting}
-        />
       )}
     </motion.div>
   )

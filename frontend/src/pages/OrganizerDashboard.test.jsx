@@ -5,7 +5,6 @@ import OrganizerDashboard from './OrganizerDashboard.jsx'
 
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
-const mockDelete = vi.fn()
 const mockUseAuth = vi.fn()
 
 vi.mock('react-router-dom', () => ({
@@ -15,7 +14,6 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/client.js', () => ({
   default: {
     get: (...args) => mockGet(...args),
-    delete: (...args) => mockDelete(...args),
   },
 }))
 
@@ -82,7 +80,6 @@ describe('OrganizerDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
-    mockDelete.mockReset()
     mockNavigate.mockReset()
     mockUseAuth.mockReset()
     // Default: organizer role — Editar hidden (EA-009 UI-only)
@@ -242,36 +239,28 @@ describe('OrganizerDashboard', () => {
 
   // ── Dropdown actions ───────────────────────────────────────────────
 
-  it('"Metricas" menu item navigates to the event metrics page', async () => {
+  it('shows no Acciones kebab for organizers: no Eliminar/Metricas entries, Ver stays (ED-001/EHE-006)', async () => {
     render(<OrganizerDashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    await openActionsMenu('recital de rock nacional')
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /ver metricas de recital de rock nacional/i })
-    )
-    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-1/metrics')
-  })
-
-  it('hides Editar for organizers, everywhere (EA-009)', async () => {
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
-    })
-
-    // No visible Editar button outside menus
+    // EA-009: still no visible Editar button outside menus
     expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument()
 
-    // And no Editar menuitem inside the kebab menu
-    await openActionsMenu('recital de rock nacional')
-    expect(screen.queryByRole('menuitem', { name: /editar/i })).not.toBeInTheDocument()
-    // Metricas + Eliminar remain for organizers
-    expect(screen.getByRole('menuitem', { name: /ver metricas de recital de rock nacional/i })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /eliminar recital de rock nacional/i })).toBeInTheDocument()
+    // ED-001/D-4: the kebab is gone entirely for organizers — a dead trigger
+    // opening an empty panel is broken UX
+    const recitalRow = eventRow('recital de rock nacional')
+    expect(within(recitalRow).queryByRole('button', { name: /^acciones/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^acciones/i })).not.toBeInTheDocument()
+
+    // Eliminar / Metricas are removed change-wide for every role and status
+    expect(screen.queryByRole('menuitem', { name: /eliminar/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /ver metricas/i })).not.toBeInTheDocument()
+
+    // "Ver" remains available (standalone button, untouched)
+    expect(within(recitalRow).getByRole('button', { name: /ver recital de rock nacional/i })).toBeEnabled()
   })
 
   it('shows Editar menuitem for admins and navigates to edit (EA-009)', async () => {
@@ -284,6 +273,12 @@ describe('OrganizerDashboard', () => {
     })
 
     await openActionsMenu('recital de rock nacional')
+
+    // ED-001/EHE-006: the admin kebab narrows to Editar only — Metricas and
+    // Eliminar are removed for every row regardless of role
+    expect(screen.queryByRole('menuitem', { name: /ver metricas de recital de rock nacional/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /eliminar recital de rock nacional/i })).not.toBeInTheDocument()
+
     await userEvent.click(
       await screen.findByRole('menuitem', { name: /editar recital de rock nacional/i })
     )
@@ -291,6 +286,9 @@ describe('OrganizerDashboard', () => {
   })
 
   it('kebab menu opens with a high z-index panel (not clipped by the row below)', async () => {
+    // The kebab survives only for admins (ED-001/D-4) — their menu still
+    // exercises the z-index-over-sibling-rows behavior.
+    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
     render(<OrganizerDashboard />)
 
     await waitFor(() => {
@@ -306,112 +304,9 @@ describe('OrganizerDashboard', () => {
   })
 
   // ── Delete flow ────────────────────────────────────────────────────
-
-  it('Eliminar menu item opens the confirmation dialog', async () => {
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
-    })
-
-    await openActionsMenu('feria de emprendedores')
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /eliminar feria de emprendedores/i })
-    )
-
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText(/confirmar eliminación/i)).toBeInTheDocument()
-    expect(within(dialog).getByText(/feria de emprendedores/i)).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /cancelar/i })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /^eliminar$/i })).toBeInTheDocument()
-  })
-
-  it('cancel button closes the dialog without calling DELETE', async () => {
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
-    })
-
-    await openActionsMenu('feria de emprendedores')
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /eliminar feria de emprendedores/i })
-    )
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: /cancelar/i }))
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(mockDelete).not.toHaveBeenCalled()
-  })
-
-  it('confirm delete sends DELETE, removes the row and shows success feedback', async () => {
-    mockDelete.mockResolvedValue({})
-
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
-    })
-
-    await openActionsMenu('workshop de fotografia')
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /eliminar workshop de fotografia/i })
-    )
-
-    const dialog = screen.getByRole('dialog')
-    const confirmBtn = within(dialog).getByRole('button', { name: /^eliminar$/i })
-    await userEvent.click(confirmBtn)
-
-    await waitFor(() => {
-      expect(mockDelete).toHaveBeenCalledWith('/events/event-3')
-    })
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/workshop de fotografia.*eliminado correctamente/i)
-      ).toBeInTheDocument()
-    })
-
-    // Event should be removed from the list (its name heading disappears)
-    await waitFor(() => {
-      expect(
-        screen.queryAllByRole('heading', { name: /workshop de fotografia/i })
-      ).toHaveLength(0)
-    })
-  })
-
-  it('shows delete error feedback and keeps the row when the API call fails', async () => {
-    mockDelete.mockRejectedValue({
-      response: { data: { error: { message: 'No autorizado' } } },
-    })
-
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
-    })
-
-    await openActionsMenu('recital de rock nacional')
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /eliminar recital de rock nacional/i })
-    )
-
-    const dialog = screen.getByRole('dialog')
-    const confirmBtn = within(dialog).getByRole('button', { name: /^eliminar$/i })
-    await userEvent.click(confirmBtn)
-
-    await waitFor(() => {
-      expect(screen.getByText(/no autorizado/i)).toBeInTheDocument()
-    })
-
-    // Dialog should be closed even on error
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-
-    // Event should still be in the list
-    expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
-  })
+  // Removed with ED-001/EHE-006: the dashboard delete flow is gone entirely
+  // (no Eliminar entry, no DeleteConfirmationDialog usage on this page). The
+  // shared dialog itself survives via AdminPanel (ED-003, AdminPanel.test.jsx).
 
   // ── Past events: read-only (PEM-002) ────────────────────────────────
 
@@ -448,16 +343,15 @@ describe('OrganizerDashboard', () => {
     await userEvent.click(verBtn)
     expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-past/view')
 
-    // Kebab: Editar/Eliminar disabled with the readonly title
+    // Kebab (admin): Editar disabled with the readonly title; Eliminar and
+    // Metricas no longer exist on ANY row — past rows included (PEC-004
+    // metricas-absent-past-row, ED-001 change-wide removal)
     await openActionsMenu('concierto pasado')
     const editarItem = await screen.findByRole('menuitem', { name: /editar concierto pasado/i })
     expect(editarItem).toBeDisabled()
     expect(editarItem).toHaveAttribute('title', 'Evento finalizado — solo lectura')
-    const eliminarItem = screen.getByRole('menuitem', { name: /eliminar concierto pasado/i })
-    expect(eliminarItem).toBeDisabled()
-    expect(eliminarItem).toHaveAttribute('title', 'Evento finalizado — solo lectura')
-    // Metricas stays enabled for past events (read-only page)
-    expect(screen.getByRole('menuitem', { name: /ver metricas de concierto pasado/i })).toBeEnabled()
+    expect(screen.queryByRole('menuitem', { name: /eliminar concierto pasado/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /ver metricas de concierto pasado/i })).not.toBeInTheDocument()
   })
 
   // ── Sort order ─────────────────────────────────────────────────────
@@ -511,7 +405,6 @@ describe('OrganizerDashboard — Visual Regression', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
-    mockDelete.mockReset()
     mockNavigate.mockReset()
     mockUseAuth.mockReset()
     mockUseAuth.mockReturnValue({ user: { role: 'Organizador' } })
