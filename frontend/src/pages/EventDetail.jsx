@@ -5,111 +5,8 @@ import { useEvent } from '../hooks/useEvent.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
-import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
-
-function TicketTypeRow({ ticketType, isSelected, quantity, onSelect, onChange }) {
-  const available = ticketType.available ?? ticketType.quantity ?? 0
-  const isSoldOut = available <= 0
-
-  return (
-    <>
-      {/* Hidden radio input for accessibility + test compatibility. Kept as a
-          preceding sibling of the card so `peer-focus-visible` on the card
-          shows a visible focus ring when the radio is focused via keyboard. */}
-      <input
-        type="radio"
-        name="ticket-type"
-        id={`ticket-type-${ticketType.id}`}
-        value={ticketType.id}
-        checked={isSelected}
-        onChange={() => onSelect(ticketType.id)}
-        disabled={isSoldOut}
-        aria-label={`Seleccionar ${ticketType.name}`}
-        className="sr-only peer"
-      />
-      <GlassCard
-        className={`ticket-type-row peer-focus-visible:ring-2 peer-focus-visible:ring-brand-1 cursor-pointer transition-all border-2 ${
-          isSelected
-            ? 'border-brand-1 bg-brand-1/5 ticket-type-row-selected'
-            : 'border-transparent hover:border-white/10'
-        }`}
-        onClick={() => !isSoldOut && onSelect(ticketType.id)}
-      >
-        <div className="flex items-center gap-4">
-          {/* Visual radio indicator */}
-        <label
-          htmlFor={`ticket-type-${ticketType.id}`}
-          className="sr-only"
-        >
-          {ticketType.name}
-        </label>
-        <div
-          className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-            isSelected
-              ? 'border-brand-1 bg-brand-1'
-              : 'border-white/30'
-          }`}
-        >
-          {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-        </div>
-
-        {/* Ticket info */}
-        <div className="flex-1 min-w-0">
-          <h3 className="font-display font-semibold text-text-1">
-            {ticketType.name}
-          </h3>
-          <p className="text-brand-1 font-bold text-lg">
-            {formatCurrency(ticketType.price)}
-          </p>
-          <p className="text-text-2 text-sm">
-            {isSoldOut
-              ? 'Agotado'
-              : `${available} disponibles de ${ticketType.quantity}`}
-          </p>
-        </div>
-
-        {/* Quantity controls */}
-        {isSelected && !isSoldOut && (
-          <div
-            className="flex items-center gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              aria-label={`Disminuir cantidad de ${ticketType.name}`}
-              onClick={() => onChange(Math.max(1, quantity - 1))}
-              disabled={quantity <= 1}
-              className="w-11 h-11 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              −
-            </button>
-            <span
-              aria-live="polite"
-              className="w-8 text-center font-semibold text-text-1 tabular-nums"
-            >
-              {quantity}
-            </span>
-            <button
-              type="button"
-              aria-label={`Aumentar cantidad de ${ticketType.name}`}
-              onClick={() => onChange(Math.min(available, quantity + 1))}
-              disabled={quantity >= available}
-              className="w-11 h-11 rounded-full glass-surface flex items-center justify-center text-text-1 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              +
-            </button>
-          </div>
-        )}
-
-        {isSoldOut && (
-          <Badge variant="error">Agotado</Badge>
-        )}
-        </div>
-      </GlassCard>
-    </>
-  )
-}
+import TicketTypeTicket from '../components/events/TicketTypeTicket.jsx'
 
 // ─── Loading skeleton ────────────────────────────────────────────────────
 
@@ -122,15 +19,16 @@ function DetailSkeleton() {
       </div>
 
       {/* Ticket type skeletons */}
-      <div className="space-y-4">
+      <div className="grid grid-cols-[repeat(auto-fit,10.625rem)] justify-start gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <GlassCard key={i} className="p-4">
-            <div className="flex items-center gap-4">
-              <Skeleton width="20px" height="20px" variant="circular" />
-              <div className="flex-1 space-y-2">
-                <Skeleton width="40%" height="20px" variant="text" />
-                <Skeleton width="30%" height="16px" variant="text" />
-              </div>
+          <GlassCard key={i} className="rounded-none border-gris-oscuro/25 bg-[#f7f0fa] p-0 mx-auto w-full max-w-[170px]">
+            <div className="space-y-3 p-4 text-center">
+              <Skeleton width="50%" height="12px" variant="text" />
+              <Skeleton width="70%" height="20px" variant="text" />
+              <Skeleton width="40%" height="28px" variant="text" />
+            </div>
+            <div className="space-y-2 px-4 pb-4 text-center">
+              <Skeleton width="60%" height="14px" variant="text" />
             </div>
           </GlassCard>
         ))}
@@ -148,7 +46,7 @@ export default function EventDetail() {
   const { data: event, isLoading, isError, error, refetch } = useEvent(id)
 
   const [selectedTicketTypeId, setSelectedTicketTypeId] = useState(null)
-  const [quantity, setQuantity] = useState(0)
+  const [quantities, setQuantities] = useState({})
 
   const errorMessage = isError
     ? error?.response?.status === 404
@@ -159,25 +57,35 @@ export default function EventDetail() {
     : ''
 
   const handleSelectTicketType = (ticketTypeId) => {
+    // Clicking the already-chosen ticket keeps its quantity — cancelling is
+    // only possible via the decrement button down to 0.
+    if (selectedTicketTypeId === ticketTypeId) return
     setSelectedTicketTypeId(ticketTypeId)
-    setQuantity((prev) => (prev > 0 ? prev : 1))
+    setQuantities((prev) => (prev[ticketTypeId] ? prev : { ...prev, [ticketTypeId]: 1 }))
   }
 
-  const updateQuantity = (nextQuantity) => {
-    setQuantity(nextQuantity)
+  const updateQuantity = (ticketTypeId, nextQuantity) => {
+    if (nextQuantity <= 0) {
+      // Dropping to 0 cancels that ticket's selection.
+      setQuantities((prev) => ({ ...prev, [ticketTypeId]: 0 }))
+      if (selectedTicketTypeId === ticketTypeId) {
+        setSelectedTicketTypeId(null)
+      }
+      return
+    }
+    setQuantities((prev) => ({ ...prev, [ticketTypeId]: nextQuantity }))
   }
 
   const selectedTicketType = event?.ticketTypes?.find(
     (ticketType) => ticketType.id === selectedTicketTypeId
   )
+  const selectedQuantity = selectedTicketTypeId ? quantities[selectedTicketTypeId] || 0 : 0
 
-  const totalTickets = selectedTicketTypeId ? quantity : 0
-  const totalPrice = selectedTicketType
-    ? quantity * (selectedTicketType.price || 0)
-    : 0
+  const totalTickets = selectedQuantity
+  const totalPrice = selectedTicketType ? selectedQuantity * (selectedTicketType.price || 0) : 0
 
   const handleReserve = () => {
-    if (!selectedTicketType || quantity === 0) return
+    if (!selectedTicketType || selectedQuantity === 0) return
 
     navigate('/checkout', {
       state: {
@@ -190,7 +98,7 @@ export default function EventDetail() {
           ticketTypeId: selectedTicketType.id,
           name: selectedTicketType.name,
           price: selectedTicketType.price,
-          quantity,
+          quantity: selectedQuantity,
         },
         totalTickets,
         totalPrice,
@@ -324,27 +232,31 @@ export default function EventDetail() {
           </GlassCard>
         ) : (
           <>
-            <div className="space-y-3">
+            <div className="grid grid-cols-[repeat(auto-fit,10.625rem)] justify-start gap-3">
               {event.ticketTypes.map((ticketType) => (
-                <TicketTypeRow
+                <TicketTypeTicket
                   key={ticketType.id}
                   ticketType={ticketType}
                   isSelected={selectedTicketTypeId === ticketType.id}
-                  quantity={quantity}
+                  quantity={quantities[ticketType.id] || 0}
                   onSelect={handleSelectTicketType}
-                  onChange={updateQuantity}
+                  onChange={(nextQuantity) => updateQuantity(ticketType.id, nextQuantity)}
                 />
               ))}
             </div>
 
-            {/* Reservation summary — always visible, button disabled when no selection */}
+            {/* Reservation summary — always visible, button disabled when no selection.
+            TODO: "Entradas seleccionadas" — el resumen solo refleja el tipo de
+            entrada activo; con las cantidades por tipo (chips en las cards) falta
+            mostrar el detalle completo de todas las selecciones o soportar
+            multi-selección real (la reserva backend es single-type por ahora). */}
             <div className="mt-6">
               <GlassCard className="p-4 md:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <p className="text-text-2 text-sm">Entradas seleccionadas</p>
                     <p className="text-text-1 font-semibold">
-                      {selectedTicketTypeId && quantity > 0
+                      {selectedTicketTypeId && selectedQuantity > 0
                         ? `${totalTickets} × ${selectedTicketType?.name}`
                         : 'Ninguna'}
                     </p>
@@ -361,7 +273,7 @@ export default function EventDetail() {
                   size="lg"
                   className="w-full mt-4 sm:mt-0 sm:w-auto sm:self-end"
                   onClick={handleReserve}
-                  disabled={!selectedTicketType || quantity === 0}
+                  disabled={!selectedTicketType || selectedQuantity === 0}
                 >
                   Reservar entradas
                 </Button>
