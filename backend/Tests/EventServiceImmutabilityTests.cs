@@ -176,16 +176,34 @@ public class EventServiceImmutabilityTests : IDisposable
     #region PEM-002/003 — DeleteEventAsync
 
     [Fact]
-    public async Task DeleteEventAsync_PastEvent_ThrowsEventFinalized_EventStillPresent()
+    public async Task DeleteEventAsync_PastEvent_Organizer_ThrowsUnauthorizedAccessException_EventStillPresent()
     {
+        // ED-001 precedence: the Admin-only delete guard runs BEFORE the finalized
+        // guard — an organizer gets 403 (UnauthorizedAccessException) on a past
+        // event, NEVER 409. (Inverted former owner-delete 409 behavior; the admin
+        // variant below keeps the PEM-002 409 contract.)
         // GIVEN a past event owned by the caller
         var evt = await SeedPastEvent();
         var service = CreateService();
 
-        // WHEN deletion is attempted
-        // THEN it throws EventFinalizedException and the row is NOT removed
-        await Assert.ThrowsAsync<EventFinalizedException>(() =>
+        // WHEN deletion is attempted by the organizer
+        // THEN it throws UnauthorizedAccessException (403, not 409) and the row is NOT removed
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.DeleteEventAsync(evt.Id, _organizerId, UserRole.Organizador));
+
+        Assert.True(await _context.Events.AnyAsync(e => e.Id == evt.Id));
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_PastEvent_Admin_ThrowsEventFinalized_EventStillPresent()
+    {
+        // ED-002: Admin delete authority is unchanged — a past event still hits the
+        // PEM-002 finalized guard and throws EventFinalizedException (409), row kept.
+        var evt = await SeedPastEvent();
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<EventFinalizedException>(() =>
+            service.DeleteEventAsync(evt.Id, Guid.NewGuid(), UserRole.Admin));
 
         Assert.True(await _context.Events.AnyAsync(e => e.Id == evt.Id));
     }

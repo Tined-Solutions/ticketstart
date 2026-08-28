@@ -61,14 +61,15 @@ public interface IEventService
     Task<Event> UpdateEventAsync(Guid eventId, UpdateEventRequest request, Guid userId, UserRole userRole);
 
     /// <summary>
-    /// Deletes an event with ownership validation and image cleanup.
-    /// Only the event owner or Admin role can delete events.
-    /// Removes associated images from storage.
+    /// Deletes an event with image cleanup (ED-001: Admin-only authority).
+    /// Only users with the Admin role can delete events — organizers are rejected
+    /// for ANY event regardless of status or age. The check runs before the
+    /// finalized-event guard, so an organizer never receives 409 from delete.
     /// </summary>
     /// <param name="eventId">ID of the event to delete</param>
-    /// <param name="userId">ID of the user attempting the deletion</param>
+    /// <param name="userId">ID of the user attempting the deletion (logging only)</param>
     /// <param name="userRole">Role of the user attempting the deletion</param>
-    /// <exception cref="UnauthorizedAccessException">Thrown when user is not the owner and not an Admin</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when the user is not an Admin (ED-001)</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event is not found</exception>
     Task DeleteEventAsync(Guid eventId, Guid userId, UserRole userRole);
 

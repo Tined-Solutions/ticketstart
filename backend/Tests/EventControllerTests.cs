@@ -463,6 +463,53 @@ public class EventControllerTests
 
     #endregion
 
+    #region ED-001 — Organizer delete rejected for any status → 403 (WAF)
+
+    [Fact]
+    public async Task DeleteEvent_OrganizerActiveEvent_403()
+    {
+        // ED-001: organizer deletes their own Approved future event → 403 Forbidden
+        // (EventOwnership lets the request reach the service; the Admin-only guard
+        // rejects it there) and the event survives.
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Active Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(2), organizerId, EventStatus.Approved);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.DeleteAsync($"/api/events/{eventId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var after = await client.GetAsync($"/api/events/{eventId}/manage");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteEvent_OrganizerPastEvent_403_Not409()
+    {
+        // ED-001 precedence: organizer + past event → 403 from the Admin-only guard,
+        // NOT 409 event-finalized (authorization is decided before the finalized guard).
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var pastId = factory.SeedEvent("Past Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.DeleteAsync($"/api/events/{pastId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // A bare Forbid() carries no problem+json body — a problem+json content type
+        // here would mean the PEM-002 409 path fired, which ED-001 forbids.
+        Assert.NotEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+
+        var after = await client.GetAsync($"/api/events/{pastId}/manage");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+    }
+
+    #endregion
+
     #region PEM-002 — Past-event mutation endpoints → 409 event-finalized (WAF)
 
     private static async Task<ProblemDetails?> ReadProblemDetailsAsync(HttpResponseMessage response)
@@ -514,11 +561,14 @@ public class EventControllerTests
     [Fact]
     public async Task DeleteEvent_PastEvent_409_EventFinalized()
     {
-        // PEM-002: DELETE on a past event → 409; the row survives.
+        // PEM-002 (ED-002): an ADMIN deleting a past event → 409; the row survives.
+        // (The organizer half is covered by DeleteEvent_OrganizerPastEvent_403_Not409
+        // — organizers are rejected by the ED-001 guard before the finalized guard.)
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
+        var adminId = factory.SeedAdmin();
         var pastId = factory.SeedEvent("Past To Delete", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
-        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
         using var client = factory.CreateClientWithCookie(cookie);
         client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
 

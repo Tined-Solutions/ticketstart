@@ -451,7 +451,7 @@ public class ImageStoragePropertyTests : IDisposable
         Assert.Equal(imageUrl, createdEvent.ImageUrl);
 
         // Act - Delete the event
-        await eventService.DeleteEventAsync(createdEvent.Id, organizerId, UserRole.Organizador);
+        await eventService.DeleteEventAsync(createdEvent.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert - Event should be deleted from database
         var deletedEvent = await _context.Events.FindAsync(createdEvent.Id);
@@ -532,7 +532,7 @@ public class ImageStoragePropertyTests : IDisposable
         // Act - Delete all events
         foreach (var evt in createdEvents)
         {
-            await eventService.DeleteEventAsync(evt.Id, organizerId, UserRole.Organizador);
+            await eventService.DeleteEventAsync(evt.Id, Guid.NewGuid(), UserRole.Admin);
         }
 
         // Assert - All events should be deleted
@@ -596,7 +596,7 @@ public class ImageStoragePropertyTests : IDisposable
         Assert.True(string.IsNullOrWhiteSpace(createdEvent.ImageUrl));
 
         // Act - Delete the event (should not fail)
-        await eventService.DeleteEventAsync(createdEvent.Id, organizerId, UserRole.Organizador);
+        await eventService.DeleteEventAsync(createdEvent.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert - Event should be deleted
         var deletedEvent = await _context.Events.FindAsync(createdEvent.Id);
@@ -647,7 +647,7 @@ public class ImageStoragePropertyTests : IDisposable
         var createdEvent = await eventService.CreateEventAsync(createRequest, organizerId);
 
         // Act - Delete the event
-        await eventService.DeleteEventAsync(createdEvent.Id, organizerId, UserRole.Organizador);
+        await eventService.DeleteEventAsync(createdEvent.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert - Event should be deleted
         var deletedEvent = await _context.Events.FindAsync(createdEvent.Id);
@@ -703,7 +703,7 @@ public class ImageStoragePropertyTests : IDisposable
         var createdEvent = await eventService.CreateEventAsync(createRequest, organizerId);
 
         // Act - Delete should NOT throw even though S3 delete fails
-        await eventService.DeleteEventAsync(createdEvent.Id, organizerId, UserRole.Organizador);
+        await eventService.DeleteEventAsync(createdEvent.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert - Event should still be deleted from database
         var deletedEvent = await _context.Events.FindAsync(createdEvent.Id);

@@ -648,8 +648,11 @@ public class EventServiceTests : IDisposable
     #region DeleteEventAsync Tests
 
     [Fact]
-    public async Task DeleteEventAsync_ByOwner_DeletesEvent()
+    public async Task DeleteEventAsync_ByOwnerOrganizer_Pending_ThrowsUnauthorizedAccessException_RowPresent()
     {
+        // ED-001: deletion is Admin-only — even the event's organizer-owner is
+        // rejected for ANY status (Pending included) and the row must survive.
+        // (Inverted former owner-delete success; spec event-deletion draft-403.)
         // Arrange
         var organizerId = Guid.NewGuid();
         var eventEntity = new Event
@@ -661,18 +664,20 @@ public class EventServiceTests : IDisposable
             Location = "Test Location",
             OrganizerId = organizerId,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            Status = EventStatus.Pending
         };
 
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        // Act
-        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador));
 
-        // Assert
-        var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
-        Assert.Null(deletedEvent);
+        // The rejection must leave the event row in place (no side effects)
+        var stillThere = await _context.Events.FindAsync(eventEntity.Id);
+        Assert.NotNull(stillThere);
     }
 
     [Fact]
@@ -702,6 +707,65 @@ public class EventServiceTests : IDisposable
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.Null(deletedEvent);
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_OrganizerRejected_NoImageCleanup()
+    {
+        // ED-001: an organizer's rejected delete must be side-effect free —
+        // the R2 image cleanup must never even be attempted.
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            ImageUrl = "https://test.r2.dev/events/test-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = EventStatus.Pending
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador));
+
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_Organizer_ApprovedFutureEvent_ThrowsUnauthorizedAccessException()
+    {
+        // ED-001: organizer + Approved future event → rejection is
+        // status-independent (active-event half of the spec).
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = EventStatus.Approved
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador));
     }
 
     [Fact]
@@ -763,8 +827,8 @@ public class EventServiceTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        // Act
-        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+        // Act (ED-001: delete authority is Admin-only — role switched from organizer)
+        await _eventService.DeleteEventAsync(eventEntity.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
@@ -799,8 +863,8 @@ public class EventServiceTests : IDisposable
             .Callback<DeleteObjectRequest, CancellationToken>((req, ct) => capturedRequest = req)
             .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
 
-        // Act
-        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+        // Act (ED-001: delete authority is Admin-only — role switched from organizer)
+        await _eventService.DeleteEventAsync(eventEntity.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
@@ -836,8 +900,8 @@ public class EventServiceTests : IDisposable
             .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
             .ThrowsAsync(new AmazonS3Exception("Delete failed"));
 
-        // Act
-        await _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador);
+        // Act (ED-001: delete authority is Admin-only — role switched from organizer)
+        await _eventService.DeleteEventAsync(eventEntity.Id, Guid.NewGuid(), UserRole.Admin);
 
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);

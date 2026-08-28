@@ -186,6 +186,10 @@ public class EventController : TicketeraControllerBase
         {
             await _eventService.DeleteEventAsync(id, userId, userRole);
 
+            // ED-001: success now implies an Admin requester (the service guard
+            // rejects everyone else), so this audit branch is the only reachable
+            // delete path. Kept conditional defensively in case owner-delete is
+            // ever restored — organizer deletes were already unaudited before ED-001.
             if (userRole == UserRole.Admin)
             {
                 await TryLogAuditAsync(userId, new AuditLogContext(userId, AuditActionType.DeleteEvent, AuditResourceType.Event, id, "Admin deleted event"));

@@ -595,8 +595,9 @@ public class EventService : IEventService
     }
 
     /// <summary>
-    /// Deletes an event with ownership validation and image cleanup.
-    /// Only the event owner or Admin can delete.
+    /// Deletes an event (Admin-only, ED-001) with image cleanup.
+    /// Only users with the Admin role can delete events — organizers are rejected
+    /// for ANY event regardless of status or age.
     /// Removes associated images from storage (if image service is available).
     /// </summary>
     public async Task DeleteEventAsync(Guid eventId, Guid userId, UserRole userRole)
@@ -604,19 +605,20 @@ public class EventService : IEventService
         _logger.LogInformation("User {UserId} attempting to delete event {EventId}", userId, eventId);
 
         var eventEntity = await _context.Events.FindAsync(eventId);
-        
+
         if (eventEntity == null)
         {
             _logger.LogWarning("Event {EventId} not found for deletion", eventId);
             throw new KeyNotFoundException($"Event with ID {eventId} not found");
         }
 
-        // Validate ownership (owner or admin can delete)
-        if (eventEntity.OrganizerId != userId && userRole != UserRole.Admin)
+        // ED-001: deletion is Admin-only — organizers lose delete authority for ANY
+        // event (any status/age). Runs BEFORE the finalized guard so an organizer
+        // never receives 409 from delete; no side effects can occur past this point.
+        if (userRole != UserRole.Admin)
         {
-            _logger.LogWarning("User {UserId} unauthorized to delete event {EventId} owned by {OrganizerId}", 
-                userId, eventId, eventEntity.OrganizerId);
-            throw new UnauthorizedAccessException("You do not have permission to delete this event");
+            _logger.LogWarning("User {UserId} (role {UserRole}) denied delete of event {EventId} — Admin-only (ED-001)", userId, userRole, eventId);
+            throw new UnauthorizedAccessException("Only administrators can delete events");
         }
 
         // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
