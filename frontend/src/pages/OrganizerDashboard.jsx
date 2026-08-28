@@ -2,55 +2,25 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
-import { formatCurrency } from '../lib/format.js'
+import { formatCurrency, formatEventDate } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
 import { useAuth } from '../context/auth.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import DropdownMenu from '../components/ui/DropdownMenu.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
+import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
 import { fadeIn } from '../lib/motion.js'
 
-function formatDate(dateString) {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleDateString('es-AR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
-function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) {
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-dialog-title"
-    >
-      <div className="glass-surface p-8 max-w-md w-full shadow-xl text-left rounded-[--radius-glass]">
-        <h2 id="delete-dialog-title" className="text-xl font-display font-semibold text-text-1 mb-3">
-          Confirmar eliminacion
-        </h2>
-        <p className="text-text-2 mb-6 leading-relaxed">
-          Estas seguro que deseas eliminar el evento <strong>{eventName}</strong>?
-          Esta accion no se puede deshacer.
-        </p>
-        <div className="flex gap-3 justify-end">
-          <Button variant="secondary" onClick={onCancel} disabled={deleting}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={deleting}>
-            {deleting ? 'Eliminando...' : 'Eliminar'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// Shared hover treatment for the row action buttons (same classes as
+// AdminPanel): grow a soft shadow on hover and honor prefers-reduced-motion
+// by disabling the movement/shadow transition. Tailwind emits motion-reduce
+// in a later @media block, so it reliably overrides the base hover transforms.
+const ACTION_HOVER =
+  'hover:shadow-[0_8px_20px_rgba(74,74,74,0.18)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none'
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate()
@@ -72,8 +42,8 @@ export default function OrganizerDashboard() {
       .get('/metrics/organizer', { signal: controller.signal })
       .then((response) => {
         if (controller.signal.aborted) return
-        setMetrics(response.data || [])
-        setError('')
+        // Accept both the paginated { items: [...] } envelope and a flat array.
+        setMetrics(response.data?.items || response.data || [])
         setLoading(false)
       })
       .catch((err) => {
@@ -130,6 +100,19 @@ export default function OrganizerDashboard() {
     }
   }
 
+  // Display copy: upcoming events first (soonest-to-start at the very top),
+  // then already-ended (past) events sorted descending so the OLDEST ended
+  // event is last. Does NOT mutate `metrics` — the header count reads the
+  // original (same strategy as AdminPanel).
+  const now = new Date().getTime()
+  const upcoming = metrics
+    .filter((m) => new Date(m.eventDate).getTime() >= now)
+    .sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate))
+  const past = metrics
+    .filter((m) => new Date(m.eventDate).getTime() < now)
+    .sort((a, b) => new Date(b.eventDate) - new Date(a.eventDate))
+  const sortedMetrics = [...upcoming, ...past]
+
   return (
     <motion.div
       variants={fadeIn}
@@ -157,26 +140,13 @@ export default function OrganizerDashboard() {
         </div>
       )}
 
-      <div className="flex justify-end mb-6">
-        <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
-          + Crear evento
-        </Button>
-      </div>
-
       {loading ? (
-        <GlassCard className="p-6 space-y-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex gap-4 items-center">
-              <Skeleton width="30%" height="18px" variant="text" />
-              <Skeleton width="20%" height="18px" variant="text" />
-              <Skeleton width="15%" height="18px" variant="text" />
-              <Skeleton width="15%" height="18px" variant="text" />
-              <div className="flex gap-2 ml-auto">
-                <Skeleton width="64px" height="32px" variant="rectangular" />
-                <Skeleton width="64px" height="32px" variant="rectangular" />
-              </div>
-            </div>
-          ))}
+        <GlassCard className="py-12">
+          <div className="flex flex-col items-center gap-4" role="status" aria-label="Cargando tus eventos…">
+            <Skeleton width="240px" height="18px" />
+            <Skeleton width="180px" height="18px" />
+            <Skeleton width="120px" height="18px" />
+          </div>
         </GlassCard>
       ) : error ? (
         <GlassCard className="text-center py-12" role="alert">
@@ -185,111 +155,134 @@ export default function OrganizerDashboard() {
             Reintentar
           </Button>
         </GlassCard>
-      ) : metrics.length === 0 ? (
-        <GlassCard className="text-center py-12">
-          <p className="text-text-2 mb-4">No tenes eventos creados todavia.</p>
-          <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
-            Crear tu primer evento
-          </Button>
-        </GlassCard>
       ) : (
-        <GlassCard className="p-0 sm:p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="admin-table w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b-2 border-border">
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Estado</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Entradas vendidas</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ingresos</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Inventario</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Escaneados</th>
-                  <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((m) => {
-                      // D-7: past events are immutable (PEM-002) — computed per row
-                      // in UTC (m.eventDate is an ISO UTC DateTime). Backend guard is
-                      // authoritative; this disables mutation affordances cosmetically.
-                      const isPast = new Date(m.eventDate) < new Date()
-                      const readonlyTitle = 'Evento finalizado — solo lectura'
-                      return (
-                      <tr
+        <GlassCard className="p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-border">
+            <h2 className="text-xl font-display font-semibold text-text-1 text-left">
+              Eventos ({metrics.length})
+            </h2>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/organizer/events/new')}
+              className="min-h-[44px]"
+            >
+              + Crear evento
+            </Button>
+          </div>
+
+          {metrics.length === 0 ? (
+            <EmptyState
+              icon="🎟️"
+              title="No tenes eventos creados todavia"
+              description="Crea tu primer evento para empezar a vender entradas y ver sus metricas."
+              action={
+                <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
+                  Crear evento
+                </Button>
+              }
+            />
+          ) : (
+            <div className="flex flex-col">
+              {sortedMetrics.map((m, index) => {
+                // D-7: past events are immutable (PEM-002) — computed per row
+                // in UTC (m.eventDate is an ISO UTC DateTime). Backend guard is
+                // authoritative; this disables mutation affordances cosmetically.
+                const isPast = new Date(m.eventDate) < new Date()
+                const readonlyTitle = 'Evento finalizado — solo lectura'
+                const isLast = index === sortedMetrics.length - 1
+                return (
+                  <div
                     key={m.eventId}
-                    className="border-b border-border hover:bg-surface-elevated transition-colors"
+                    className={`flex flex-wrap items-center justify-between gap-3 py-3.5 px-1 hover:bg-surface-elevated transition-colors ${
+                      isLast ? '' : 'border-b border-border'
+                    }`}
                   >
-                    <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{m.eventName}</td>
-                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(m.eventDate)}</td>
-                    <td className="py-3.5 px-4 align-middle" data-label="Estado">
-                      <Badge variant={statusBadgeVariant(m.status)}>
-                        {statusLabel(m.status)}
-                      </Badge>
-                      {isPast && (
-                        <Badge variant="info" className="ml-1.5">
-                          Finalizado
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-display text-base md:text-lg font-semibold text-gris-oscuro leading-tight break-words">
+                        {m.eventName}
+                      </h3>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge variant={statusBadgeVariant(m.status)}>
+                          {statusLabel(m.status)}
                         </Badge>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Entradas vendidas">{m.ticketsSold}</td>
-                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ingresos">{formatCurrency(m.totalRevenue)}</td>
-                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Inventario">{m.remainingInventory}</td>
-                    <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Escaneados">{m.ticketsScanned}</td>
-                    <td className="py-3.5 px-4 align-middle" data-label="Acciones">
-                      <div className="flex gap-2 flex-nowrap">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => navigate(`/organizer/events/${m.eventId}/view`)}
-                          aria-label={`Ver ${m.eventName}`}
-                          className="min-h-[44px]"
-                        >
-                          Ver
-                        </Button>
-                        {canEdit && (
-                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => navigate(`/organizer/events/${m.eventId}`)}
-                              disabled={isPast}
-                              aria-label={`Editar ${m.eventName}`}
-                              className="min-h-[44px]"
-                            >
-                              Editar
-                            </Button>
+                        {isPast && <Badge variant="info">Finalizado</Badge>}
+                      </div>
+                      <p className="mt-1 text-sm text-text-2">
+                        <span aria-hidden="true">📅</span>{' '}
+                        <span>{formatEventDate(m.eventDate)}</span>
+                        <span aria-hidden="true"> • </span>{' '}
+                        <span>{m.location || '\u2014'}</span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-2">
+                        <span>
+                          Entradas vendidas:{' '}
+                          <span className="font-semibold text-gris-oscuro">{m.ticketsSold}</span>
+                        </span>
+                        <span>
+                          Ingresos:{' '}
+                          <span className="font-semibold text-gris-oscuro">
+                            {formatCurrency(m.totalRevenue)}
                           </span>
-                        )}
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => navigate(`/organizer/events/${m.eventId}/metrics`)}
-                          aria-label={`Ver metricas de ${m.eventName}`}
-                          className="min-h-[44px]"
-                        >
-                          Metricas
-                        </Button>
-                        <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleDeleteClick(m)}
-                            disabled={isPast}
-                            aria-label={`Eliminar ${m.eventName}`}
-                            className="min-h-[44px]"
-                          >
-                            Eliminar
-                          </Button>
+                        </span>
+                        <span>
+                          Inventario:{' '}
+                          <span className="font-semibold text-gris-oscuro">{m.remainingInventory}</span>
+                        </span>
+                        <span>
+                          Escaneados:{' '}
+                          <span className="font-semibold text-gris-oscuro">{m.ticketsScanned}</span>
                         </span>
                       </div>
-                    </td>
-                  </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        onClick={() => navigate(`/organizer/events/${m.eventId}/view`)}
+                        aria-label={`Ver ${m.eventName}`}
+                        className={`min-h-[44px] ${ACTION_HOVER}`}
+                      >
+                        Ver
+                      </Button>
+                      <DropdownMenu
+                        triggerLabel="Acciones"
+                        align="right"
+                        items={[
+                          {
+                            label: 'Metricas',
+                            ariaLabel: `Ver metricas de ${m.eventName}`,
+                            onClick: () => navigate(`/organizer/events/${m.eventId}/metrics`),
+                          },
+                          // EA-009: organizers never see Editar; admins do
+                          // (disabled on past events per PEM-002).
+                          ...(canEdit
+                            ? [
+                                {
+                                  label: 'Editar',
+                                  ariaLabel: `Editar ${m.eventName}`,
+                                  onClick: () => navigate(`/organizer/events/${m.eventId}`),
+                                  disabled: isPast,
+                                  title: isPast ? readonlyTitle : undefined,
+                                },
+                              ]
+                            : []),
+                          {
+                            label: 'Eliminar',
+                            ariaLabel: `Eliminar ${m.eventName}`,
+                            onClick: () => handleDeleteClick(m),
+                            disabled: isPast,
+                            variant: 'danger',
+                            title: isPast ? readonlyTitle : undefined,
+                          },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </GlassCard>
       )}
 
