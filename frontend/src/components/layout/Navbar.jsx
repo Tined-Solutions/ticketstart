@@ -77,19 +77,16 @@ export default function Navbar() {
             <Link
               to="/"
               className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 rounded"
+              aria-label="TicketStart"
             >
-              <span
-                className="leading-none tracking-[0.04em] uppercase"
-                style={{ fontFamily: "'Bebas Neue', 'Poppins', sans-serif" }}
-              >
-                <span className="text-lg text-gris-oscuro">Ticket</span>
-                <span
-                  className="text-2xl font-black bg-[linear-gradient(90deg,#F78B2D,#F5C01F,#67CF65,#18C8DB,#B65DC2)] bg-clip-text text-transparent [-webkit-text-stroke:0.9px_rgba(74,74,74,0.45)]"
-                  style={{ fontFamily: "'Beckman', 'Bebas Neue', 'Poppins', sans-serif" }}
-                >
-                  Start
-                </span>
-              </span>
+              <img
+                src="/ticketera-logo.webp"
+                alt=""
+                width="1594"
+                height="1063"
+                className="h-8 w-auto md:h-14 object-contain shrink-0"
+                decoding="async"
+              />
             </Link>
           </div>
 
