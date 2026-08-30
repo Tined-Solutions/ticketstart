@@ -13,18 +13,30 @@ export default function Navbar() {
   const dropdownRef = useRef(null)
 
   // ── Scroll-linked reveal: the navbar unfolds proportionally to how far the
-  //    full-viewport hero has been scrolled, so it slides down in sync with the
-  //    scroll instead of popping in at a fixed threshold. ──
+  //    hero has been scrolled, so it slides down in sync with the scroll
+  //    instead of popping in at a fixed threshold. The denominator is the
+  //    hero's own height (#home-hero), capped by the page's actual scrollable
+  //    range — on tall monitors a short page otherwise never reaches one full
+  //    viewport of scroll and the navbar can never finish unfolding. ──
   useEffect(() => {
     const handler = () => {
       const y = window.scrollY
       setScrolled(y > 0)
-      const progressValue = Math.min(1, Math.max(0, y / window.innerHeight))
-      setProgress(progressValue)
+      const hero = document.getElementById('home-hero')
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight
+      const denominator = Math.max(
+        1,
+        Math.min(hero ? hero.offsetHeight : window.innerHeight, maxScroll),
+      )
+      setProgress(Math.min(1, Math.max(0, y / denominator)))
     }
     handler()
     window.addEventListener('scroll', handler, { passive: true })
-    return () => window.removeEventListener('scroll', handler)
+    window.addEventListener('resize', handler, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handler)
+      window.removeEventListener('resize', handler)
+    }
   }, [])
 
   // On non-home pages the navbar is always fully visible.
