@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import Layout from './components/layout/Layout.jsx'
+import ScrollToTop from './components/ScrollToTop.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -26,6 +27,7 @@ function App() {
   return (
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
+        <ScrollToTop />
         <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
