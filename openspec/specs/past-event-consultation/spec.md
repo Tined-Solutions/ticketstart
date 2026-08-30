@@ -52,7 +52,8 @@ The consultation view MUST NOT perform any mutation, save, audit, or notificatio
 
 ### Requirement: PEC-004: Purchases and metrics consultation preserved
 
-On past-event rows, the purchases ("Compras") entry (Admin) and metrics ("Metricas") entry (Organizer) MUST remain enabled and functional.
+On past-event rows, the purchases ("Compras") entry (Admin) MUST remain enabled and functional. The organizer metrics ("Metricas") entry MUST NOT appear on any organizer dashboard row (it was removed change-wide — see `role-access` EHE-006); organizer per-event metrics remain available only through the backend `GET /metrics/events/{id}` for owner/Admin.
+(Previously: both the Admin "Compras" entry and the organizer "Metricas" entry were required to remain enabled and functional on past rows; the organizer Metricas entry no longer exists on any row.)
 
 #### Scenario: Compras stays enabled on past row
 
@@ -60,11 +61,11 @@ On past-event rows, the purchases ("Compras") entry (Admin) and metrics ("Metric
 - WHEN the row renders
 - THEN the "Compras" action is enabled and navigates to purchases
 
-#### Scenario: Metricas stays enabled on past row
+#### Scenario: Metricas entry no longer present on past row
 
 - GIVEN a past event row in OrganizerDashboard
 - WHEN the row renders
-- THEN the "Metricas" action is enabled and navigates to metrics
+- THEN no "Metricas" action is present (and no dead navigation target remains)
 
 ## Coverage Matrix
 
@@ -73,4 +74,4 @@ On past-event rows, the purchases ("Compras") entry (Admin) and metrics ("Metric
 | PEC-001 | roles-open-ver, no-mutation-affordances |
 | PEC-002 | past-unapproved-loads, non-authorized-denied |
 | PEC-003 | no-side-effects |
-| PEC-004 | compras-enabled, metricas-enabled |
+| PEC-004 | compras-enabled, metricas-entry-absent |

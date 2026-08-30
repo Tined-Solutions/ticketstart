@@ -34,9 +34,11 @@ The system MUST evaluate immutability via `eventEntity.IsExpired(clock.GetUtcNow
 
 Each of the following MUST return 409 `event-finalized` when the target event is past, before any save/audit/notification: `PUT /events/{id}`; `DELETE /events/{id}`; `POST /events/{id}/image`; `POST /admin/events/{id}/ticket-types/{ttId}/stock`; `POST /admin/events/{id}/ticket-types`; `POST /admin/events/{id}/approve`; `POST /admin/events/{id}/reject`.
 
+(Archive-time clarification per `event-deletion` ED-001: the DELETE valid-requester set has narrowed to **Admin-only**. An organizer deleting any event — past events included — now receives **403 Forbidden** from the Admin-only service guard in `EventService.DeleteEventAsync`, which runs BEFORE the finalized guard — never 409. Admin + past event keeps the 409 `event-finalized` contract unchanged (ED-002).)
+
 #### Scenario: Each mutation returns 409 on past event
 
-- GIVEN a past event and a valid requester (owner or Admin)
+- GIVEN a past event and a valid requester (owner or Admin; DELETE is Admin-only per `event-deletion` ED-001 — organizers receive 403 from the service guard before this 409)
 - WHEN any of the seven mutation endpoints is called
 - THEN the response is 409 with `type: "event-finalized"` and title "Event has already finished"
 

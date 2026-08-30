@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -290,5 +292,56 @@ public class MetricsControllerTests
         {
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
         };
+    }
+}
+
+/// <summary>
+/// WAF keep-alive coverage for GET /api/metrics/events/{id} (role-access
+/// EHE-006, remove-organizer-delete-metrics): the per-event metrics page was
+/// removed from the frontend and the endpoint is now UI-less, so pipeline
+/// coverage is the only bit-rot guard. The mocked unit tests above bypass the
+/// real <c>EventOwnership</c> authorization policy — these do not.
+/// </summary>
+[Collection("EnvConfigTests")]
+public class MetricsEndpointWafTests
+{
+    [Fact]
+    public async Task GetEventMetrics_Owner_200()
+    {
+        // role-access per-event-metrics-owner-200: the owner keeps per-event
+        // metrics over the real EventOwnership pipeline (backend unchanged).
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Own Metrics Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(7), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+
+        var response = await client.GetAsync($"/api/metrics/events/{eventId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<EventMetrics>();
+        Assert.NotNull(body);
+        Assert.Equal(eventId, body.EventId);
+        Assert.Equal("Own Metrics Event", body.EventName);
+    }
+
+    [Fact]
+    public async Task GetEventMetrics_Admin_200()
+    {
+        // role-access per-event-metrics-admin-200: an Admin keeps per-event
+        // metrics for any event (backend unchanged).
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Admin Metrics Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(7), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+
+        var response = await client.GetAsync($"/api/metrics/events/{eventId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<EventMetrics>();
+        Assert.NotNull(body);
+        Assert.Equal(eventId, body.EventId);
     }
 }

@@ -802,7 +802,10 @@ public class EventManagementPropertyTests : IDisposable
             async () => await _eventService.DeleteEventAsync(createdEvent.Id, nonOwner.Id, nonOwner.Role)
         );
 
-        Assert.Contains("permission", exception.Message, StringComparison.OrdinalIgnoreCase);
+        // ED-001: the delete guard is now Admin-only and its message changed from
+        // the owner-permission wording to the Admin-only wording (no "permission"
+        // substring anymore) — assertion updated to the new contract.
+        Assert.Contains("administrator", exception.Message, StringComparison.OrdinalIgnoreCase);
 
         // Verify event was NOT deleted
         var stillExists = await _context.Events.FindAsync(createdEvent.Id);

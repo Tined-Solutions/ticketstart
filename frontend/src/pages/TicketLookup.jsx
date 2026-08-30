@@ -70,6 +70,8 @@ function TicketCard({ ticket }) {
               year: 'numeric',
               hour: '2-digit',
               minute: '2-digit',
+              // es-AR defaults to h12 ("p. m."); force 24h to match formatEventDate.
+              hour12: false,
             })}
           </p>
         )}

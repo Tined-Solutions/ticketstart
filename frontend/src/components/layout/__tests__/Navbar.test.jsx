@@ -35,11 +35,13 @@ describe('Navbar', () => {
     expect(screen.queryByText('U')).not.toBeInTheDocument()
   })
 
-  it('renders the brand wordmark and no theme toggle', () => {
+  it('renders the brand logo and no theme toggle', () => {
     renderNavbar()
 
-    // The brand is a text-only wordmark (no logo image).
-    expect(document.querySelector('img[src="/ticketera-logo.webp"]')).toBeNull()
+    // The brand is the ticketera logo image (stacked TICKET/START wordmark).
+    const logo = document.querySelector('img[src="/ticketera-logo.webp"]')
+    expect(logo).not.toBeNull()
+    expect(logo).toHaveAttribute('alt', '')
     expect(screen.getByRole('link', { name: 'TicketStart' })).toBeInTheDocument()
     // Light-only MVP: no theme toggle button should be present.
     expect(

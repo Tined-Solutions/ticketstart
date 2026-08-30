@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import Layout from './components/layout/Layout.jsx'
+import ScrollToTop from './components/ScrollToTop.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RoleGuard from './components/RoleGuard.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -17,7 +18,6 @@ import StaffScan from './pages/StaffScan.jsx'
 import OrganizerDashboard from './pages/OrganizerDashboard.jsx'
 import OrganizerEventNew from './pages/OrganizerEventNew.jsx'
 import OrganizerEventDetail from './pages/OrganizerEventDetail.jsx'
-import OrganizerEventMetrics from './pages/OrganizerEventMetrics.jsx'
 import EventReadOnlyView from './pages/EventReadOnlyView.jsx'
 import AdminPanel from './pages/AdminPanel.jsx'
 import AdminPurchases from './pages/AdminPurchases.jsx'
@@ -27,6 +27,7 @@ function App() {
   return (
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
+        <ScrollToTop />
         <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -67,16 +68,6 @@ function App() {
               <ProtectedRoute>
                 <RoleGuard allowedRoles={['Organizador', 'Admin']}>
                   <OrganizerEventNew />
-                </RoleGuard>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/organizer/events/:id/metrics"
-            element={
-              <ProtectedRoute>
-                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
-                  <OrganizerEventMetrics />
                 </RoleGuard>
               </ProtectedRoute>
             }

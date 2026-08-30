@@ -8,11 +8,21 @@ import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import DropdownMenu from '../components/ui/DropdownMenu.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import AddTicketsModal from '../components/AddTicketsModal.jsx'
-import { useDialog } from '../hooks/useDialog.js'
+import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
 import { fadeIn } from '../lib/motion.js'
+
+// Shared hover treatment for the events action buttons: grow a soft shadow on
+// hover (combined with the base lift) and honor prefers-reduced-motion by
+// disabling the movement/shadow transition. Tailwind emits motion-reduce in a
+// later @media block, so it reliably overrides the base hover transforms.
+const ACTION_HOVER =
+  'hover:shadow-[0_8px_20px_rgba(74,74,74,0.18)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none'
+
+const USERS_PER_PAGE = 10
 
 function formatDate(dateString) {
   if (!dateString) return ''
@@ -48,37 +58,6 @@ function roleBadgeVariant(role) {
   }
 }
 
-function DeleteConfirmationDialog({ eventName, onConfirm, onCancel, deleting }) {
-  const dialogRef = useDialog({ onClose: onCancel })
-  return (
-    <div
-      ref={dialogRef}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-5 overscroll-contain"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-dialog-title"
-    >
-      <div className="glass-surface p-8 max-w-md w-full shadow-xl text-left rounded-[--radius-glass]">
-        <h2 id="delete-dialog-title" className="text-xl font-display font-semibold text-text-1 mb-3">
-          Confirmar Eliminación
-        </h2>
-        <p className="text-text-2 mb-6 leading-relaxed">
-          Estas seguro que deseas eliminar el evento <strong>{eventName}</strong>?
-          Esta accion no se puede deshacer.
-        </p>
-        <div className="flex gap-3 justify-end">
-          <Button variant="secondary" onClick={onCancel} disabled={deleting} className="min-h-[44px]">
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={deleting} className="min-h-[44px]">
-            {deleting ? 'Eliminando…' : 'Eliminar'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function AdminPanel() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -103,6 +82,14 @@ export default function AdminPanel() {
   const [formErrors, setFormErrors] = useState({})
   const [creating, setCreating] = useState(false)
   const [createFeedback, setCreateFeedback] = useState({ type: '', message: '' })
+
+  // Users section: client-side filter + pagination over the fetched `users` array.
+  const [userSearch, setUserSearch] = useState('')
+  const [userRole, setUserRole] = useState('')
+  const [userPage, setUserPage] = useState(1)
+
+  // Toggles the create-user form inside the Users section (list ⇄ form).
+  const [showCreateUser, setShowCreateUser] = useState(false)
 
   const loadData = useCallback((controller) => {
     setLoading(true)
@@ -290,6 +277,7 @@ export default function AdminPanel() {
       })
       setFormData(initialFormData)
       setFormErrors({})
+      setShowCreateUser(false)
 
       // Refresh user list
       const controller = new AbortController()
@@ -299,6 +287,50 @@ export default function AdminPanel() {
     } finally {
       setCreating(false)
     }
+  }
+
+  // Display copy: upcoming events first (soonest-to-start at the very top),
+  // then already-ended (past) events sorted descending so the OLDEST ended
+  // event is last. Does NOT mutate `events` — header counts and Pendientes
+  // badge read the original.
+  const now = new Date().getTime()
+  const upcoming = events
+    .filter((e) => new Date(e.date).getTime() >= now)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+  const past = events
+    .filter((e) => new Date(e.date).getTime() < now)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+  const sortedEvents = [...upcoming, ...past]
+
+  // Users section: filter + paginate the fetched `users` array client-side.
+  const filteredUsers = users.filter((u) => {
+    const matchesRole = userRole === '' || u.role === userRole
+    const q = userSearch.trim().toLowerCase()
+    const matchesSearch =
+      q === '' ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.name || '').toLowerCase().includes(q)
+    return matchesRole && matchesSearch
+  })
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE))
+  const safeUserPage = Math.min(Math.max(1, userPage), totalUserPages)
+  const pageUsers = filteredUsers.slice(
+    (safeUserPage - 1) * USERS_PER_PAGE,
+    safeUserPage * USERS_PER_PAGE
+  )
+
+  const handleUserSearchChange = (e) => {
+    setUserSearch(e.target.value)
+    setUserPage(1)
+  }
+
+  const handleUserRoleChange = (e) => {
+    setUserRole(e.target.value)
+    setUserPage(1)
+  }
+
+  const goToUserPage = (page) => {
+    setUserPage(Math.min(Math.max(1, page), totalUserPages))
   }
 
   return (
@@ -354,262 +386,341 @@ export default function AdminPanel() {
             {events.length === 0 ? (
               <p className="text-text-2 text-center py-8">No hay eventos en el sistema.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="admin-table w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-border">
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Evento</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Ubicación</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Organizador</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Estado</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((event) => {
-                      // D-7: past events are immutable (PEM-002) — computed per row
-                      // in UTC (event.date is an ISO UTC DateTime; new Date() is
-                      // UTC-based). Backend guard is authoritative (EHE-010); this
-                      // only disables the mutation affordances (cosmetic defense).
-                      const isPast = new Date(event.date) < new Date()
-                      const readonlyTitle = 'Evento finalizado — solo lectura'
-                      return (
-                      <tr key={event.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
-                        <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Evento">{event.name}</td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(event.date)}</td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Ubicación">{event.location || '\u2014'}</td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Organizador">
-                          {getOrganizerEmail(event.organizerId)}
-                        </td>
-                        <td className="py-3.5 px-4 align-middle" data-label="Estado">
+              <div className="flex flex-col">
+                {sortedEvents.map((event, index) => {
+                  // D-7: past events are immutable (PEM-002) — computed per row
+                  // in UTC (event.date is an ISO UTC DateTime; new Date() is
+                  // UTC-based). Backend guard is authoritative (EHE-010); this
+                  // only disables the mutation affordances (cosmetic defense).
+                  const isPast = new Date(event.date) < new Date()
+                  const readonlyTitle = 'Evento finalizado — solo lectura'
+                  const isLast = index === sortedEvents.length - 1
+                  return (
+                    <div
+                      key={event.id}
+                      className={`flex flex-wrap items-center justify-between gap-3 py-3.5 px-1 hover:bg-surface-elevated transition-colors ${
+                        isLast ? '' : 'border-b border-border'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-display text-base md:text-lg font-semibold text-gris-oscuro leading-tight">
+                          {event.name}
+                        </h3>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <Badge variant={statusBadgeVariant(event.status)}>
                             {statusLabel(event.status)}
                           </Badge>
-                          {isPast && (
-                            <Badge variant="info" className="ml-1.5">
-                              Finalizado
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 align-middle" data-label="Acciones">
-                          <div className="flex gap-2 flex-nowrap">
+                          {isPast && <Badge variant="info">Finalizado</Badge>}
+                        </div>
+                        <p className="mt-1 text-sm text-text-2">
+                          <span aria-hidden="true">📅</span> <span>{formatDate(event.date)}</span>
+                          <span aria-hidden="true"> • </span> <span>{event.location || '\u2014'}</span>
+                          <span aria-hidden="true"> • </span> <span>{getOrganizerEmail(event.organizerId)}</span>
+                        </p>
+                      </div>
+                      <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                        {isPast && (
+                          <Button
+                            variant="glass"
+                            size="sm"
+                            onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                            aria-label={`Ver ${event.name}`}
+                            className={`min-h-[44px] ${ACTION_HOVER}`}
+                          >
+                            Ver
+                          </Button>
+                        )}
+                        {event.status !== 'Approved' && (
+                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                            <Button
+                              variant="gradient"
+                              size="sm"
+                              onClick={() => handleApprove(event)}
+                              disabled={isPast || busyApprovalId === event.id}
+                              aria-label={`Aprobar ${event.name}`}
+                              className={`min-h-[44px] ${ACTION_HOVER}`}
+                            >
+                              Aprobar
+                            </Button>
+                          </span>
+                        )}
+                        {event.status !== 'Rejected' && (
+                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                             <Button
                               variant="secondary"
                               size="sm"
-                              onClick={() => navigate(`/organizer/events/${event.id}/view`)}
-                              aria-label={`Ver ${event.name}`}
-                              className="min-h-[44px]"
+                              onClick={() => handleReject(event)}
+                              disabled={isPast || busyApprovalId === event.id}
+                              aria-label={`Rechazar ${event.name}`}
+                              className={`min-h-[44px] !bg-rose-50/70 !text-rose-700 border border-rose-300/60 !hover:bg-rose-100 ${ACTION_HOVER}`}
                             >
-                              Ver
+                              Rechazar
                             </Button>
-                            {event.status !== 'Approved' && (
-                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => handleApprove(event)}
-                                  disabled={isPast || busyApprovalId === event.id}
-                                  aria-label={`Aprobar ${event.name}`}
-                                  className="min-h-[44px]"
-                                >
-                                  Aprobar
-                                </Button>
-                              </span>
-                            )}
-                            {event.status !== 'Rejected' && (
-                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() => handleReject(event)}
-                                  disabled={isPast || busyApprovalId === event.id}
-                                  aria-label={`Rechazar ${event.name}`}
-                                  className="min-h-[44px]"
-                                >
-                                  Rechazar
-                                </Button>
-                              </span>
-                            )}
-                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => setAddTicketsTarget(event)}
-                                disabled={isPast}
-                                aria-label={`Agregar entradas a ${event.name}`}
-                                className="min-h-[44px]"
-                              >
-                                Agregar entradas
-                              </Button>
-                            </span>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => navigate(`/admin/events/${event.id}/purchases`)}
-                              aria-label={`Compras de ${event.name}`}
-                              className="min-h-[44px]"
-                            >
-                              Compras
-                            </Button>
-                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => navigate(`/organizer/events/${event.id}`)}
-                                disabled={isPast}
-                                aria-label={`Editar ${event.name}`}
-                                className="min-h-[44px]"
-                              >
-                                Editar
-                              </Button>
-                            </span>
-                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => handleDeleteClick(event)}
-                                disabled={isPast}
-                                aria-label={`Eliminar ${event.name}`}
-                                className="min-h-[44px]"
-                              >
-                                Eliminar
-                              </Button>
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                          </span>
+                        )}
+                        <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                          <Button
+                            variant="glass"
+                            size="sm"
+                            onClick={() => setAddTicketsTarget(event)}
+                            disabled={isPast}
+                            aria-label={`Agregar entradas a ${event.name}`}
+                            className={`min-h-[44px] ${ACTION_HOVER}`}
+                          >
+                            Agregar entradas
+                          </Button>
+                        </span>
+                        <DropdownMenu
+                          triggerLabel="Acciones"
+                          align="right"
+                          items={[
+                            {
+                              label: 'Compras',
+                              ariaLabel: `Compras de ${event.name}`,
+                              onClick: () => navigate(`/admin/events/${event.id}/purchases`),
+                              disabled: false,
+                            },
+                            {
+                              label: 'Editar',
+                              ariaLabel: `Editar ${event.name}`,
+                              onClick: () => navigate(`/organizer/events/${event.id}`),
+                              disabled: isPast,
+                              title: isPast ? readonlyTitle : undefined,
+                            },
+                            {
+                              label: 'Eliminar',
+                              ariaLabel: `Eliminar ${event.name}`,
+                              onClick: () => handleDeleteClick(event),
+                              disabled: isPast,
+                              variant: 'danger',
+                              title: isPast ? readonlyTitle : undefined,
+                            },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </GlassCard>
 
-          {/* ── Users section ──────────────────────────────── */}
+          {/* ── Users section (list ⇄ create-user) ─────────── */}
           <GlassCard className="p-6 mb-12">
             <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
-              Usuarios ({users.length})
+              Usuarios ({filteredUsers.length})
             </h2>
 
-            {users.length === 0 ? (
-              <p className="text-text-2 text-center py-8">No hay usuarios registrados.</p>
+            {showCreateUser ? (
+              <>
+                <div className="mb-4">
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={() => setShowCreateUser(false)}
+                    aria-label="Volver a la lista"
+                    className="min-h-[44px]"
+                  >
+                    ← Volver a la lista
+                  </Button>
+                </div>
+
+                <h3 className="text-lg font-display font-semibold text-gris-oscuro mb-4">
+                  Crear usuario
+                </h3>
+
+                {createFeedback.message && (
+                  <div
+                    className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+                      createFeedback.type === 'success'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    }`}
+                    role={createFeedback.type === 'error' ? 'alert' : 'status'}
+                  >
+                    {createFeedback.message}
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateUser} noValidate>
+                  <div className="form-group">
+                    <label htmlFor="new-user-name">Nombre</label>
+                    <input
+                      id="new-user-name"
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => updateFormField('name', e.target.value)}
+                      disabled={creating}
+                      autoComplete="name"
+                    />
+                    {formErrors.name && (
+                      <span className="form-error">{formErrors.name}</span>
+                    )}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="new-user-email">Email</label>
+                    <input
+                      id="new-user-email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => updateFormField('email', e.target.value)}
+                      disabled={creating}
+                      autoComplete="email"
+                    />
+                    {formErrors.email && (
+                      <span className="form-error">{formErrors.email}</span>
+                    )}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="new-user-password">Contraseña</label>
+                    <PasswordInput
+                      id="new-user-password"
+                      value={formData.password}
+                      onChange={(e) => updateFormField('password', e.target.value)}
+                      disabled={creating}
+                      autoComplete="new-password"
+                    />
+                    {formErrors.password && (
+                      <span className="form-error">{formErrors.password}</span>
+                    )}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="new-user-role">Rol</label>
+                    <select
+                      id="new-user-role"
+                      value={formData.role}
+                      onChange={(e) => updateFormField('role', e.target.value)}
+                      disabled={creating}
+                    >
+                      <option value="">Seleccionar rol</option>
+                      <option value="Organizador">Organizador</option>
+                      <option value="Staff">Staff</option>
+                    </select>
+                    {formErrors.role && (
+                      <span className="form-error">{formErrors.role}</span>
+                    )}
+                  </div>
+
+                  <Button type="submit" variant="primary" disabled={creating}>
+                    {creating ? 'Creando…' : 'Crear usuario'}
+                  </Button>
+                </form>
+              </>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="admin-table w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-border">
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Email</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Rol</th>
-                      <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
-                        <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Email">{user.email}</td>
-                        <td className="py-3.5 px-4 align-middle" data-label="Rol">
-                          <Badge variant={roleBadgeVariant(user.role)}>
-                            {roleLabel(user.role)}
-                          </Badge>
-                        </td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha de registro">
-                          {formatDate(user.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-4">
+                  <div className="flex-1 min-w-0">
+                    <label htmlFor="user-search" className="sr-only">
+                      Buscar usuarios
+                    </label>
+                    <input
+                      id="user-search"
+                      type="search"
+                      value={userSearch}
+                      onChange={handleUserSearchChange}
+                      placeholder="Buscar por email o nombre"
+                      aria-label="Buscar usuarios"
+                      className="w-full bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="user-role" className="sr-only">
+                      Filtrar por rol
+                    </label>
+                    <select
+                      id="user-role"
+                      value={userRole}
+                      onChange={handleUserRoleChange}
+                      aria-label="Filtrar por rol"
+                      className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                    >
+                      <option value="">Todos</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Staff">Staff</option>
+                      <option value="Organizador">Organizador</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Button
+                      variant="primary"
+                      onClick={() => setShowCreateUser(true)}
+                      aria-label="Crear nuevo usuario"
+                      className="min-h-[44px]"
+                    >
+                      Crear nuevo usuario
+                    </Button>
+                  </div>
+                </div>
+
+                {users.length === 0 ? (
+                  <p className="text-text-2 text-center py-8">No hay usuarios registrados.</p>
+                ) : filteredUsers.length === 0 ? (
+                  <p className="text-text-2 text-center py-8">
+                    No se encontraron usuarios con esos filtros.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="admin-table w-full border-collapse text-left text-sm">
+                        <thead>
+                          <tr className="border-b-2 border-border">
+                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Email</th>
+                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Rol</th>
+                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pageUsers.map((user) => (
+                            <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
+                              <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Email">{user.email}</td>
+                              <td className="py-3.5 px-4 align-middle" data-label="Rol">
+                                <Badge variant={roleBadgeVariant(user.role)}>
+                                  {roleLabel(user.role)}
+                                </Badge>
+                              </td>
+                              <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha de registro">
+                                {formatDate(user.createdAt)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {totalUserPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          onClick={() => goToUserPage(safeUserPage - 1)}
+                          disabled={safeUserPage <= 1}
+                          aria-label="Página anterior"
+                          className="min-h-[44px]"
+                        >
+                          Anterior
+                        </Button>
+                        <span className="text-sm text-text-2">
+                          Página {safeUserPage} de {totalUserPages}
+                        </span>
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          onClick={() => goToUserPage(safeUserPage + 1)}
+                          disabled={safeUserPage >= totalUserPages}
+                          aria-label="Página siguiente"
+                          className="min-h-[44px]"
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             )}
-          </GlassCard>
-
-          {/* ── User Creation section ─────────────────────── */}
-          <GlassCard className="p-6">
-            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
-              Crear usuario
-            </h2>
-
-            {createFeedback.message && (
-              <div
-                className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
-                  createFeedback.type === 'success'
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                }`}
-                role={createFeedback.type === 'error' ? 'alert' : 'status'}
-              >
-                {createFeedback.message}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateUser} noValidate>
-              <div className="form-group">
-                <label htmlFor="new-user-name">Nombre</label>
-                <input
-                  id="new-user-name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => updateFormField('name', e.target.value)}
-                  disabled={creating}
-                  autoComplete="name"
-                />
-                {formErrors.name && (
-                  <span className="form-error">{formErrors.name}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="new-user-email">Email</label>
-                <input
-                  id="new-user-email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => updateFormField('email', e.target.value)}
-                  disabled={creating}
-                  autoComplete="email"
-                />
-                {formErrors.email && (
-                  <span className="form-error">{formErrors.email}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="new-user-password">Contraseña</label>
-                <PasswordInput
-                  id="new-user-password"
-                  value={formData.password}
-                  onChange={(e) => updateFormField('password', e.target.value)}
-                  disabled={creating}
-                  autoComplete="new-password"
-                />
-                {formErrors.password && (
-                  <span className="form-error">{formErrors.password}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="new-user-role">Rol</label>
-                <select
-                  id="new-user-role"
-                  value={formData.role}
-                  onChange={(e) => updateFormField('role', e.target.value)}
-                  disabled={creating}
-                >
-                  <option value="">Seleccionar rol</option>
-                  <option value="Organizador">Organizador</option>
-                  <option value="Staff">Staff</option>
-                </select>
-                {formErrors.role && (
-                  <span className="form-error">{formErrors.role}</span>
-                )}
-              </div>
-
-              <Button type="submit" variant="primary" disabled={creating}>
-                {creating ? 'Creando…' : 'Crear usuario'}
-              </Button>
-            </form>
           </GlassCard>
         </>
       )}

@@ -53,26 +53,13 @@ export default function Home() {
         className="relative overflow-hidden bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10 px-4 py-16 sm:px-6 lg:px-8"
       >
         <div className="relative z-10 max-w-7xl mx-auto">
-          <motion.div
-            variants={staggerItem}
-            className="mb-12 flex items-center justify-center gap-3"
-          >
-            <div aria-hidden="true" className="hidden items-center gap-1.5 sm:flex">
-              <span className="h-8 w-1.5 -rotate-12 rounded-full bg-naranja" />
-              <span className="h-5 w-1.5 -rotate-12 rounded-full bg-amarillo" />
-              <span className="h-3 w-1.5 -rotate-12 rounded-full bg-cian" />
-            </div>
+          <motion.div variants={staggerItem} className="mb-12 text-center">
             <motion.h2
               variants={staggerItem}
-              className="text-center text-3xl font-display font-bold text-gris-oscuro md:text-4xl"
+              className="text-3xl font-display font-bold text-gris-oscuro md:text-4xl"
             >
               Eventos destacados
             </motion.h2>
-            <div aria-hidden="true" className="hidden items-center gap-1.5 sm:flex">
-              <span className="h-3 w-1.5 rotate-12 rounded-full bg-verde" />
-              <span className="h-5 w-1.5 rotate-12 rounded-full bg-purpura" />
-              <span className="h-8 w-1.5 rotate-12 rounded-full bg-naranja" />
-            </div>
           </motion.div>
 
           {isLoading ? (

@@ -5,27 +5,6 @@ import { formatCurrency } from '../../lib/format.js'
 import GlassCard from '../ui/GlassCard.jsx'
 import { staggerItem, useReducedMotion } from '../../lib/motion.js'
 
-const ticketCornerCutoutStyle = {
-  borderRadius: 0,
-  border: 0,
-  WebkitMaskImage: [
-    'radial-gradient(circle at 0 0, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 100% 0, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 0 100%, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 100% 100%, transparent 0 16px, #000 16.5px)',
-  ].join(', '),
-  maskImage: [
-    'radial-gradient(circle at 0 0, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 100% 0, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 0 100%, transparent 0 16px, #000 16.5px)',
-    'radial-gradient(circle at 100% 100%, transparent 0 16px, #000 16.5px)',
-  ].join(', '),
-  WebkitMaskComposite: 'source-in, source-in, source-in',
-  maskComposite: 'intersect, intersect, intersect',
-  WebkitMaskRepeat: 'no-repeat',
-  maskRepeat: 'no-repeat',
-}
-
 function capitalize(value) {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : ''
 }
@@ -118,7 +97,6 @@ export default function EventCard({ event }) {
       >
         {/* Front face: the whole ticket with image-led view */}
         <GlassCard
-          style={ticketCornerCutoutStyle}
           inert={revealBack}
           aria-hidden={revealBack}
           className="absolute inset-0 overflow-hidden rounded-none border-gris-oscuro/35 bg-[#fffdf8] p-0 shadow-[0_14px_34px_rgba(74,74,74,0.22)] [backface-visibility:hidden] transition-shadow duration-300 group-hover:shadow-[0_22px_48px_rgba(74,74,74,0.3)] motion-reduce:transition-none"
@@ -151,7 +129,6 @@ export default function EventCard({ event }) {
 
         {/* Back face: the whole ticket with compact purchase view */}
         <GlassCard
-          style={ticketCornerCutoutStyle}
           inert={!revealBack}
           aria-hidden={!revealBack}
           className="absolute inset-0 overflow-hidden rounded-none border-gris-oscuro/35 p-0 shadow-[0_14px_34px_rgba(74,74,74,0.22)] [backface-visibility:hidden] [transform:rotateY(180deg)] transition-shadow duration-300 group-hover:shadow-[0_22px_48px_rgba(74,74,74,0.3)] motion-reduce:transition-none"

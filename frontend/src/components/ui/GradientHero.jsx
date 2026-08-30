@@ -14,6 +14,11 @@ const categoryIcons = {
 /**
  * Light Confetti hero (brand 2.5 / 9).
  *
+ * The hero always fills the full viewport (`min-h-svh`): the home navbar's
+ * scroll-linked reveal is measured against this element's height (#home-hero),
+ * so any smaller height desynchronizes the navbar's deployment. svh (not vh)
+ * keeps the background unclipped on mobile browsers with dynamic UI.
+ *
  * The Confetti language fills large surfaces with brand color, so the hero
  * uses a layered brand-tinted background (decorative, non-text) while the
  * title and subtitle stay in Gris Oscuro / text-2 to pass WCAG AA. When a
@@ -31,7 +36,12 @@ export default function GradientHero({
   const shouldReduceMotion = useReducedMotion()
 
   return (
-    <div className="relative w-full min-h-[68vh] flex items-center justify-center overflow-hidden bg-canvas">
+    // #home-hero is the anchor the Navbar scroll-linked reveal measures
+    // against; keep the id in sync with Navbar.jsx.
+    <div
+      id="home-hero"
+      className="relative w-full min-h-svh flex items-center justify-center overflow-hidden bg-canvas"
+    >
       {/* Confetti surface — saturated brand layers remain decorative */}
       <div
         aria-hidden="true"

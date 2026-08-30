@@ -351,6 +351,15 @@ describe('TicketLookup', () => {
     const usedAtParagraph = document.querySelector('.ticket-used-at')
     expect(usedAtParagraph).toBeInTheDocument()
     expect(usedAtParagraph.textContent).toMatch(/septiembre/i)
+    // Usage time must be 24h (es-AR defaults to h12; TicketLookup forces 24h).
+    // Computed dynamically so the assertion is timezone-robust.
+    const expectedUsedAt = new Date('2026-09-01T15:30:00Z').toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    expect(usedAtParagraph.textContent).toContain(expectedUsedAt)
+    expect(usedAtParagraph.textContent).not.toMatch(/a\. m\.|p\. m\./i)
   })
 
   it('shows "Valida" badge for unused tickets', async () => {

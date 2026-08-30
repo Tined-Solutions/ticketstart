@@ -9,6 +9,15 @@ describe('formatEventDate', () => {
     // Should contain at least day, month, and year components
     expect(result).toMatch(/25/)
     expect(result).toMatch(/diciembre/i)
+    // Time must be 24h (es-AR defaults to h12; formatEventDate forces 24h).
+    // Computed dynamically so the assertion is timezone-robust.
+    const expectedTime = new Date('2026-12-25T20:00:00Z').toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    expect(result).toContain(expectedTime)
+    expect(result).not.toMatch(/a\. m\.|p\. m\./i)
   })
 
   it('returns the expected fallback for null', () => {
