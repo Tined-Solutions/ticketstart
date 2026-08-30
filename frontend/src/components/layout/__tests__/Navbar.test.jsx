@@ -97,13 +97,14 @@ describe('Navbar', () => {
     expect(nav).not.toHaveClass('shadow-lg')
   })
 
-  it('removes the scroll listener on unmount', () => {
+  it('removes the scroll and resize listeners on unmount', () => {
     const removeListenerSpy = vi.spyOn(window, 'removeEventListener')
     const { unmount } = renderNavbar()
 
     unmount()
-    expect(removeListenerSpy).toHaveBeenCalledTimes(1)
+    expect(removeListenerSpy).toHaveBeenCalledTimes(2)
     expect(removeListenerSpy).toHaveBeenCalledWith('scroll', expect.any(Function))
+    expect(removeListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
 
     removeListenerSpy.mockRestore()
   })
