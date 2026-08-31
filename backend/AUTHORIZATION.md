@@ -41,11 +41,11 @@ Requires Admin role only.
 ```
 Requires Organizador OR Admin role.
 
-#### RequireStaffRole Policy
+#### RequireScanAccessRole Policy
 ```csharp
-[Authorize(Policy = "RequireStaffRole")]
+[Authorize(Policy = "RequireScanAccessRole")]
 ```
-Requires Staff OR Admin role.
+Requires Staff, Organizador OR Admin role (organizers scan as staff).
 
 #### EventOwnership Policy
 ```csharp
@@ -111,13 +111,13 @@ public IActionResult UpdateEvent(Guid id, [FromBody] UpdateEventRequest request)
 }
 ```
 
-### Example 6: Staff or Admin Endpoint
+### Example 6: Staff, Organizador or Admin Endpoint
 ```csharp
 [HttpPost("tickets/validate")]
-[Authorize(Policy = "RequireStaffRole")]
+[Authorize(Policy = "RequireScanAccessRole")]
 public IActionResult ValidateTicket([FromBody] ValidateTicketRequest request)
 {
-    // Staff and Admins can validate tickets
+    // Staff, Organizadores and Admins can validate tickets
     return Ok();
 }
 ```
@@ -190,7 +190,7 @@ When implementing future controllers (EventController, TicketController, etc.), 
 
 ### TicketController
 - `GET /api/tickets/lookup` - Public (no authorization)
-- `POST /api/tickets/validate` - `[Authorize(Policy = "RequireStaffRole")]`
+- `POST /api/tickets/validate` - `[Authorize(Policy = "RequireScanAccessRole")]`
 
 ### MetricsController
 - `GET /api/metrics/events/{id}` - `[Authorize(Policy = "EventOwnership")]`

@@ -15,7 +15,7 @@ Load when adding or changing an API endpoint, controller, service, DTO, or autho
 
 - Service pattern: `IXxx` interface + `XxxService` impl in `backend/Services/`, registered in `Program.cs`.
 - Controllers inherit `TicketeraControllerBase`; resolve identity via `TryGetUserId` / `TryGetUserRole`, not raw claims.
-- `[ApiController]` + `[Authorize(Policy = "...")]`; reuse existing policies (`EventOwnership`, `RequireOrganizadorRole`, `RequireStaffRole`, `RequireAdminRole`).
+- `[ApiController]` + `[Authorize(Policy = "...")]`; reuse existing policies (`EventOwnership`, `RequireOrganizadorRole`, `RequireScanAccessRole`, `RequireAdminRole`).
 - Map domain exceptions in controllers (NotFound/Forbid/BadRequest); `GlobalExceptionHandler` returns RFC 7807 `ProblemDetails` as fallback.
 - Validate via DTOs; never trust client input.
 

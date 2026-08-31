@@ -6,12 +6,7 @@
 |------------|----------|--------|---------------|--------|
 | **AuthController** | `/api/auth/register` | POST | `[AllowAnonymous]` | ✅ Applied |
 | **AuthController** | `/api/auth/login` | POST | `[AllowAnonymous]` | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/public` | GET | None | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/protected` | GET | `[Authorize]` | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/admin` | GET | `[Authorize(Roles = "Admin")]` | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/organizador` | GET | `[Authorize(Policy = "RequireOrganizadorRole")]` | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/staff` | GET | `[Authorize(Policy = "RequireStaffRole")]` | ✅ Applied |
-| **TestAuthorizationController** | `/api/testauthorization/event/{id}` | GET | `[Authorize(Policy = "EventOwnership")]` | ✅ Applied |
+> `TestAuthorizationController` was removed; `ScaffoldRemovalTests` asserts 404 for all its former routes.
 
 ## Future Controllers Authorization Plan
 
@@ -22,6 +17,7 @@
 | `/api/events` | GET | `[AllowAnonymous]` | Public event browsing |
 | `/api/events/{id}` | GET | `[AllowAnonymous]` | Public event details |
 | `/api/events` | POST | `[Authorize(Policy = "RequireOrganizadorRole")]` | Only organizers can create events |
+| `/api/events/manage` | GET | `[Authorize(Policy = "RequireScanAccessRole")]` | Scannable event list for the staff scan chooser (Staff/Organizador/Admin) |
 | `/api/events/{id}` | PUT | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can update |
 | `/api/events/{id}` | DELETE | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can delete |
 | `/api/events/{id}/image` | POST | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can upload images |
@@ -38,7 +34,7 @@
 | Endpoint | Method | Authorization | Reason |
 |----------|--------|---------------|--------|
 | `/api/tickets/lookup` | GET | `[AllowAnonymous]` | Public ticket lookup by email/DNI |
-| `/api/tickets/validate` | POST | `[Authorize(Policy = "RequireStaffRole")]` | Only staff can validate tickets |
+| `/api/tickets/validate` | POST | `[Authorize(Policy = "RequireScanAccessRole")]` | Staff and organizers can validate tickets (organizer scans as staff) |
 
 ### PaymentController (Task 12.4)
 
@@ -74,8 +70,8 @@
 | Edit own events | ❌ | ✅ | ❌ | ✅ |
 | Delete own events | ❌ | ✅ | ❌ | ✅ |
 | View own metrics | ❌ | ✅ | ❌ | ✅ |
-| Scan tickets | ❌ | ❌ | ✅ | ✅ |
-| Validate tickets | ❌ | ❌ | ✅ | ✅ |
+| Scan tickets | ❌ | ✅ | ✅ | ✅ |
+| Validate tickets | ❌ | ✅ | ✅ | ✅ |
 | Edit any event | ❌ | ❌ | ❌ | ✅ |
 | Delete any event | ❌ | ❌ | ❌ | ✅ |
 | View all users | ❌ | ❌ | ❌ | ✅ |
@@ -87,7 +83,7 @@
 |-------------|-------------|---------------|
 | `EventOwnership` | Requires event ownership or admin | Event Owner, Admin |
 | `RequireOrganizadorRole` | Requires organizador or admin | Organizador, Admin |
-| `RequireStaffRole` | Requires staff or admin | Staff, Admin |
+| `RequireScanAccessRole` | Requires staff, organizador or admin | Staff, Organizador, Admin |
 | `RequireAdminRole` | Requires admin only | Admin |
 
 ## Custom Authorization Handlers
@@ -104,7 +100,7 @@
 - [x] Event ownership policy works correctly
 - [x] Admin can access all resources
 - [x] Non-owners cannot modify events
-- [x] Staff can validate tickets
+- [x] Staff and Organizadores can validate tickets (organizer scans as staff)
 - [x] Organizadores can create events
 
 ## Requirements Coverage

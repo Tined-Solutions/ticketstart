@@ -99,11 +99,12 @@ Para que la marca cumpla WCAG AA en texto y botones, se definen **variantes oscu
 | Rol | ¿En MVP? | Notas |
 |-----|----------|-------|
 | **Comprador** (público) | ✅ | Compra como invitado; ve catálogo, detalle, compra, mis compras/tickets |
-| **Organizador** | ✅ | Gestiona sus eventos (dashboard, métricas, creación/edición) |
+| **Organizador** | ✅ | Gestiona sus eventos (dashboard, métricas, creación/edición); también escanea QR como un staff más (StaffScan) |
 | **Staff / Escáner** | ✅ | Escaneo QR en el evento (StaffScan) |
 | **Admin** | ✅ | Panel admin, compras, usuarios |
 
 - **El sistema de roles y permisos actual NO se modifica.** Las vistas y el navbar se atan lógicamente a los permisos de cada usuario, **tal cual está hoy** (`ProtectedRoute` / `RoleGuard`).
+- **Actualización (2026-08-31):** el Organizador ahora también accede a la sección de escaneos (StaffScan), con el mismo alcance que un Staff. El resto de los permisos queda intacto.
 
 ---
 
@@ -126,7 +127,7 @@ Todas las vistas actuales se mantienen; la navegación se hace desde el **navbar
 | Mis compras / Tickets (con QR) | Comprador | |
 | Login | Todos | |
 | OrganizerDashboard / EventDetail / EventMetrics / EventNew | Organizador | |
-| StaffScan | Staff | |
+| StaffScan | Staff, Organizador | |
 | AdminPanel / AdminPurchases | Admin | |
 | TicketLookup | Público/staff | |
 | FAQ / NotFound | Todos | |

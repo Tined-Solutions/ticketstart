@@ -31,7 +31,7 @@ Demonstrates all authorization patterns:
 | `/api/testauthorization/protected` | GET | `[Authorize]` | Any authenticated user |
 | `/api/testauthorization/admin` | GET | `[Authorize(Roles = "Admin")]` | Admin only |
 | `/api/testauthorization/organizador` | GET | `[Authorize(Policy = "RequireOrganizadorRole")]` | Organizador or Admin |
-| `/api/testauthorization/staff` | GET | `[Authorize(Policy = "RequireStaffRole")]` | Staff or Admin |
+| `/api/testauthorization/staff` | GET | `[Authorize(Policy = "RequireScanAccessRole")]` | Staff, Organizador or Admin |
 | `/api/testauthorization/event/{id}` | GET | `[Authorize(Policy = "EventOwnership")]` | Event owner or Admin |
 
 **Purpose:** Testing and demonstration of authorization patterns.
@@ -99,10 +99,10 @@ public IActionResult CreateEvent()
 - Viewing organizer dashboard
 - Accessing organizer metrics
 
-### Pattern 5: Staff or Admin
+### Pattern 5: Staff, Organizador or Admin
 ```csharp
 [HttpPost("tickets/validate")]
-[Authorize(Policy = "RequireStaffRole")]
+[Authorize(Policy = "RequireScanAccessRole")]
 public IActionResult ValidateTicket()
 {
     return Ok();
@@ -198,9 +198,9 @@ public class TicketController : ControllerBase
     [AllowAnonymous]
     public IActionResult LookupTickets([FromQuery] string email, [FromQuery] string dni) { }
     
-    // Staff or Admin - Validate ticket QR code
+    // Staff, Organizador or Admin - Validate ticket QR code
     [HttpPost("validate")]
-    [Authorize(Policy = "RequireStaffRole")]
+    [Authorize(Policy = "RequireScanAccessRole")]
     public IActionResult ValidateTicket([FromBody] ValidateTicketRequest request) { }
 }
 ```
@@ -269,7 +269,7 @@ The authorization system is configured in `Program.cs`:
 ### Policies Configured
 1. **EventOwnership** - Requires event ownership or Admin role
 2. **RequireOrganizadorRole** - Requires Organizador or Admin role
-3. **RequireStaffRole** - Requires Staff or Admin role
+3. **RequireScanAccessRole** - Requires Staff, Organizador or Admin role
 4. **RequireAdminRole** - Requires Admin role only
 
 ### Custom Authorization Handler
