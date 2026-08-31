@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
-
-function formatDateForInput(dateString) {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 16)
-}
+import { toDateTimeLocalValue } from '../lib/format.js'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -29,7 +23,7 @@ export default function EventForm({
   readOnly = false,
 }) {
   const [name, setName] = useState(initialData?.name || '')
-  const [date, setDate] = useState(formatDateForInput(initialData?.date) || '')
+  const [date, setDate] = useState(toDateTimeLocalValue(initialData?.date) || '')
   const [location, setLocation] = useState(initialData?.location || '')
   const [description, setDescription] = useState(initialData?.description || '')
   const [imageFile, setImageFile] = useState(null)
