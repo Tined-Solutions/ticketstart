@@ -357,6 +357,56 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
         Assert.Equal(HttpStatusCode.Forbidden, withNewCookie.StatusCode);
     }
 
+    // C1 (verify remediation, AUM-002): EventOwnership is in the SHALL-grant-
+    // nothing set — a SinAcceso user who still OWNS events (revoked organizer
+    // keeps ownership rows after the role change) must get 403 on every
+    // ownership-gated endpoint, on the owner path too.
+    [Fact]
+    public async Task SinAcceso_EventOwner_IsDenied403_OnAllOwnershipGatedEndpoints()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var owner = await SeedUserAsync(UserRole.SinAcceso);
+        var eventId = await SeedEventAsync(owner.UserId);
+        var ownerCookie = await LoginAsync(owner.Email, "password123");
+
+        // GET /api/events/{id}/manage — owner event detail
+        var manage = new HttpRequestMessage(HttpMethod.Get, $"/api/events/{eventId}/manage");
+        manage.Headers.Add("Cookie", ownerCookie);
+        var manageResponse = await _client.SendAsync(manage);
+        Assert.Equal(HttpStatusCode.Forbidden, manageResponse.StatusCode);
+
+        // PUT /api/events/{id} — owner event update
+        var update = new HttpRequestMessage(HttpMethod.Put, $"/api/events/{eventId}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "Owned Event",
+                description = "Attempted edit by revoked owner",
+                date = DateTime.UtcNow.AddDays(3),
+                location = "Test Location"
+            })
+        };
+        update.Headers.Add("Cookie", ownerCookie);
+        var updateResponse = await _client.SendAsync(update);
+        Assert.Equal(HttpStatusCode.Forbidden, updateResponse.StatusCode);
+
+        // POST /api/events/{id}/image — owner image upload
+        var image = new HttpRequestMessage(HttpMethod.Post, $"/api/events/{eventId}/image")
+        {
+            Content = new ByteArrayContent(Array.Empty<byte>())
+        };
+        image.Headers.Add("Cookie", ownerCookie);
+        var imageResponse = await _client.SendAsync(image);
+        Assert.Equal(HttpStatusCode.Forbidden, imageResponse.StatusCode);
+
+        // GET /api/metrics/events/{id} — owner metrics
+        var metrics = new HttpRequestMessage(HttpMethod.Get, $"/api/metrics/events/{eventId}");
+        metrics.Headers.Add("Cookie", ownerCookie);
+        var metricsResponse = await _client.SendAsync(metrics);
+        Assert.Equal(HttpStatusCode.Forbidden, metricsResponse.StatusCode);
+    }
+
     #endregion
 
     #region Helpers
@@ -379,6 +429,30 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
             role);
         Assert.True(user.Success, $"Failed to seed user: {user.Error}");
         return user;
+    }
+
+    /// <summary>
+    /// Seeds an event owned by the given organizer id (verify remediation C1:
+    /// exercises the EventOwnership owner path for a SinAcceso user).
+    /// </summary>
+    private async Task<Guid> SeedEventAsync(Guid organizerId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var evt = new Event
+        {
+            Name = "Owned Event",
+            Description = "Seeded for the SinAcceso owner-denial test",
+            Date = DateTime.UtcNow.AddDays(7),
+            Location = "Test Location",
+            ImageUrl = string.Empty,
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        context.Events.Add(evt);
+        await context.SaveChangesAsync();
+        return evt.Id;
     }
 
     private async Task<string> LoginAsync(string email, string password)
