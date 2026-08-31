@@ -4,12 +4,12 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '../api/client.js'
 import { useAuth } from '../context/auth.js'
-import { formatEventDate, formatCurrency } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { queryKeys } from '../lib/queryKeys.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import EventSummaryTicket from '../components/events/EventSummaryTicket.jsx'
 import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
 import { validateDocument, cleanDocument, formatDocument } from '../utils/identityValidation.js'
 
@@ -273,7 +273,7 @@ export default function Checkout() {
             ← Volver al catálogo
           </Link>
 
-          <div className="max-w-xl mx-auto px-4 pt-4 pb-6">
+<div className="max-w-5xl mx-auto px-4 pt-4 pb-6">
           {/* Stepper — progress indicator for the 2-step flow, centered on the page */}
           <div className="flex flex-col items-center gap-2">
             <h3 className="text-sm font-semibold text-text-1">Paso 1 de 2</h3>
@@ -286,43 +286,21 @@ export default function Checkout() {
             {isEditing ? 'Editar tus datos' : 'Reserva tus entradas'}
           </h1>
 
-          {/* Event summary */}
-          <GlassCard
-            className="mb-5 p-5"
-            style={{ boxShadow: '0 12px 32px rgba(74,74,74,0.16)', borderColor: 'rgba(74,74,74,0.3)' }}
-          >
-            <div className="flex gap-4">
-              {cart.eventImageUrl ? (
-                <img
-                  src={cart.eventImageUrl}
-                  alt={cart.eventName}
-                  className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-lg bg-surface-elevated flex items-center justify-center flex-shrink-0">
-                  <span className="text-text-muted text-xs">Sin imagen</span>
-                </div>
-              )}
-              <div className="min-w-0">
-                <h2 className="font-heading font-semibold text-text-1 text-lg">
-                  {cart.eventName}
-                </h2>
-                <p className="text-text-2 text-sm">{formatEventDate(cart.eventDate)}</p>
-                <p className="text-text-2 text-sm">{cart.eventLocation}</p>
-              </div>
-            </div>
-
-            <hr className="my-4 border-white/10" />
-
-            <div className="flex justify-between items-center">
-              <span className="text-text-2 text-sm">
-                {selection.name} x {selection.quantity}
-              </span>
-              <span className="font-display font-bold text-brand-1 text-lg">
-                Total: {formatCurrency(cart.totalPrice)}
-              </span>
-            </div>
-          </GlassCard>
+          {/* Two-column layout: event summary on the left, purchaser form on the
+              right. Stacks to one column on small screens. */}
+<div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+          {/* Event summary — shared ticket component (same card in step 1 and step 2) */}
+          <EventSummaryTicket
+            event={{
+              name: cart.eventName,
+              imageUrl: cart.eventImageUrl,
+              date: cart.eventDate,
+              location: cart.eventLocation,
+            }}
+            selectionName={selection.name}
+            quantity={selection.quantity}
+            totalPrice={cart.totalPrice}
+          />
 
           {/* Purchaser form */}
           <motion.div
@@ -534,6 +512,7 @@ export default function Checkout() {
             </GlassCard>
           </motion.div>
           </div>
+          </div>
         </motion.div>
       </AnimatePresence>
     )
@@ -542,106 +521,134 @@ export default function Checkout() {
   // ─── Phase 2 — Confirmation ─────────────────────────────────────────────
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-12">
-      <GlassCard className="text-center p-6">
-        <h1 className="text-2xl font-display font-bold text-text-1 mb-2">
+    <div className="flex min-h-[calc(100svh-56px)] flex-col bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15">
+      <Link
+        to="/events"
+        className="inline-flex items-center gap-1 px-4 pt-6 text-text-2 hover:text-text-1 transition-colors sm:px-6"
+      >
+        ← Volver al catálogo
+      </Link>
+
+<div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pt-3 pb-6">
+        {/* Stepper — progress indicator for the 2-step flow, centered on the page */}
+        <div className="flex flex-col items-center gap-2">
+          <h3 className="text-sm font-semibold text-text-1">Paso 2 de 2</h3>
+          <div className="flex space-x-3" aria-hidden="true">
+            <span className="h-2 w-12 rounded-full bg-brand-1" />
+            <span className="h-2 w-12 rounded-full bg-brand-1" />
+          </div>
+        </div>
+        <h1 className="mt-3 mb-4 text-center text-2xl font-display font-bold text-text-1">
           Confirma tu reserva
         </h1>
 
-        {/* Countdown timer */}
-        <div className="inline-flex flex-col items-center gap-1 px-6 py-3 rounded-full glass-surface mb-6">
-          <span className="text-text-2 text-sm">Tiempo restante:</span>
-          <span
-            className={`font-mono text-lg font-bold tabular-nums ${
-              remainingSeconds <= 30 ? 'text-rose-400' : 'text-brand-1'
-            }`}
-            role="timer"
-            aria-live="polite"
-          >
-            {formatCountdown(remainingSeconds)}
-          </span>
-          {remainingSeconds <= 30 && (
-            <span className="text-rose-400 text-sm font-medium">
-              Quedan pocos segundos
-            </span>
-          )}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:flex-1 lg:items-stretch">
+          {/* Left column: event ticket — shared component, never stretched (self-start) */}
+          <EventSummaryTicket
+            className="lg:self-start"
+            event={{
+              name: cart.eventName,
+              imageUrl: cart.eventImageUrl,
+              date: cart.eventDate,
+              location: cart.eventLocation,
+            }}
+            selectionName={selection.name}
+            quantity={reservation.quantity}
+            totalPrice={cart.totalPrice}
+          />
+
+          {/* Right column: single glass card — countdown + purchaser data + actions */}
+          <GlassCard className="flex flex-col p-5">
+            {/* Countdown */}
+            <div className="flex flex-col items-center">
+              <p className="text-sm text-text-2">Tiempo restante</p>
+              <span
+                className={`font-display text-2xl font-bold tabular-nums ${
+                  remainingSeconds <= 30 ? 'text-rose-400' : 'text-brand-1'
+                }`}
+                role="timer"
+                aria-live="polite"
+              >
+                {formatCountdown(remainingSeconds)}
+              </span>
+              {remainingSeconds <= 30 && (
+                <span className="mt-1 text-sm font-medium text-rose-400">
+                  Quedan pocos segundos
+                </span>
+              )}
+            </div>
+
+            {/* Purchaser data review */}
+            <div className="mt-4 border-t border-gris-oscuro/10 pt-4">
+              <h2 className="mb-3 font-display text-base font-semibold text-text-1">
+                Datos del comprador
+              </h2>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-2">Nombre</span>
+                  <span className="truncate font-semibold text-text-1">{purchaserName}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-2">Email</span>
+                  <span className="truncate font-semibold text-text-1">{purchaserEmail}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-2">DNI</span>
+                  <span className="truncate font-semibold text-text-1">{purchaserDNI}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions — custom buttons, no lift; soft violet primary + neutral ghost */}
+            <div className="mt-auto flex flex-col gap-2.5 pt-4">
+              <button
+                type="button"
+                onClick={handleEditData}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-gris-oscuro/20 bg-white/60 px-6 py-2 text-sm font-semibold text-text-2 transition-colors duration-200 hover:bg-gris-oscuro/10 hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2"
+              >
+                Editar datos
+              </button>
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={isExpired || payLoading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-purpura/30 bg-purpura/15 px-6 py-2 text-sm font-semibold text-purpura-dark transition-colors duration-200 hover:bg-purpura/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {payLoading && (
+                  <svg
+                    className="animate-spin h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                )}
+                {payLoading ? 'Preparando pago…' : 'Confirmar y proceder al pago'}
+              </button>
+            </div>
+            {error && (
+              <div className="mt-4">
+                <Badge variant="error" className="px-4 py-2 w-full" role="alert">
+                  {error}
+                </Badge>
+              </div>
+            )}
+          </GlassCard>
         </div>
-
-	        {/* Order summary — event */}
-	        <div className="text-left space-y-2 mb-6">
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Evento</span>
-	            <span className="text-text-1 text-right">{cart.eventName}</span>
-	          </div>
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Fecha</span>
-	            <span className="text-text-1">{formatEventDate(cart.eventDate)}</span>
-	          </div>
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Ubicación</span>
-	            <span className="text-text-1">{cart.eventLocation}</span>
-	          </div>
-	          <hr className="my-3 border-white/10" />
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>{selection.name} x {reservation.quantity}</span>
-	            <span className="text-text-1">
-	              {formatCurrency(selection.price * reservation.quantity)}
-	            </span>
-	          </div>
-	          <div className="flex justify-between font-display font-bold text-text-1 text-lg pt-2 border-t border-white/10">
-	            <span>Total:</span>
-	            <span className="text-brand-1">{formatCurrency(cart.totalPrice)}</span>
-	          </div>
-	        </div>
-
-	        {/* Purchaser data review */}
-	        <div className="text-left space-y-2 mb-6">
-	          <h2 className="text-lg font-heading font-semibold text-text-1 mb-3">
-	            Datos del comprador
-	          </h2>
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Nombre</span>
-	            <span className="text-text-1">{purchaserName}</span>
-	          </div>
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>Email</span>
-	            <span className="text-text-1">{purchaserEmail}</span>
-	          </div>
-	          <div className="flex justify-between text-text-2 text-sm">
-	            <span>DNI</span>
-	            <span className="text-text-1">{purchaserDNI}</span>
-	          </div>
-	        </div>
-
-	        {error && (
-	          <div className="mb-4">
-	            <Badge variant="error" className="px-4 py-2" role="alert">
-	              {error}
-	            </Badge>
-	          </div>
-	        )}
-
-	        <div className="flex gap-3">
-	          <Button
-	            variant="secondary"
-	            size="lg"
-	            onClick={handleEditData}
-	            className="flex-1"
-	          >
-	            Editar datos
-	          </Button>
-	          <Button
-	            variant="gradient"
-	            size="lg"
-	            loading={payLoading}
-	            onClick={handlePay}
-	            disabled={isExpired}
-	            className="flex-1"
-	          >
-	            {payLoading ? 'Preparando pago…' : 'Confirmar y proceder al pago'}
-	          </Button>
-	        </div>
-      </GlassCard>
+      </div>
     </div>
   )
 }
