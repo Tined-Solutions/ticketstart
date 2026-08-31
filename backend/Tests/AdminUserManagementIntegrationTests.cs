@@ -245,6 +245,9 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
         var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // S2 (verify remediation): the credential's only appearance must be
+        // un-cacheable — pin the D11 `Cache-Control: no-store` response header.
+        Assert.True(response.Headers.CacheControl.NoStore, "Reset 200 must set Cache-Control: no-store");
         var body = await response.Content.ReadFromJsonAsync<AdminResetPasswordResponse>();
         Assert.NotNull(body);
         Assert.InRange(body.TemporaryPassword.Length, 12, 16);
@@ -310,6 +313,55 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
         var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // W1 (verify remediation): `reset-self-allowed` was covered only at
+    // controller-unit level — this proves the end-to-end self-reset path
+    // (real generator + hash + 200 body → working temporary credential).
+    [Fact]
+    public async Task PostAdminUsersResetPassword_SelfReset_ReturnsOk_AndTempCredentialLogsIn()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var (adminCookie, adminId, adminEmail) = await SeedAdminAndLoginAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{adminId}/reset-password");
+        request.Headers.Add("Cookie", adminCookie);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AdminResetPasswordResponse>();
+        Assert.NotNull(body);
+        Assert.InRange(body.TemporaryPassword.Length, 12, 16);
+
+        // The temporary credential immediately authenticates the admin account.
+        var tempLogin = await _factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
+        {
+            email = adminEmail,
+            password = body.TemporaryPassword
+        });
+        Assert.Equal(HttpStatusCode.OK, tempLogin.StatusCode);
+    }
+
+    // W2 (verify remediation): mirror the PUT missing-header negative test for
+    // the reset POST — the CSRF middleware is method-based and must reject it.
+    [Fact]
+    public async Task PostAdminUsersResetPassword_WithoutCsrfHeader_ReturnsBadRequest()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var (adminCookie, _, _) = await SeedAdminAndLoginAsync();
+        var target = await SeedUserAsync(UserRole.Staff);
+
+        // A client WITHOUT the X-CSRF-PROTECT default header (contrary to the ctor).
+        var bareClient = _factory.CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{target.UserId}/reset-password");
+        request.Headers.Add("Cookie", adminCookie);
+        var response = await bareClient.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("CSRF header required", body);
     }
 
     #endregion
