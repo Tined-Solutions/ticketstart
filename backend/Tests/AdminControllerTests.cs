@@ -950,6 +950,93 @@ public class AdminControllerTests
 
     #endregion
 
+    #region POST /api/admin/users/{userId}/reset-password (AUM-003)
+
+    [Fact]
+    public async Task ResetPassword_Success_ReturnsOkWithTempPassword_AndAuditsWithoutCredential()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        const string tempPassword = "TempPass123456";
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAuthService.Setup(s => s.ResetPasswordAsync(targetId))
+            .ReturnsAsync(new ResetPasswordResult
+            {
+                Success = true,
+                TemporaryPassword = tempPassword,
+                UserId = targetId
+            });
+
+        // Act
+        var result = await _controller.ResetPassword(targetId);
+
+        // Assert — the cleartext credential exists in exactly one place: the body.
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsType<AdminResetPasswordResponse>(okResult.Value);
+        Assert.Equal(tempPassword, value.TemporaryPassword);
+
+        // D10/D11: audit details carry ids only and NEVER the credential.
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.UserId == adminId &&
+            c.Action == AuditActionType.ResetPassword &&
+            c.Resource == AuditResourceType.User &&
+            c.ResourceId == targetId &&
+            c.Details == $"Admin reset password for user {targetId}" &&
+            (c.Details == null || !c.Details.Contains(tempPassword, StringComparison.Ordinal)))), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResetPassword_UnknownUser_Returns404_NoAudit()
+    {
+        var adminId = Guid.NewGuid();
+        var unknownId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAuthService.Setup(s => s.ResetPasswordAsync(unknownId))
+            .ReturnsAsync(new ResetPasswordResult { Success = false, Error = "User not found" });
+
+        var result = await _controller.ResetPassword(unknownId);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.NotNull(notFound.Value);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPassword_SelfReset_Returns200_GuardIsRoleOnly()
+    {
+        // D4: the self guard applies to ROLE EDIT only — self reset is allowed
+        // (no lockout risk: the admin sets their own new password afterwards).
+        var adminId = Guid.NewGuid();
+        const string tempPassword = "SelfResetPass1";
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAuthService.Setup(s => s.ResetPasswordAsync(adminId))
+            .ReturnsAsync(new ResetPasswordResult { Success = true, TemporaryPassword = tempPassword, UserId = adminId });
+
+        var result = await _controller.ResetPassword(adminId);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsType<AdminResetPasswordResponse>(okResult.Value);
+        Assert.Equal(tempPassword, value.TemporaryPassword);
+    }
+
+    [Fact]
+    public async Task ResetPassword_ServiceThrows_Returns500()
+    {
+        var adminId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockAuthService.Setup(s => s.ResetPasswordAsync(targetId))
+            .ThrowsAsync(new InvalidOperationException("db down"));
+
+        var result = await _controller.ResetPassword(targetId);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+    }
+
+    #endregion
+
     private void SetAuthenticatedUser(Guid userId, UserRole role)
     {
         var claims = new List<Claim>

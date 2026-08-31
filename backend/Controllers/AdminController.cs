@@ -459,6 +459,63 @@ public class AdminController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Resets a user's password (AUM-003). Inherited RequireAdminRole policy.
+    /// Generates a cryptographically secure temporary password server-side,
+    /// persists only its BCrypt hash, and returns the cleartext credential
+    /// EXACTLY ONCE in the response body for out-of-band handoff (admins never
+    /// see, set, or choose user passwords). Self reset is allowed (the self
+    /// role-edit guard does not apply — no lockout risk). The credential is
+    /// never audited or logged; `Cache-Control: no-store` defends against any
+    /// intermediary caching of the one-time body (D11). Unknown users → 404.
+    /// </summary>
+    /// <param name="userId">ID of the target user</param>
+    /// <returns>200 with the one-time credential; 404 unknown user</returns>
+    [HttpPost("users/{userId:guid}/reset-password")]
+    public async Task<IActionResult> ResetPassword(Guid userId)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var result = await _authService.ResetPasswordAsync(userId);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("Password reset failed for user {UserId}: {Error}", userId, result.Error);
+
+                // D6: mirrors CreateUser's string-mapping precedent.
+                if (result.Error.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    return NotFound(new { error = result.Error });
+                }
+
+                return BadRequest(new { error = result.Error });
+            }
+
+            // D10: audit details carry ids only — NEVER the credential.
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.ResetPassword,
+                AuditResourceType.User,
+                userId,
+                Truncate($"Admin reset password for user {userId}", 1000)));
+
+            // D11: the credential's single appearance — marked no-store.
+            Response.Headers.CacheControl = "no-store";
+            return Ok(new AdminResetPasswordResponse
+            {
+                TemporaryPassword = result.TemporaryPassword
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password for user {UserId}", userId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while resetting the password" });
+        }
+    }
+
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try
@@ -515,3 +572,13 @@ public record RejectEventRequest(string? Reason = null);
 /// validation ([ApiController] → 400) before reaching the action.
 /// </summary>
 public record AdminUpdateUserRoleRequest(UserRole Role);
+
+/// <summary>
+/// Response body of a successful password reset (AUM-003): the one-time
+/// temporary credential for out-of-band handoff. It is returned exactly once,
+/// with `Cache-Control: no-store`, and is never stored, logged, or audited.
+/// </summary>
+public class AdminResetPasswordResponse
+{
+    public string TemporaryPassword { get; set; } = string.Empty;
+}

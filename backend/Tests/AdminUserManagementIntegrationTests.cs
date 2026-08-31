@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
@@ -20,6 +21,8 @@ namespace TicketeraOnline.Api.Tests;
 public class AdminUserManagementApiFactory : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _originalValues = new();
+    private readonly SemaphoreSlim _adminLock = new(1, 1);
+    private (string Cookie, Guid AdminId, string Email)? _adminCredential;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -53,6 +56,44 @@ public class AdminUserManagementApiFactory : WebApplicationFactory<Program>
     {
         _originalValues[name] = Environment.GetEnvironmentVariable(name);
         Environment.SetEnvironmentVariable(name, value);
+    }
+
+    /// <summary>
+    /// Seeds the shared admin user ONCE per factory (lazily) and returns its
+    /// login cookie. Class tests share this credential so the whole class stays
+    /// under the Login rate limiter's 10-requests-per-minute sliding window
+    /// (11+ logins through one host would otherwise trip 429s mid-suite).
+    /// </summary>
+    public async Task<(string Cookie, Guid AdminId, string Email)> EnsureAdminAsync(
+        Func<string, string, Task<string>> loginAsync)
+    {
+        await _adminLock.WaitAsync();
+        try
+        {
+            if (_adminCredential == null)
+            {
+                using var scope = Services.CreateScope();
+                var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+                var admin = await authService.CreateUserAsync(
+                    "Admin User",
+                    $"admin-{Guid.NewGuid()}@example.com",
+                    "password123",
+                    UserRole.Admin);
+                if (!admin.Success)
+                {
+                    throw new InvalidOperationException($"Failed to seed admin: {admin.Error}");
+                }
+
+                var cookie = await loginAsync(admin.Email, "password123");
+                _adminCredential = (cookie, admin.UserId, admin.Email);
+            }
+
+            return _adminCredential.Value;
+        }
+        finally
+        {
+            _adminLock.Release();
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -189,21 +230,142 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
 
     #endregion
 
+    #region AUM-003 — POST /api/admin/users/{userId}/reset-password
+
+    [Fact]
+    public async Task PostAdminUsersResetPassword_ReturnsUsableTempPassword_OldPasswordStopsWorking()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var target = await SeedUserAsync(UserRole.Staff);
+        var (adminCookie, _, _) = await SeedAdminAndLoginAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{target.UserId}/reset-password");
+        request.Headers.Add("Cookie", adminCookie);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AdminResetPasswordResponse>();
+        Assert.NotNull(body);
+        Assert.InRange(body.TemporaryPassword.Length, 12, 16);
+        Assert.All(body.TemporaryPassword, c => Assert.True(char.IsAsciiLetterOrDigit(c)));
+
+        // The OLD password no longer authenticates…
+        var oldLogin = await _factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
+        {
+            email = target.Email,
+            password = "password123"
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, oldLogin.StatusCode);
+
+        // …and the temporary credential logs in (out-of-band handoff works).
+        var tempLogin = await _factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
+        {
+            email = target.Email,
+            password = body.TemporaryPassword
+        });
+        Assert.Equal(HttpStatusCode.OK, tempLogin.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostAdminUsersResetPassword_AuditRowIsCredentialFree()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var target = await SeedUserAsync(UserRole.Staff);
+        var (adminCookie, _, _) = await SeedAdminAndLoginAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{target.UserId}/reset-password");
+        request.Headers.Add("Cookie", adminCookie);
+        var response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AdminResetPasswordResponse>();
+        Assert.NotNull(body);
+
+        // Inspect the persisted audit rows for this reset: the credential MUST
+        // NOT appear anywhere (AUM-003 `credential-absent-audit-logs`).
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var auditRows = await context.AuditLogs
+            .AsNoTracking()
+            .Where(l => l.ResourceId == target.UserId && l.ActionType == AuditActionType.ResetPassword)
+            .ToListAsync();
+
+        Assert.NotEmpty(auditRows);
+        foreach (var row in auditRows)
+        {
+            Assert.DoesNotContain(body.TemporaryPassword, row.Details);
+        }
+    }
+
+    [Fact]
+    public async Task PostAdminUsersResetPassword_UnknownUser_ReturnsNotFound()
+    {
+        if (!HasLiveDatabase()) return;
+
+        var (adminCookie, _, _) = await SeedAdminAndLoginAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{Guid.NewGuid()}/reset-password");
+        request.Headers.Add("Cookie", adminCookie);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    #endregion
+
+    #region AUM-002 / AUM-004 — SinAcceso + next-login session semantics
+
+    [Fact]
+    public async Task SinAcceso_LoginStillSucceeds_RoleGatedEndpointsReturn403OnlyAfterNextLogin()
+    {
+        if (!HasLiveDatabase()) return;
+
+        // GIVEN a logged-in Staff user (cookie1 carries the frozen Staff claim)
+        var target = await SeedUserAsync(UserRole.Staff);
+        var oldCookie = await LoginAsync(target.Email, "password123");
+
+        var staffAllowed = new HttpRequestMessage(HttpMethod.Get, "/api/events/manage");
+        staffAllowed.Headers.Add("Cookie", oldCookie);
+        var beforeChange = await _client.SendAsync(staffAllowed);
+        Assert.Equal(HttpStatusCode.OK, beforeChange.StatusCode);
+
+        // WHEN an admin changes the role to SinAcceso
+        var (adminCookie, _, _) = await SeedAdminAndLoginAsync();
+        var changeRole = new HttpRequestMessage(HttpMethod.Put, $"/api/admin/users/{target.UserId}/role")
+        {
+            Content = JsonContent.Create(new { role = "SinAcceso" })
+        };
+        changeRole.Headers.Add("Cookie", adminCookie);
+        var changeResponse = await _client.SendAsync(changeRole);
+        Assert.Equal(HttpStatusCode.OK, changeResponse.StatusCode);
+
+        // THEN the OLD cookie keeps Staff authority (AUM-004: no session
+        // revocation — the JWT role claim is frozen until the cookie expires).
+        var oldCookieRequest = new HttpRequestMessage(HttpMethod.Get, "/api/events/manage");
+        oldCookieRequest.Headers.Add("Cookie", oldCookie);
+        var withOldCookie = await _client.SendAsync(oldCookieRequest);
+        Assert.Equal(HttpStatusCode.OK, withOldCookie.StatusCode);
+
+        // AND the NEXT login still succeeds (AUM-002: login has no role check)…
+        var newCookie = await LoginAsync(target.Email, "password123");
+
+        // …but role-gated endpoints now return 403 (no policy grants SinAcceso).
+        var gatedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/events/manage");
+        gatedRequest.Headers.Add("Cookie", newCookie);
+        var withNewCookie = await _client.SendAsync(gatedRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, withNewCookie.StatusCode);
+    }
+
+    #endregion
+
     #region Helpers
 
     private async Task<(string Cookie, Guid AdminId, string Email)> SeedAdminAndLoginAsync()
     {
-        using var scope = _factory.Services.CreateScope();
-        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
-        var admin = await authService.CreateUserAsync(
-            "Admin User",
-            $"admin-{Guid.NewGuid()}@example.com",
-            "password123",
-            UserRole.Admin);
-        Assert.True(admin.Success, $"Failed to seed admin: {admin.Error}");
-
-        var cookie = await LoginAsync(admin.Email, "password123");
-        return (cookie, admin.UserId, admin.Email);
+        // The admin is seeded once per factory and its cookie reused — the
+        // Login rate limiter (10/min/IP) must not be exhausted by this class.
+        return await _factory.EnsureAdminAsync(LoginAsync);
     }
 
     private async Task<CreateUserResult> SeedUserAsync(UserRole role)

@@ -176,6 +176,54 @@ public class AuthService : IAuthService
         }
     }
 
+    /// <summary>
+    /// Admin-triggered password reset (AUM-003, D8): generates a CSPRNG
+    /// temporary credential (12–16 alnum), persists ONLY its BCrypt hash, and
+    /// returns the cleartext exactly once. No log statement in this method
+    /// ever receives the credential — the guarantee is structural (D11).
+    /// </summary>
+    public async Task<ResetPasswordResult> ResetPasswordAsync(Guid targetUserId)
+    {
+        try
+        {
+            var user = await _context.Users.FindAsync(targetUserId);
+
+            if (user == null)
+            {
+                // D6: this string is the controller's 404-mapping contract — pinned by tests.
+                return new ResetPasswordResult
+                {
+                    Success = false,
+                    Error = "User not found"
+                };
+            }
+
+            var temporaryPassword = Helpers.PasswordGenerator.Generate();
+
+            // Persist the hash only — the cleartext is never stored.
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Admin reset password for user {UserId}", user.Id);
+
+            return new ResetPasswordResult
+            {
+                Success = true,
+                TemporaryPassword = temporaryPassword,
+                UserId = user.Id
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password for user {UserId}", targetUserId);
+            return new ResetPasswordResult
+            {
+                Success = false,
+                Error = "An error occurred during password reset"
+            };
+        }
+    }
+
     public async Task<User?> ValidateTokenAsync(string token)
     {
         try

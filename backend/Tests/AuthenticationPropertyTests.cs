@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
@@ -514,6 +515,105 @@ public class AuthenticationPropertyTests : IDisposable
             Assert.NotNull(roleClaim);
             Assert.Equal(role.ToString(), roleClaim.Value);
         }
+    }
+
+    #endregion
+
+    #region AUM-003 — PasswordGenerator properties (D9)
+
+    /// <summary>
+    /// AUM-003 `temp-password-passes-policy` (D9): for ANY number of Generate()
+    /// invocations the output MUST be 12–16 characters, alphanumeric only, and
+    /// therefore satisfy the login password policy (min 8 chars — mirrored from
+    /// AuthService.CreateUserAsync; the login path enforces the same length rule).
+    /// </summary>
+    [Property]
+    public Property GeneratedTempPasswords_AlwaysSatisfyTempPasswordPolicy()
+    {
+        var sampleCountArb = ArbStatic.From(GenStatic.Choose(1, 50));
+
+        return PropStatic.ForAll(sampleCountArb, (int samples) =>
+        {
+            for (var i = 0; i < samples; i++)
+            {
+                var password = PasswordGenerator.Generate();
+
+                // Length ∈ [12, 16] (spec: 12–16 chars, satisfying min-8).
+                if (password.Length < 12 || password.Length > 16) return false;
+
+                // Charset ⊆ alphanumeric.
+                if (password.Any(c => !char.IsAsciiLetterOrDigit(c))) return false;
+
+                // Passes the login min-8 validation.
+                if (password.Length < 8) return false;
+            }
+
+            return true;
+        });
+    }
+
+    [Fact]
+    public void PasswordGenerator_ConsecutiveCalls_ProduceRandomLookingCredentials()
+    {
+        // Deterministic companion: 200 consecutive calls all satisfy the policy
+        // and are not all identical (a constant string would pass a single check).
+        var seen = new HashSet<string>();
+        for (var i = 0; i < 200; i++)
+        {
+            var password = PasswordGenerator.Generate();
+            Assert.InRange(password.Length, 12, 16);
+            Assert.All(password, c => Assert.True(char.IsAsciiLetterOrDigit(c), $"Non-alphanumeric char: {c}"));
+            seen.Add(password);
+        }
+
+        Assert.True(seen.Count > 1, "Generator must not return a constant credential");
+    }
+
+    #endregion
+
+    #region AUM-003 — ResetPasswordAsync (D8)
+
+    [Fact]
+    public async Task ResetPasswordAsync_UnknownUser_ReturnsFailure_WithPinnedMessage()
+    {
+        // D6: the "User not found" string is the 404-mapping contract (mirrors
+        // CreateUser's string-mapping precedent) — pinned here on purpose.
+        var result = await _authService.ResetPasswordAsync(Guid.NewGuid());
+
+        Assert.False(result.Success);
+        Assert.Equal("User not found", result.Error);
+        Assert.Equal(string.Empty, result.TemporaryPassword);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ExistingUser_PersistsHashThatVerifies_OldPasswordStopsAuthenticating()
+    {
+        // GIVEN a user created with "password123"
+        var created = await _authService.CreateUserAsync(
+            "Reset Target", $"reset-{Guid.NewGuid()}@example.com", "password123", UserRole.Staff);
+        Assert.True(created.Success);
+
+        // WHEN the admin resets the password
+        var result = await _authService.ResetPasswordAsync(created.UserId);
+
+        // THEN a usable one-time credential is returned…
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(created.UserId, result.UserId);
+        Assert.InRange(result.TemporaryPassword.Length, 12, 16);
+
+        // …the stored hash verifies against the returned credential…
+        var stored = await _context.Users.AsNoTracking().SingleAsync(u => u.Id == created.UserId);
+        Assert.True(BCrypt.Net.BCrypt.Verify(result.TemporaryPassword, stored.PasswordHash));
+
+        // …and the previous password no longer authenticates (both at the hash
+        // level and through the actual login flow).
+        Assert.False(BCrypt.Net.BCrypt.Verify("password123", stored.PasswordHash));
+        var oldLogin = await _authService.LoginAsync(new LoginRequest
+        {
+            Email = created.Email,
+            Password = "password123"
+        });
+        Assert.False(oldLogin.Success);
     }
 
     #endregion
