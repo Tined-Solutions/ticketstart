@@ -80,6 +80,9 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
                 className="mx-auto flex h-9 w-[120px] items-center justify-center gap-1.5"
                 onClick={(e) => e.stopPropagation()}
               >
+                {/* Quantity controls: only the selected ticket type can hold a
+                    quantity. Decrementing to 0 deselects it (single type per
+                    purchase). */}
                 <motion.button
                   type="button"
                   aria-label={`Disminuir cantidad de ${ticketType.name}`}
@@ -107,10 +110,6 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
                   +
                 </motion.button>
               </div>
-            ) : quantity > 0 ? (
-              <span className="mx-auto inline-flex h-9 w-[120px] items-center justify-center rounded-full bg-purpura-dark/10 text-xs font-semibold text-purpura-dark">
-                {quantity} {quantity === 1 ? 'elegida' : 'elegidas'}
-              </span>
             ) : (
               <span className="mx-auto inline-flex h-9 w-[120px] items-center justify-center rounded-full border border-purpura-dark/30 text-xs font-semibold text-purpura-dark transition-colors hover:bg-purpura-dark/10">
                 Elegir entrada
