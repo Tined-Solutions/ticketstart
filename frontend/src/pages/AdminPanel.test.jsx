@@ -134,9 +134,8 @@ describe('AdminPanel', () => {
     })
 
     // Recital de Rock: organizerId = user-2 -> organizador@ticketera.com
-    // Appears in both events and users tables, so use getAllByText
     const orgEmails = screen.getAllByText('organizador@ticketera.com')
-    expect(orgEmails.length).toBeGreaterThanOrEqual(2) // events table + users table
+    expect(orgEmails.length).toBeGreaterThanOrEqual(1) // resolved on the events rows
     // Feria: organizerId = user-3 -> staff@ticketera.com
     const staffEmails = screen.getAllByText('staff@ticketera.com')
     expect(staffEmails.length).toBeGreaterThanOrEqual(1)
@@ -166,13 +165,14 @@ describe('AdminPanel', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
-    // organizador@ticketera.com appears in both events (organizer) and users tables
-    const orgEmails = screen.getAllByText('organizador@ticketera.com')
-    expect(orgEmails.length).toBeGreaterThanOrEqual(2)
-    // staff@ticketera.com appears in both events (organizer) and users tables
-    const staffEmails = screen.getAllByText('staff@ticketera.com')
-    expect(staffEmails.length).toBeGreaterThanOrEqual(1)
+    // Users live behind the "Usuarios" tab (single-section layout)
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    })
+    expect(screen.getByText('organizador@ticketera.com')).toBeInTheDocument()
+    expect(screen.getByText('staff@ticketera.com')).toBeInTheDocument()
   })
 
   it('displays role badges for users', async () => {
@@ -180,6 +180,12 @@ describe('AdminPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Role badges live in the users table, behind the "Usuarios" tab
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
 
     // Check role badges exist
@@ -195,15 +201,21 @@ describe('AdminPanel', () => {
 
   // ── 27.1: Section headers with counts ────────────────────────────
 
-  it('shows event count in section header', async () => {
+  it('shows section headers with counts, one section at a time', async () => {
     render(<AdminPanel />)
 
     await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+      expect(screen.getByText('Eventos (3)')).toBeInTheDocument()
     })
+    // Only one section renders at a time (single-container layout)
+    expect(screen.queryByText('Usuarios (3)')).not.toBeInTheDocument()
 
-    expect(screen.getByText('Eventos (3)')).toBeInTheDocument()
-    expect(screen.getByText('Usuarios (3)')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Usuarios (3)')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Eventos (3)')).not.toBeInTheDocument()
   })
 
   // ── 27.1: Edit button navigation ─────────────────────────────────
@@ -428,7 +440,11 @@ describe('AdminPanel', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    // Users re-fetched too — switch to the Usuarios tab to see them
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    })
   })
 
   // ── 27.2: Empty states ───────────────────────────────────────────
@@ -455,8 +471,12 @@ describe('AdminPanel', () => {
     })
 
     expect(screen.getByText(/no hay eventos en el sistema/i)).toBeInTheDocument()
-    // Users should still show
-    expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+
+    // Users still load — switch to the Usuarios tab to see them
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    })
   })
 
   it('shows empty state for users when no users exist', async () => {
@@ -476,13 +496,19 @@ describe('AdminPanel', () => {
 
     render(<AdminPanel />)
 
+    // Events are the default section
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Eventos (3)')).toBeInTheDocument()
+
+    // The users empty state lives behind the "Usuarios" tab
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+
     await waitFor(() => {
       expect(screen.getByText('Usuarios (0)')).toBeInTheDocument()
     })
-
     expect(screen.getByText(/no hay usuarios registrados/i)).toBeInTheDocument()
-    // Events should still show
-    expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
   })
 
   // ── 27.2: Access control — already handled by route config ───────
@@ -517,7 +543,11 @@ describe('AdminPanel', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    // Users (flat array) live behind the "Usuarios" tab
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
+    })
   })
 
   // ── Edge: event with unknown organizerId ──────────────────────────
@@ -568,6 +598,12 @@ describe('AdminPanel', () => {
     // The create-user form is hidden by default (toggled inside the Users
     // section). Open it by clicking the "Crear nuevo usuario" button first.
     const openCreateForm = async () => {
+      // The users list (and its "Crear nuevo usuario" button) lives behind the
+      // "Usuarios" tab in the single-section layout.
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
+      })
+      await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /crear nuevo usuario/i })
@@ -760,6 +796,10 @@ describe('AdminPanel', () => {
       render(<AdminPanel />)
 
       await waitFor(() => {
+        expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
+      })
+      await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+      await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /crear nuevo usuario/i })
         ).toBeInTheDocument()
@@ -878,7 +918,7 @@ describe('AdminPanel', () => {
       const feriaRow = eventRow('feria de emprendedores')
       expect(within(feriaRow).getByText('Aprobado')).toBeInTheDocument()
     })
-    expect(screen.getByText('Pendientes: 0')).toBeInTheDocument()
+    expect(screen.queryByText(/pendientes/i)).not.toBeInTheDocument()
     expect(screen.getByText(/aprobado correctamente/i)).toBeInTheDocument()
   })
 
@@ -1067,12 +1107,25 @@ describe('AdminPanel — Users filter & pagination', () => {
   // so scope assertions to it to avoid matching organizer emails in events.
   const usersTable = () => screen.getByRole('table')
 
+  // Users render behind the "Usuarios" tab in the single-section layout.
+  const openUsersTab = async () => {
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Buscar usuarios')).toBeInTheDocument()
+    })
+  }
+
   it('filters users by role', async () => {
     render(<AdminPanel />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
+
+    await openUsersTab()
 
     await userEvent.selectOptions(screen.getByLabelText('Filtrar por rol'), 'Staff')
 
@@ -1089,6 +1142,8 @@ describe('AdminPanel — Users filter & pagination', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
+    await openUsersTab()
+
     await userEvent.type(screen.getByLabelText('Buscar usuarios'), 'admin')
 
     const table = usersTable()
@@ -1103,6 +1158,8 @@ describe('AdminPanel — Users filter & pagination', () => {
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
+
+    await openUsersTab()
 
     await userEvent.type(screen.getByLabelText('Buscar usuarios'), 'zzz-no-match')
 
@@ -1131,6 +1188,8 @@ describe('AdminPanel — Users filter & pagination', () => {
     })
 
     render(<AdminPanel />)
+
+    await openUsersTab()
 
     await waitFor(() => {
       expect(screen.getByText('Usuarios (12)')).toBeInTheDocument()
@@ -1173,6 +1232,8 @@ describe('AdminPanel — Users filter & pagination', () => {
 
     render(<AdminPanel />)
 
+    await openUsersTab()
+
     await waitFor(() => {
       expect(screen.getByText('Página 1 de 3')).toBeInTheDocument()
     })
@@ -1210,15 +1271,19 @@ describe('AdminPanel — Visual Regression', () => {
     })
   })
 
-  it('renders GlassCard wrappers for admin sections', async () => {
+  it('renders the admin sections without a nested card container', async () => {
     render(<AdminPanel />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
+    // Single-container layout without card nesting: the sections render
+    // directly over the page background — no GlassCard wrapper around them.
     const glassElements = document.querySelectorAll('.glass-surface')
-    expect(glassElements.length).toBeGreaterThanOrEqual(2) // events + users sections
+    expect(glassElements.length).toBe(0)
+    expect(screen.getByRole('tab', { name: /eventos/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
   })
 
   it('renders Badge components for user roles', async () => {
@@ -1226,6 +1291,12 @@ describe('AdminPanel — Visual Regression', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    // Role badges live in the users table, behind the "Usuarios" tab
+    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => {
+      expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
 
     // Badge renders as <span> with role labels; getAllByText finds the text

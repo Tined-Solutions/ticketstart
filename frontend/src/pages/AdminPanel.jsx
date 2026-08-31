@@ -91,6 +91,10 @@ export default function AdminPanel() {
   // Toggles the create-user form inside the Users section (list ⇄ form).
   const [showCreateUser, setShowCreateUser] = useState(false)
 
+  // Top-level section switch: only one section renders at a time inside the
+  // single container (Eventos | Usuarios), so the page never scrolls vertically.
+  const [activeSection, setActiveSection] = useState('eventos')
+
   const loadData = useCallback((controller) => {
     setLoading(true)
     setError('')
@@ -334,9 +338,9 @@ export default function AdminPanel() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <header className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
+    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <header className="mb-4">
+        <h1 className="text-2xl md:text-3xl font-display font-bold text-text-1 text-center mb-2">
           Panel de administración
         </h1>
         <p className="text-text-2 text-center">Gestiona todos los eventos y usuarios del sistema</p>
@@ -356,7 +360,7 @@ export default function AdminPanel() {
       )}
 
       {loading ? (
-        <GlassCard className="py-12">
+        <GlassCard className="py-6">
           <div className="flex flex-col items-center gap-4" role="status" aria-label="Cargando panel de administración…">
             <Skeleton width="240px" height="18px" />
             <Skeleton width="180px" height="18px" />
@@ -364,7 +368,7 @@ export default function AdminPanel() {
           </div>
         </GlassCard>
       ) : error ? (
-        <GlassCard className="text-center py-12" role="alert">
+        <GlassCard className="text-center py-6" role="alert">
           <p className="text-text-1 mb-3">{error}</p>
           <Button variant="secondary" onClick={handleRetry}>
             Reintentar
@@ -372,356 +376,418 @@ export default function AdminPanel() {
         </GlassCard>
       ) : (
         <>
-          {/* ── Events section ─────────────────────────────── */}
-          <GlassCard className="p-6 mb-12">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
-              <h2 className="text-xl font-display font-semibold text-text-1 text-left">
-                Eventos ({events.length})
-              </h2>
-              <Badge variant="warning">
-                Pendientes: {events.filter((e) => e.status === 'Pending').length}
-              </Badge>
+          {/* ── Single container — no nested cards: sections render directly over
+              the page background, with the tab bar acting as the divider ── */}
+          <div>
+            {/* Section switcher: always visible, even from the create-user form,
+                so the user can jump between Eventos and Usuarios at any time. */}
+            <div
+              role="tablist"
+              aria-label="Secciones del panel de administración"
+              className="flex flex-wrap gap-2 mb-4 pb-2 border-b border-border"
+            >
+              <button
+                type="button"
+                role="tab"
+                id="tab-eventos"
+                aria-selected={activeSection === 'eventos'}
+                aria-controls="panel-eventos"
+                onClick={() => setActiveSection('eventos')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  activeSection === 'eventos'
+                    ? 'bg-purpura/15 text-purpura-dark border border-purpura/30'
+                    : 'text-text-2 hover:bg-gris-oscuro/5 border border-transparent'
+                }`}
+              >
+                Eventos
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-usuarios"
+                aria-selected={activeSection === 'usuarios'}
+                aria-controls="panel-usuarios"
+                onClick={() => setActiveSection('usuarios')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  activeSection === 'usuarios'
+                    ? 'bg-purpura/15 text-purpura-dark border border-purpura/30'
+                    : 'text-text-2 hover:bg-gris-oscuro/5 border border-transparent'
+                }`}
+              >
+                Usuarios
+              </button>
             </div>
 
-            {events.length === 0 ? (
-              <p className="text-text-2 text-center py-8">No hay eventos en el sistema.</p>
-            ) : (
-              <div className="flex flex-col">
-                {sortedEvents.map((event, index) => {
-                  // D-7: past events are immutable (PEM-002) — computed per row
-                  // in UTC (event.date is an ISO UTC DateTime; new Date() is
-                  // UTC-based). Backend guard is authoritative (EHE-010); this
-                  // only disables the mutation affordances (cosmetic defense).
-                  const isPast = new Date(event.date) < new Date()
-                  const readonlyTitle = 'Evento finalizado — solo lectura'
-                  const isLast = index === sortedEvents.length - 1
-                  return (
-                    <div
-                      key={event.id}
-                      className={`flex flex-wrap items-center justify-between gap-3 py-3.5 px-1 hover:bg-surface-elevated transition-colors ${
-                        isLast ? '' : 'border-b border-border'
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-display text-base md:text-lg font-semibold text-gris-oscuro leading-tight">
-                          {event.name}
-                        </h3>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <Badge variant={statusBadgeVariant(event.status)}>
-                            {statusLabel(event.status)}
-                          </Badge>
-                          {isPast && <Badge variant="info">Finalizado</Badge>}
-                        </div>
-                        <p className="mt-1 text-sm text-text-2">
-                          <span aria-hidden="true">📅</span> <span>{formatDate(event.date)}</span>
-                          <span aria-hidden="true"> • </span> <span>{event.location || '\u2014'}</span>
-                          <span aria-hidden="true"> • </span> <span>{getOrganizerEmail(event.organizerId)}</span>
-                        </p>
-                      </div>
-                      <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                        {isPast && (
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => navigate(`/organizer/events/${event.id}/view`)}
-                            aria-label={`Ver ${event.name}`}
-                            className={`min-h-[44px] ${ACTION_HOVER}`}
-                          >
-                            Ver
-                          </Button>
-                        )}
-                        {event.status !== 'Approved' && (
-                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                            <Button
-                              variant="gradient"
-                              size="sm"
-                              onClick={() => handleApprove(event)}
-                              disabled={isPast || busyApprovalId === event.id}
-                              aria-label={`Aprobar ${event.name}`}
-                              className={`min-h-[44px] ${ACTION_HOVER}`}
-                            >
-                              Aprobar
-                            </Button>
-                          </span>
-                        )}
-                        {event.status === 'Pending' && (
-                          <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleReject(event)}
-                              disabled={isPast || busyApprovalId === event.id}
-                              aria-label={`Rechazar ${event.name}`}
-                              className={`min-h-[44px] !bg-rose-50/70 !text-rose-700 border border-rose-300/60 !hover:bg-rose-100 ${ACTION_HOVER}`}
-                            >
-                              Rechazar
-                            </Button>
-                          </span>
-                        )}
-                        <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => setAddTicketsTarget(event)}
-                            disabled={isPast}
-                            aria-label={`Agregar entradas a ${event.name}`}
-                            className={`min-h-[44px] ${ACTION_HOVER}`}
-                          >
-                            Agregar entradas
-                          </Button>
-                        </span>
-                        <DropdownMenu
-                          triggerLabel="Acciones"
-                          align="right"
-                          items={[
-                            {
-                              label: 'Compras',
-                              ariaLabel: `Compras de ${event.name}`,
-                              onClick: () => navigate(`/admin/events/${event.id}/purchases`),
-                              disabled: false,
-                            },
-                            {
-                              label: 'Editar',
-                              ariaLabel: `Editar ${event.name}`,
-                              onClick: () => navigate(`/organizer/events/${event.id}`),
-                              disabled: isPast,
-                              title: isPast ? readonlyTitle : undefined,
-                            },
-                            {
-                              label: 'Eliminar',
-                              ariaLabel: `Eliminar ${event.name}`,
-                              onClick: () => handleDeleteClick(event),
-                              disabled: isPast,
-                              variant: 'danger',
-                              title: isPast ? readonlyTitle : undefined,
-                            },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </GlassCard>
-
-          {/* ── Users section (list ⇄ create-user) ─────────── */}
-          <GlassCard className="p-6 mb-12">
-            <h2 className="text-xl font-display font-semibold text-text-1 text-left mb-4 pb-2 border-b border-border">
-              Usuarios ({filteredUsers.length})
-            </h2>
-
-            {showCreateUser ? (
-              <>
-                <div className="mb-4">
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={() => setShowCreateUser(false)}
-                    aria-label="Volver a la lista"
-                    className="min-h-[44px]"
-                  >
-                    ← Volver a la lista
-                  </Button>
+            {activeSection === 'eventos' ? (
+              <div role="tabpanel" id="panel-eventos" aria-labelledby="tab-eventos">
+                {/* ── Events section ─────────────────────────────── */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <h2 className="font-display text-base font-semibold text-text-1">
+                    Eventos ({events.length})
+                  </h2>
+                  {events.filter((e) => e.status === 'Pending').length > 0 && (
+                    <Badge variant="warning">
+                      Pendientes: {events.filter((e) => e.status === 'Pending').length}
+                    </Badge>
+                  )}
                 </div>
 
-                <h3 className="text-lg font-display font-semibold text-gris-oscuro mb-4">
-                  Crear usuario
-                </h3>
-
-                {createFeedback.message && (
-                  <div
-                    className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
-                      createFeedback.type === 'success'
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                    }`}
-                    role={createFeedback.type === 'error' ? 'alert' : 'status'}
-                  >
-                    {createFeedback.message}
+                {events.length === 0 ? (
+                  <p className="text-text-2 text-center py-4">No hay eventos en el sistema.</p>
+                ) : (
+                  <div className="flex flex-col">
+                    {sortedEvents.map((event, index) => {
+                      // D-7: past events are immutable (PEM-002) — computed per row
+                      // in UTC (event.date is an ISO UTC DateTime; new Date() is
+                      // UTC-based). Backend guard is authoritative (EHE-010); this
+                      // only disables the mutation affordances (cosmetic defense).
+                      const isPast = new Date(event.date) < new Date()
+                      const readonlyTitle = 'Evento finalizado — solo lectura'
+                      const isLast = index === sortedEvents.length - 1
+                      return (
+                        <div
+                          key={event.id}
+                          className={`flex flex-wrap items-center justify-between gap-3 py-2 px-1 hover:bg-surface-elevated transition-colors ${
+                            isLast ? '' : 'border-b border-border'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-display text-base md:text-lg font-semibold text-gris-oscuro leading-tight">
+                              {event.name}
+                            </h3>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <Badge variant={statusBadgeVariant(event.status)}>
+                                {statusLabel(event.status)}
+                              </Badge>
+                              {isPast && <Badge variant="info">Finalizado</Badge>}
+                            </div>
+                            <p className="mt-1 text-sm text-text-2">
+                              <span aria-hidden="true">📅</span> <span>{formatDate(event.date)}</span>
+                              <span aria-hidden="true"> • </span> <span>{event.location || '\u2014'}</span>
+                              <span aria-hidden="true"> • </span> <span>{getOrganizerEmail(event.organizerId)}</span>
+                            </p>
+                          </div>
+                          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                            {isPast && (
+                              <Button
+                                variant="glass"
+                                size="sm"
+                                onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                                aria-label={`Ver ${event.name}`}
+                                className={ACTION_HOVER}
+                              >
+                                Ver
+                              </Button>
+                            )}
+                            {event.status !== 'Approved' && (
+                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                                <Button
+                                  variant="gradient"
+                                  size="sm"
+                                  onClick={() => handleApprove(event)}
+                                  disabled={isPast || busyApprovalId === event.id}
+                                  aria-label={`Aprobar ${event.name}`}
+                                  className={ACTION_HOVER}
+                                >
+                                  Aprobar
+                                </Button>
+                              </span>
+                            )}
+                            {event.status === 'Pending' && (
+                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleReject(event)}
+                                  disabled={isPast || busyApprovalId === event.id}
+                                  aria-label={`Rechazar ${event.name}`}
+                                  className={`!bg-rose-50/70 !text-rose-700 border border-rose-300/60 !hover:bg-rose-100 ${ACTION_HOVER}`}
+                                >
+                                  Rechazar
+                                </Button>
+                              </span>
+                            )}
+                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
+                              <Button
+                                variant="glass"
+                                size="sm"
+                                onClick={() => setAddTicketsTarget(event)}
+                                disabled={isPast}
+                                aria-label={`Agregar entradas a ${event.name}`}
+                                className={ACTION_HOVER}
+                              >
+                                Agregar entradas
+                              </Button>
+                            </span>
+                            <DropdownMenu
+                              triggerLabel="Acciones"
+                              align="right"
+                              items={[
+                                {
+                                  label: 'Compras',
+                                  ariaLabel: `Compras de ${event.name}`,
+                                  onClick: () => navigate(`/admin/events/${event.id}/purchases`),
+                                  disabled: false,
+                                },
+                                {
+                                  label: 'Editar',
+                                  ariaLabel: `Editar ${event.name}`,
+                                  onClick: () => navigate(`/organizer/events/${event.id}`),
+                                  disabled: isPast,
+                                  title: isPast ? readonlyTitle : undefined,
+                                },
+                                {
+                                  label: 'Eliminar',
+                                  ariaLabel: `Eliminar ${event.name}`,
+                                  onClick: () => handleDeleteClick(event),
+                                  disabled: isPast,
+                                  variant: 'danger',
+                                  title: isPast ? readonlyTitle : undefined,
+                                },
+                              ]}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
-
-                <form onSubmit={handleCreateUser} noValidate>
-                  <div className="form-group">
-                    <label htmlFor="new-user-name">Nombre</label>
-                    <input
-                      id="new-user-name"
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => updateFormField('name', e.target.value)}
-                      disabled={creating}
-                      autoComplete="name"
-                    />
-                    {formErrors.name && (
-                      <span className="form-error">{formErrors.name}</span>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="new-user-email">Email</label>
-                    <input
-                      id="new-user-email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => updateFormField('email', e.target.value)}
-                      disabled={creating}
-                      autoComplete="email"
-                    />
-                    {formErrors.email && (
-                      <span className="form-error">{formErrors.email}</span>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="new-user-password">Contraseña</label>
-                    <PasswordInput
-                      id="new-user-password"
-                      value={formData.password}
-                      onChange={(e) => updateFormField('password', e.target.value)}
-                      disabled={creating}
-                      autoComplete="new-password"
-                    />
-                    {formErrors.password && (
-                      <span className="form-error">{formErrors.password}</span>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="new-user-role">Rol</label>
-                    <select
-                      id="new-user-role"
-                      value={formData.role}
-                      onChange={(e) => updateFormField('role', e.target.value)}
-                      disabled={creating}
-                    >
-                      <option value="">Seleccionar rol</option>
-                      <option value="Organizador">Organizador</option>
-                      <option value="Staff">Staff</option>
-                    </select>
-                    {formErrors.role && (
-                      <span className="form-error">{formErrors.role}</span>
-                    )}
-                  </div>
-
-                  <Button type="submit" variant="primary" disabled={creating}>
-                    {creating ? 'Creando…' : 'Crear usuario'}
-                  </Button>
-                </form>
-              </>
+              </div>
             ) : (
-              <>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-4">
-                  <div className="flex-1 min-w-0">
-                    <label htmlFor="user-search" className="sr-only">
-                      Buscar usuarios
-                    </label>
-                    <input
-                      id="user-search"
-                      type="search"
-                      value={userSearch}
-                      onChange={handleUserSearchChange}
-                      placeholder="Buscar por email o nombre"
-                      aria-label="Buscar usuarios"
-                      className="w-full bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="user-role" className="sr-only">
-                      Filtrar por rol
-                    </label>
-                    <select
-                      id="user-role"
-                      value={userRole}
-                      onChange={handleUserRoleChange}
-                      aria-label="Filtrar por rol"
-                      className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
-                    >
-                      <option value="">Todos</option>
-                      <option value="Admin">Admin</option>
-                      <option value="Staff">Staff</option>
-                      <option value="Organizador">Organizador</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Button
-                      variant="primary"
-                      onClick={() => setShowCreateUser(true)}
-                      aria-label="Crear nuevo usuario"
-                      className="min-h-[44px]"
-                    >
-                      Crear nuevo usuario
-                    </Button>
-                  </div>
-                </div>
-
-                {users.length === 0 ? (
-                  <p className="text-text-2 text-center py-8">No hay usuarios registrados.</p>
-                ) : filteredUsers.length === 0 ? (
-                  <p className="text-text-2 text-center py-8">
-                    No se encontraron usuarios con esos filtros.
-                  </p>
-                ) : (
+              <div role="tabpanel" id="panel-usuarios" aria-labelledby="tab-usuarios">
+                {/* ── Users section (list ⇄ create-user) ─────────── */}
+                {showCreateUser ? (
                   <>
-                    <div className="overflow-x-auto">
-                      <table className="admin-table w-full border-collapse text-left text-sm">
-                        <thead>
-                          <tr className="border-b-2 border-border">
-                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Email</th>
-                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Rol</th>
-                            <th className="py-3 px-4 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pageUsers.map((user) => (
-                            <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
-                              <td className="py-3.5 px-4 text-text-1 align-middle" data-label="Email">{user.email}</td>
-                              <td className="py-3.5 px-4 align-middle" data-label="Rol">
-                                <Badge variant={roleBadgeVariant(user.role)}>
-                                  {roleLabel(user.role)}
-                                </Badge>
-                              </td>
-                              <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha de registro">
-                                {formatDate(user.createdAt)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="mb-4">
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        onClick={() => setShowCreateUser(false)}
+                        aria-label="Volver a la lista"
+                      >
+                        ← Volver a la lista
+                      </Button>
                     </div>
 
-                    {totalUserPages > 1 && (
-                      <div className="flex items-center justify-between mt-4">
-                        <Button
-                          variant="glass"
-                          size="sm"
-                          onClick={() => goToUserPage(safeUserPage - 1)}
-                          disabled={safeUserPage <= 1}
-                          aria-label="Página anterior"
-                          className="min-h-[44px]"
+                    <h3 className="text-base font-display font-semibold text-gris-oscuro mb-4 text-center">
+                      Crear usuario
+                    </h3>
+
+                    {createFeedback.message && (
+                      <div
+                        className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+                          createFeedback.type === 'success'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                        }`}
+                        role={createFeedback.type === 'error' ? 'alert' : 'status'}
+                      >
+                        {createFeedback.message}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleCreateUser} noValidate className="max-w-md mx-auto space-y-3.5">
+                      <div>
+                        <label
+                          htmlFor="new-user-name"
+                          className="block text-sm font-medium text-text-2 mb-1"
                         >
-                          Anterior
-                        </Button>
-                        <span className="text-sm text-text-2">
-                          Página {safeUserPage} de {totalUserPages}
-                        </span>
-                        <Button
-                          variant="glass"
-                          size="sm"
-                          onClick={() => goToUserPage(safeUserPage + 1)}
-                          disabled={safeUserPage >= totalUserPages}
-                          aria-label="Página siguiente"
-                          className="min-h-[44px]"
+                          Nombre
+                        </label>
+                        <input
+                          id="new-user-name"
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) => updateFormField('name', e.target.value)}
+                          disabled={creating}
+                          autoComplete="name"
+                          className="w-full px-3 py-2 bg-surface-elevated border border-gris-oscuro/15 rounded-lg text-sm text-text-1 placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        />
+                        {formErrors.name && (
+                          <span className="form-error">{formErrors.name}</span>
+                        )}
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="new-user-email"
+                          className="block text-sm font-medium text-text-2 mb-1"
                         >
-                          Siguiente
+                          Email
+                        </label>
+                        <input
+                          id="new-user-email"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => updateFormField('email', e.target.value)}
+                          disabled={creating}
+                          autoComplete="email"
+                          className="w-full px-3 py-2 bg-surface-elevated border border-gris-oscuro/15 rounded-lg text-sm text-text-1 placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        />
+                        {formErrors.email && (
+                          <span className="form-error">{formErrors.email}</span>
+                        )}
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="new-user-password"
+                          className="block text-sm font-medium text-text-2 mb-1"
+                        >
+                          Contraseña
+                        </label>
+                        <PasswordInput
+                          id="new-user-password"
+                          value={formData.password}
+                          onChange={(e) => updateFormField('password', e.target.value)}
+                          disabled={creating}
+                          autoComplete="new-password"
+                          className="w-full px-3 py-2 bg-surface-elevated border border-gris-oscuro/15 rounded-lg text-sm text-text-1 placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        />
+                        {formErrors.password && (
+                          <span className="form-error">{formErrors.password}</span>
+                        )}
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="new-user-role"
+                          className="block text-sm font-medium text-text-2 mb-1"
+                        >
+                          Rol
+                        </label>
+                        <select
+                          id="new-user-role"
+                          value={formData.role}
+                          onChange={(e) => updateFormField('role', e.target.value)}
+                          disabled={creating}
+                          className="w-full px-3 py-2 bg-surface-elevated border border-gris-oscuro/15 rounded-lg text-sm text-text-1 focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        >
+                          <option value="">Seleccionar rol</option>
+                          <option value="Organizador">Organizador</option>
+                          <option value="Staff">Staff</option>
+                        </select>
+                        {formErrors.role && (
+                          <span className="form-error">{formErrors.role}</span>
+                        )}
+                      </div>
+
+                      <Button type="submit" variant="primary" disabled={creating}>
+                        {creating ? 'Creando…' : 'Crear usuario'}
+                      </Button>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <h2 className="font-display text-base font-semibold text-text-1">
+                        Usuarios ({filteredUsers.length})
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label htmlFor="user-search" className="sr-only">
+                          Buscar usuarios
+                        </label>
+                        <input
+                          id="user-search"
+                          type="search"
+                          value={userSearch}
+                          onChange={handleUserSearchChange}
+                          placeholder="Buscar…"
+                          aria-label="Buscar usuarios"
+                          className="w-44 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        />
+                        <label htmlFor="user-role" className="sr-only">
+                          Filtrar por rol
+                        </label>
+                        <select
+                          id="user-role"
+                          value={userRole}
+                          onChange={handleUserRoleChange}
+                          aria-label="Filtrar por rol"
+                          className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                        >
+                          <option value="">Todos</option>
+                          <option value="Admin">Admin</option>
+                          <option value="Staff">Staff</option>
+                          <option value="Organizador">Organizador</option>
+                        </select>
+                        <Button
+                          variant="primary"
+                          onClick={() => setShowCreateUser(true)}
+                          aria-label="Crear nuevo usuario"
+                        >
+                          Crear nuevo usuario
                         </Button>
                       </div>
+                    </div>
+
+                    {users.length === 0 ? (
+                      <p className="text-text-2 text-center py-4">No hay usuarios registrados.</p>
+                    ) : filteredUsers.length === 0 ? (
+                      <p className="text-text-2 text-center py-4">
+                        No se encontraron usuarios con esos filtros.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto">
+                          <table className="admin-table w-full border-collapse text-left text-sm">
+                            <thead>
+                              <tr className="border-b-2 border-border">
+                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Email</th>
+                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Rol</th>
+                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pageUsers.map((user) => (
+                                <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
+                                  <td className="py-2 px-3 text-text-1 align-middle" data-label="Email">{user.email}</td>
+                                  <td className="py-2 px-3 align-middle" data-label="Rol">
+                                    <Badge variant={roleBadgeVariant(user.role)}>
+                                      {roleLabel(user.role)}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-2 px-3 text-text-2 align-middle" data-label="Fecha de registro">
+                                    {formatDate(user.createdAt)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalUserPages > 1 && (
+                          <div className="flex items-center justify-between mt-4">
+                            <Button
+                              variant="glass"
+                              size="sm"
+                              onClick={() => goToUserPage(safeUserPage - 1)}
+                              disabled={safeUserPage <= 1}
+                              aria-label="Página anterior"
+                            >
+                              Anterior
+                            </Button>
+                            <span className="text-sm text-text-2">
+                              Página {safeUserPage} de {totalUserPages}
+                            </span>
+                            <Button
+                              variant="glass"
+                              size="sm"
+                              onClick={() => goToUserPage(safeUserPage + 1)}
+                              disabled={safeUserPage >= totalUserPages}
+                              aria-label="Página siguiente"
+                            >
+                              Siguiente
+                            </Button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 )}
-              </>
+              </div>
             )}
-          </GlassCard>
+          </div>
         </>
       )}
 
