@@ -45,7 +45,8 @@ function App() {
             path="/staff/scan"
             element={
               <ProtectedRoute>
-                <RoleGuard allowedRoles={['Staff', 'Admin']}>
+                {/* Organizadores escanean como un staff más (decision 2026-08-31). */}
+                <RoleGuard allowedRoles={['Staff', 'Organizador', 'Admin']}>
                   <StaffScan />
                 </RoleGuard>
               </ProtectedRoute>

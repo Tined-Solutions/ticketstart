@@ -444,7 +444,7 @@ export default function AdminPanel() {
                             </Button>
                           </span>
                         )}
-                        {event.status !== 'Rejected' && (
+                        {event.status === 'Pending' && (
                           <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                             <Button
                               variant="secondary"

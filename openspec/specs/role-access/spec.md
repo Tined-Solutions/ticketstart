@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Existing role-gated access paths MUST remain fully functional for past events AND for events in any approval status. Organizers MUST continue to VIEW their events — including `Pending` and `Rejected` ones — staff MUST continue scanning QR codes, and buyers MUST continue retrieving their purchased tickets, regardless of event expiry or approval status. Consultation of past events is preserved; MUTATION of past events is revoked for both Admin and Organizer (see `past-event-mutation-guard`).
+Existing role-gated access paths MUST remain fully functional for past events AND for events in any approval status. Organizers MUST continue to VIEW their events — including `Pending` and `Rejected` ones — staff MUST continue scanning QR codes, and buyers MUST continue retrieving their purchased tickets, regardless of event expiry or approval status. Organizers MAY also scan QR codes on the same surface as staff (see EHE-007). Consultation of past events is preserved; MUTATION of past events is revoked for both Admin and Organizer (see `past-event-mutation-guard`).
 
 ## Requirements
 
@@ -91,7 +91,7 @@ Organizer endpoints (`OrganizerDashboard`, `OrganizerEventDetail`, `MetricsServi
 
 ### Requirement: EHE-007 — Staff scan includes past events
 
-Staff scan endpoint(s) used by `StaffScan.jsx` MUST NOT apply the expired-event filter. Staff SHALL scan QR codes for past events. The staff role-gated path MUST include expired events in its query scope.
+Staff scan endpoint(s) used by `StaffScan.jsx` MUST NOT apply the expired-event filter. Staff SHALL scan QR codes for past events. The staff role-gated path MUST include expired events in its query scope. The scan surface — the scannable event list (`GET /api/events/manage`) and QR validation (`POST /api/tickets/validate`) — MUST admit Staff, Organizador and Admin (`RequireScanAccessRole`): organizers scan as staff, with the same scope as staff (any scannable event).
 
 #### Scenario: Staff scans ticket for past event
 
@@ -104,6 +104,12 @@ Staff scan endpoint(s) used by `StaffScan.jsx` MUST NOT apply the expired-event 
 - GIVEN a staff member with access to multiple events
 - WHEN the staff scan page loads its event list
 - THEN past events appear alongside active events (unfiltered)
+
+#### Scenario: Organizer accesses the scan surface
+
+- GIVEN an authenticated organizer
+- WHEN the organizer loads the staff scan page and posts a QR validation
+- THEN the scannable event list returns 200 and the validate endpoint does not return 403
 
 ### Requirement: EHE-008 — Buyer ticket lookup unaffected for past events
 
@@ -132,5 +138,5 @@ Staff scan endpoint(s) used by `StaffScan.jsx` MUST NOT apply the expired-event 
 | Requirement | Scenarios |
 |-------------|-----------|
 | EHE-006 | organizer-dashboard-lists-past, organizer-consults-past, organizer-cannot-mutate-past, organizer-metrics-include-past, dashboard-lists-pending-rejected, opens-pending-detail, dashboard-hides-edit, dashboard-hides-eliminar-metricas, metrics-route-unresolved, per-event-metrics-owner-200, per-event-metrics-admin-200, load-error-feedback-survives |
-| EHE-007 | staff-scan-past-event-ticket, staff-scan-list-includes-past |
+| EHE-007 | staff-scan-past-event-ticket, staff-scan-list-includes-past, organizer-accesses-scan-surface |
 | EHE-008 | buyer-ticket-lookup-past-event, my-tickets-lists-past, qr-valid-past-event |

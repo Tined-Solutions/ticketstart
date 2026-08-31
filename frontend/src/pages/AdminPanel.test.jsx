@@ -827,9 +827,10 @@ describe('AdminPanel', () => {
     // Pending (event-2): both actions
     expect(screen.getByRole('button', { name: /aprobar feria de emprendedores/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /rechazar feria de emprendedores/i })).toBeInTheDocument()
-    // Approved (event-1): Reject only — re-reject hides it (EA-005)
+    // Approved (event-1): no moderation actions — Reject is hidden for
+    // already-approved events (decided; EA-005 backend stays untouched)
     expect(screen.queryByRole('button', { name: /aprobar recital de rock nacional/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /rechazar recital de rock nacional/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /rechazar recital de rock nacional/i })).not.toBeInTheDocument()
     // Rejected (event-3): Approve only — re-publish (EA-005)
     expect(screen.getByRole('button', { name: /aprobar workshop de fotografia/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /rechazar workshop de fotografia/i })).not.toBeInTheDocument()

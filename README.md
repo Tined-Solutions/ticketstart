@@ -231,7 +231,7 @@ ticketera-online/
 - **Mercado Pago Checkout Pro** integration with webhook processing
 - **HMAC-signed QR codes** for ticket validation with double-scan prevention
 - **Ticket lookup** by email + DNI (info-only DTO, no QR data)
-- **QR scanner** (Staff) with camera integration, visual + audio feedback, and scan history
+- **QR scanner** (Staff y Organizador) with camera integration, visual + audio feedback, and scan history
 - **Organizer dashboard** with real-time metrics (sales, revenue, inventory, scans)
 - **Admin panel** with system-wide event/user management and audit logging
 - **Ticket resend** via Resend (rate limited: 3/hr per email, with Cloudflare Turnstile CAPTCHA verification — real server-side token check; dummy token accepted in Development only)
