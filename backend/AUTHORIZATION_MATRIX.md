@@ -50,32 +50,62 @@
 | `/api/metrics/events/{id}` | GET | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can view metrics |
 | `/api/metrics/organizer` | GET | `[Authorize(Policy = "RequireOrganizadorRole")]` | Only organizers can view their metrics |
 
-### AdminController (Task 16.1)
+### AdminController (policy-based, current)
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/admin/users` | GET | `[Authorize(Roles = "Admin")]` | Admin-only system management |
-| `/api/admin/events` | GET | `[Authorize(Roles = "Admin")]` | Admin-only system management |
-| `/api/admin/audit-logs` | GET | `[Authorize(Roles = "Admin")]` | Admin-only audit access |
+The whole controller is gated at class level with `[Authorize(Policy = "RequireAdminRole")]`
+(`backend/Controllers/AdminController.cs`) — every endpoint below inherits it; there are no
+per-method overrides. Mutating verbs additionally require the `X-CSRF-PROTECT` header
+(`CsrfHeaderMiddleware`); only POST `/api/auth/login` and POST `/api/payments/webhook` are exempt.
+
+| Endpoint | Method | Authorization | Notes |
+|----------|--------|---------------|-------|
+| `/api/admin/users` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Create user account |
+| `/api/admin/users` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List all users |
+| `/api/admin/users/{userId:guid}/role` | PUT | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | **AUM-001**: edit user role — 400 on self-edit, 404 unknown user, audited (`UpdateUserRole`) |
+| `/api/admin/users/{userId:guid}/reset-password` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | **AUM-003**: one-time temporary credential in the response body (never stored/logged/audited), 404 unknown user, audited (`ResetPassword`), self-reset allowed |
+| `/api/admin/events` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List all events |
+| `/api/admin/audit-logs` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Audit log access |
+| `/api/admin/events/{eventId:guid}/ticket-types` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Add ticket type |
+| `/api/admin/events/{eventId:guid}/ticket-types/{ticketTypeId:guid}/stock` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Add ticket stock |
+| `/api/admin/events/{eventId:guid}/purchases` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List event purchases |
+| `/api/admin/events/{eventId:guid}/purchases/{reservationId:guid}/refund` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Refund purchase |
+| `/api/admin/events/{eventId:guid}/approve` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Approve event |
+| `/api/admin/events/{eventId:guid}/reject` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Reject event |
 
 ## Role Capabilities Matrix
 
-| Feature | Guest | Organizador | Staff | Admin |
-|---------|-------|-------------|-------|-------|
-| Browse events | ✅ | ✅ | ✅ | ✅ |
-| View event details | ✅ | ✅ | ✅ | ✅ |
-| Reserve tickets | ✅ | ✅ | ✅ | ✅ |
-| Lookup tickets | ✅ | ✅ | ✅ | ✅ |
-| Create events | ❌ | ✅ | ❌ | ✅ |
-| Edit own events | ❌ | ✅ | ❌ | ✅ |
-| Delete own events | ❌ | ✅ | ❌ | ✅ |
-| View own metrics | ❌ | ✅ | ❌ | ✅ |
-| Scan tickets | ❌ | ✅ | ✅ | ✅ |
-| Validate tickets | ❌ | ✅ | ✅ | ✅ |
-| Edit any event | ❌ | ❌ | ❌ | ✅ |
-| Delete any event | ❌ | ❌ | ❌ | ✅ |
-| View all users | ❌ | ❌ | ❌ | ✅ |
-| View audit logs | ❌ | ❌ | ❌ | ✅ |
+| Feature | Guest | Organizador | Staff | Admin | SinAcceso |
+|---------|-------|-------------|-------|-------|-----------|
+| Browse events | ✅ | ✅ | ✅ | ✅ | ✅ |
+| View event details | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reserve tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Lookup tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Create events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Edit own events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Delete own events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| View own metrics | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Scan tickets | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Validate tickets | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Edit any event | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Delete any event | ❌ | ❌ | ❌ | ✅ | ❌ |
+| View all users | ❌ | ❌ | ❌ | ✅ | ❌ |
+| View audit logs | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Edit user role (AUM-001) | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Reset user password (AUM-003) | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+`SinAcceso` is a **pure revocation state** (AUM-002): no policy grants it anything, so every
+role-gated endpoint returns 403. Login still succeeds for a `SinAcceso` account and the
+frontend post-login redirect lands on `/`. The account row is never deleted or disabled —
+setting `SinAcceso` (via role editing) is the only revoke mechanism, because `AuditLogs`
+FK-restrictions depend on the user row existing.
+
+## Next-login semantics (AUM-004)
+
+Role changes and password resets apply on **next login**. The JWT role claim is frozen inside
+the httpOnly `token` cookie for up to 7 days, and this project intentionally does NOT include
+JWT-revocation middleware: a user whose role was changed (e.g. to `SinAcceso`) keeps the
+previous role's authority until their cookie expires or they log in again. The next login
+reads the role from the database, so the new role (and its restrictions) take effect then.
 
 ## Authorization Policies
 

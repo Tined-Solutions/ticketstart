@@ -42,7 +42,7 @@ Chain strategy: pending
 
 - [x] 2.1 `backend/Models/UserRole.cs`: append `SinAcceso` at index 3 + append-only XML-doc guard comment (int-stored, never insert/reorder) (AUM-002, D1).
 - [x] 2.2 `backend/Models/AuditLog.cs`: append `UpdateUserRole`, `ResetPassword` to `AuditActionType` (string-converted varchar(100), no migration) (D10).
-- [ ] 2.3 Create `backend/Helpers/PasswordGenerator.cs`: static `Generate()` using `RandomNumberGenerator.GetInt32(12,17)` + `GetString(alnum, length)` (AUM-003, D9).
+- [x] 2.3 Create `backend/Helpers/PasswordGenerator.cs`: static `Generate()` using `RandomNumberGenerator.GetInt32(12,17)` + `GetString(alnum, length)` (AUM-003, D9).
 - [x] 2.4 `backend/Services/IAdminService.cs` + `AdminService.cs`: `UpdateUserRoleAsync(Guid, UserRole)` — tracked `FindAsync` → `KeyNotFoundException` → set Role → `SaveChangesAsync` → `UserSummary` (AUM-001, D7).
 - [x] 2.5 `backend/Services/IAuthService.cs` + `AuthService.cs`: `ResetPasswordAsync(Guid)` → `ResetPasswordResult { Success, Error, TemporaryPassword, UserId }`; `FindAsync` → null → failure; generate → `BCrypt.HashPassword` → persist hash only (AUM-003, D8).
 - [x] 2.6 `backend/Controllers/AdminController.cs`: `PUT users/{userId:guid}/role` + `POST users/{userId:guid}/reset-password` (policy inherited, D2); records `AdminUpdateUserRoleRequest(UserRole)` + `AdminResetPasswordResponse` (D5); controller-level self-edit guard pre-service (D4); error mapping — self 400 `new { error }`, role 404 via `KeyNotFoundException`, reset 404 via "User not found" string, 500 catch-all (D6); `TryLogAuditAsync` with `Truncate(1000)` details, no credential, no email (D10); `Cache-Control: no-store` on reset 200 (D11).
@@ -58,9 +58,9 @@ Chain strategy: pending
 
 ## Phase 4: Docs Sync + Final Verification
 
-- [ ] 4.1 Rewrite `backend/AUTHORIZATION_MATRIX.md` (AUM-006, D1, D11): correct stale AdminController section → `RequireAdminRole` policy, all 12 endpoints incl. the 2 new; Role Capabilities Matrix gains `SinAcceso` column (grants nothing) + "Edit user role" / "Reset password" rows; add next-login note (JWT role claim frozen, cookie ≤7d, no revocation middleware).
-- [ ] 4.2 Update `README.md` (AUM-006): role lists include `SinAcceso`; admin endpoint table gains both new endpoints.
-- [ ] 4.3 Final verification: `dotnet test` from `backend/` + `npx vitest run` from `frontend/` both green; docs walkthrough against AUM-006's 2 scenarios; work-unit commits executed per table above (conventional commits, Spanish subjects, tests with code).
+- [x] 4.1 Rewrite `backend/AUTHORIZATION_MATRIX.md` (AUM-006, D1, D11): correct stale AdminController section → `RequireAdminRole` policy, all 12 endpoints incl. the 2 new; Role Capabilities Matrix gains `SinAcceso` column (grants nothing) + "Edit user role" / "Reset password" rows; add next-login note (JWT role claim frozen, cookie ≤7d, no revocation middleware).
+- [x] 4.2 Update `README.md` (AUM-006): role lists include `SinAcceso`; admin endpoint table gains both new endpoints.
+- [x] 4.3 Final verification: `dotnet test` from `backend/` + `npx vitest run` from `frontend/` both green; docs walkthrough against AUM-006's 2 scenarios; work-unit commits executed per table above (conventional commits, Spanish subjects, tests with code).
 
 ## Commit Plan (work units → conventional commits, Spanish subjects)
 

@@ -178,6 +178,8 @@ All endpoints are prefixed with `/api`. Authenticated endpoints use httpOnly ses
 |--------|----------|------|-------------|
 | `GET` | `/api/admin/users?page=&pageSize=` | Admin | List all users (paginated, max 200) |
 | `POST` | `/api/admin/users` | Admin | Create a new user (admin-only registration) |
+| `PUT` | `/api/admin/users/{userId}/role` | Admin | Edit a user's role (self-edit returns 400; audited) |
+| `POST` | `/api/admin/users/{userId}/reset-password` | Admin | Generate a one-time temporary password (returned exactly once; audited) |
 | `GET` | `/api/admin/events?page=&pageSize=` | Admin | List all events (paginated, max 200) |
 | `GET` | `/api/admin/audit-logs?page=&pageSize=` | Admin | View audit log (paginated) |
 
@@ -187,7 +189,7 @@ Authentication is session-based via httpOnly cookies (HttpOnly, Secure, SameSite
 
 For mutating requests (POST, PUT, DELETE), the frontend sends an `X-CSRF-PROTECT` header for CSRF protection.
 
-Roles: `Organizador`, `Staff`, `Admin`. Role claims are embedded in the auth cookie and enforced via ASP.NET Core authorization policies.
+Roles: `Organizador`, `Staff`, `Admin`, `SinAcceso`. Role claims are embedded in the auth cookie and enforced via ASP.NET Core authorization policies. `SinAcceso` is a revocation state that grants nothing: no policy allows it, role-gated endpoints return 403, and login still succeeds (redirecting to home). Role changes and password resets apply on the user's **next login** — the JWT role claim stays frozen in the cookie (up to 7 days) and there is no session-revocation middleware. See `backend/AUTHORIZATION_MATRIX.md` for details.
 
 Interactive API docs (Swagger UI) are available at `/swagger` when running in Development mode.
 
