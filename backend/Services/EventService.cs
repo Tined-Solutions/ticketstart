@@ -224,6 +224,10 @@ public class EventService : IEventService
 
         var events = await _context.Events
             .Include(e => e.TicketTypes)
+            // EA-002 moderation gate: only Approved events are scannable — a
+            // Pending/Rejected event must never appear in the scanner chooser,
+            // even when its date falls inside the validation window.
+            .Where(e => e.Status == EventStatus.Approved)
             // Only events whose QR codes can still validate: Date > now - 24h.
             // The inline predicate (and the ordering below) are EF-translatable —
             // never call e.IsExpired(...) inside an IQueryable.
