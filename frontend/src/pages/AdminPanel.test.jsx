@@ -7,6 +7,7 @@ const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 const mockDelete = vi.fn()
 const mockPost = vi.fn()
+const mockPut = vi.fn()
 const mockInvalidateQueries = vi.fn()
 
 vi.mock('react-router-dom', () => ({
@@ -22,6 +23,7 @@ vi.mock('../api/client.js', () => ({
     get: (...args) => mockGet(...args),
     delete: (...args) => mockDelete(...args),
     post: (...args) => mockPost(...args),
+    put: (...args) => mockPut(...args),
   },
 }))
 
@@ -1185,6 +1187,113 @@ describe('AdminPanel — Users filter & pagination', () => {
 
     expect(screen.getByText('Página 1 de 2')).toBeInTheDocument()
     expect(screen.getByText('user0@example.com')).toBeInTheDocument()
+  })
+})
+
+// ── AUM-005: user-management flows (actions column, modals, SinAcceso) ──
+
+describe('AdminPanel — User management (AUM-005)', () => {
+  const usersWithSinAcceso = [
+    ...mockUsers,
+    {
+      id: 'user-4',
+      email: 'blocked@ticketera.com',
+      role: 'SinAcceso',
+      createdAt: '2026-04-01T10:00:00Z',
+    },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockDelete.mockReset()
+    mockPost.mockReset()
+    mockPut.mockReset()
+    mockNavigate.mockReset()
+    mockInvalidateQueries.mockReset()
+
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: usersWithSinAcceso, total: 4, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+  })
+
+  it('offers role-edit and reset-password actions per user row (actions column)', async () => {
+    render(<AdminPanel />)
+
+    // The actions button's aria-label is unique per row (the email text itself
+    // also appears in the events section as the organizer email).
+    await userEvent.click(
+      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
+    )
+
+    expect(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /restablecer contraseña de staff@ticketera\.com/i })).toBeInTheDocument()
+  })
+
+  it('opens the role-edit modal from the actions menu and reloads the list after a successful PUT', async () => {
+    mockPut.mockResolvedValue({ data: {} })
+
+    render(<AdminPanel />)
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Editar rol' })
+    const select = within(dialog).getByLabelText('Rol')
+    await userEvent.selectOptions(select, 'Admin')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith('/admin/users/user-3/role', { role: 'Admin' })
+    })
+
+    // Success feedback + list reload (loadData re-run → /admin/users fetched again)
+    await waitFor(() => {
+      expect(screen.getByText(/rol actualizado correctamente/i)).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const usersCalls = mockGet.mock.calls.filter(([url]) => url === '/admin/users')
+      expect(usersCalls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('shows the row badge "Sin acceso" for a SinAcceso user and keeps the create-form select unchanged', async () => {
+    render(<AdminPanel />)
+    await waitFor(() => expect(screen.getByText('blocked@ticketera.com')).toBeInTheDocument())
+
+    // Label + badge render for SinAcceso
+    const row = screen.getByText('blocked@ticketera.com').closest('tr')
+    expect(within(row).getByText('Sin acceso')).toBeInTheDocument()
+
+    // Filter select includes SinAcceso
+    const filter = screen.getByLabelText('Filtrar por rol')
+    const filterValues = Array.from(filter.options).map((option) => option.value)
+    expect(filterValues).toContain('SinAcceso')
+
+    // Create-user select STILL offers only Organizador/Staff (spec MUST)
+    await userEvent.click(screen.getByRole('button', { name: 'Crear nuevo usuario' }))
+    const createSelect = await screen.findByLabelText('Rol')
+    const createValues = Array.from(createSelect.options).map((option) => option.value)
+    expect(createValues).toEqual(['', 'Organizador', 'Staff'])
+  })
+
+  it('filters users by the SinAcceso role', async () => {
+    render(<AdminPanel />)
+    await waitFor(() => expect(screen.getByText('blocked@ticketera.com')).toBeInTheDocument())
+
+    const usersTable = screen.getByRole('table') // the only <table> (events are flex rows)
+    await userEvent.selectOptions(screen.getByLabelText('Filtrar por rol'), 'SinAcceso')
+
+    expect(within(usersTable).getByText('blocked@ticketera.com')).toBeInTheDocument()
+    expect(within(usersTable).queryByText('staff@ticketera.com')).not.toBeInTheDocument()
   })
 })
 
