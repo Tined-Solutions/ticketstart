@@ -7,5 +7,9 @@ public enum UserRole
 {
     Organizador,
     Staff,
-    Admin
+    Admin,
+    // AUM-002 (D1): APPEND-ONLY — User.Role is int-stored with no value
+    // conversion, so inserting or reordering members would corrupt existing
+    // rows. Never insert a value before index 3 or renumber existing ones.
+    SinAcceso
 }

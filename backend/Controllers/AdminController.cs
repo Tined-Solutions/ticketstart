@@ -410,6 +410,112 @@ public class AdminController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Updates a user's role (AUM-001). Inherited RequireAdminRole policy. The
+    /// self-edit guard (D4) runs BEFORE the service call so a self-edit leaves
+    /// no role change and no audit row. Unknown users → 404; every successful
+    /// edit records an UpdateUserRole audit entry referencing the target id
+    /// (ids + role only — no credentials, no email). The account row is never
+    /// deleted: role editing is the only revoke mechanism (SinAcceso grants
+    /// nothing). Changes apply on the target's next login (AUM-004).
+    /// </summary>
+    /// <param name="userId">ID of the target user</param>
+    /// <param name="request">The new role</param>
+    /// <returns>200 with the updated user summary; 400 self-edit; 404 unknown user</returns>
+    [HttpPut("users/{userId:guid}/role")]
+    public async Task<IActionResult> UpdateUserRole(Guid userId, [FromBody] AdminUpdateUserRoleRequest request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        // D4: controller-level self-edit guard, pre-service — guarantees the
+        // spec's "no role change or audit row is persisted" without service coupling.
+        if (userId == adminId)
+        {
+            return BadRequest(new { error = "You cannot change your own role" });
+        }
+
+        try
+        {
+            var summary = await _adminService.UpdateUserRoleAsync(userId, request.Role);
+
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.UpdateUserRole,
+                AuditResourceType.User,
+                userId,
+                Truncate($"Admin updated role for user {userId} to {request.Role}", 1000)));
+
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "User not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating role for user {UserId}", userId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while updating the user role" });
+        }
+    }
+
+    /// <summary>
+    /// Resets a user's password (AUM-003). Inherited RequireAdminRole policy.
+    /// Generates a cryptographically secure temporary password server-side,
+    /// persists only its BCrypt hash, and returns the cleartext credential
+    /// EXACTLY ONCE in the response body for out-of-band handoff (admins never
+    /// see, set, or choose user passwords). Self reset is allowed (the self
+    /// role-edit guard does not apply — no lockout risk). The credential is
+    /// never audited or logged; `Cache-Control: no-store` defends against any
+    /// intermediary caching of the one-time body (D11). Unknown users → 404.
+    /// </summary>
+    /// <param name="userId">ID of the target user</param>
+    /// <returns>200 with the one-time credential; 404 unknown user</returns>
+    [HttpPost("users/{userId:guid}/reset-password")]
+    public async Task<IActionResult> ResetPassword(Guid userId)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var result = await _authService.ResetPasswordAsync(userId);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("Password reset failed for user {UserId}: {Error}", userId, result.Error);
+
+                // D6: mirrors CreateUser's string-mapping precedent.
+                if (result.Error.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    return NotFound(new { error = result.Error });
+                }
+
+                return BadRequest(new { error = result.Error });
+            }
+
+            // D10: audit details carry ids only — NEVER the credential.
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.ResetPassword,
+                AuditResourceType.User,
+                userId,
+                Truncate($"Admin reset password for user {userId}", 1000)));
+
+            // D11: the credential's single appearance — marked no-store.
+            Response.Headers.CacheControl = "no-store";
+            return Ok(new AdminResetPasswordResponse
+            {
+                TemporaryPassword = result.TemporaryPassword
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password for user {UserId}", userId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while resetting the password" });
+        }
+    }
+
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try
@@ -459,3 +565,20 @@ public class AdminUserResponse
 /// and audit-only — it is never stored on the event.
 /// </summary>
 public record RejectEventRequest(string? Reason = null);
+
+/// <summary>
+/// Request body for updating a user's role (AUM-001). Binds via the
+/// JsonStringEnumConverter — an invalid enum string fails automatic model
+/// validation ([ApiController] → 400) before reaching the action.
+/// </summary>
+public record AdminUpdateUserRoleRequest(UserRole Role);
+
+/// <summary>
+/// Response body of a successful password reset (AUM-003): the one-time
+/// temporary credential for out-of-band handoff. It is returned exactly once,
+/// with `Cache-Control: no-store`, and is never stored, logged, or audited.
+/// </summary>
+public class AdminResetPasswordResponse
+{
+    public string TemporaryPassword { get; set; } = string.Empty;
+}

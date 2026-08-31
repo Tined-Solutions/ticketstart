@@ -142,6 +142,32 @@ public class AdminService : IAdminService
     }
 
     /// <summary>
+    /// Updates a user's role (AUM-001, D7): tracked FindAsync (so the change
+    /// persists), single-row single-save — no explicit transaction, matching
+    /// ApproveEventAsync. Password hashes are never exposed; the returned
+    /// summary is the canonical users-table row type.
+    /// </summary>
+    public async Task<UserSummary> UpdateUserRoleAsync(Guid targetUserId, UserRole newRole)
+    {
+        var user = await _context.Users.FindAsync(targetUserId)
+            ?? throw new KeyNotFoundException($"User {targetUserId} not found");
+
+        user.Role = newRole;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Admin updated role for user {UserId} to {Role}", targetUserId, newRole);
+
+        return new UserSummary
+        {
+            Id = user.Id,
+            Name = user.Name,
+            Email = user.Email,
+            Role = user.Role,
+            CreatedAt = user.CreatedAt
+        };
+    }
+
+    /// <summary>
     /// Lists events awaiting approval (EA-003): Pending events only, oldest first,
     /// paginated with the same clamps as the other admin list endpoints.
     /// </summary>
