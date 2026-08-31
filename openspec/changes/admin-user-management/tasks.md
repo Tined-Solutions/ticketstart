@@ -53,7 +53,7 @@ Chain strategy: pending
 - [x] 3.1 Create `frontend/src/components/RoleEditModal.jsx` + `__tests__/RoleEditModal.test.jsx` — offers all 4 `UserRole` values; confirm calls PUT and fires success (list reload via parent `loadData`, D16); mocked PUT 400 surfaces error feedback, modal stays open, no change applied (AUM-005 `role-edit-modal`, `self-edit-ui-guard`; D13).
 - [x] 3.2 Create `frontend/src/components/ResetPasswordModal.jsx` + `__tests__/ResetPasswordModal.test.jsx` — confirm → result shows temp password **once** + "Copiar" (`navigator.clipboard.writeText`) + warning "no se volverá a mostrar"; `onClose` clears credential state; assert not retrievable after close (AUM-005 `reset-modal-credential-once`; D14).
 - [x] 3.3 Modify `frontend/src/pages/AdminPanel.jsx` + `AdminPanel.test.jsx` — fourth actions column with per-row `DropdownMenu` ("Editar rol", "Restablecer contraseña") (AUM-005 `actions-column`; D12); `roleLabel` `SinAcceso: 'Sin acceso'` + `roleBadgeVariant` `'warning'`; filter select gains `SinAcceso` option; create-user select **unchanged** (Organizador/Staff only) (AUM-005 `sinacceso-filter-labels-not-create`; D15); wire both modals + reload.
-- [ ] 3.4 Modify `frontend/src/pages/Login.test.jsx` — `SinAcceso` post-login redirect lands on `'/'` (AUM-002 `sinacceso-redirect-home`).
+- [x] 3.4 Modify `frontend/src/pages/Login.test.jsx` — `SinAcceso` post-login redirect lands on `'/'` (AUM-002 `sinacceso-redirect-home`).
 - [x] 3.5 `npx vitest run` from `frontend/` — all suites green, no new failures.
 
 ## Phase 4: Docs Sync + Final Verification
