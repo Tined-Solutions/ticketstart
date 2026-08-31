@@ -60,6 +60,22 @@ public class AdminServiceTests : IDisposable
         return evt;
     }
 
+    private async Task<User> SeedUser(UserRole role)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test User",
+            Email = $"user-{Guid.NewGuid()}@example.com",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
+            Role = role,
+            CreatedAt = _clock.GetUtcNow().UtcDateTime
+        };
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+        return user;
+    }
+
     #region EA-003 MODIFIED — ApproveEventAsync
 
     [Fact]
@@ -124,6 +140,38 @@ public class AdminServiceTests : IDisposable
         Assert.Equal(EventStatus.Rejected, summary.Status);
         var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
         Assert.Equal(EventStatus.Rejected, persisted.Status);
+    }
+
+    #endregion
+
+    #region AUM-001 — UpdateUserRoleAsync (D7)
+
+    [Fact]
+    public async Task UpdateUserRoleAsync_ExistingUser_PersistsRoleAndReturnsSummary()
+    {
+        // GIVEN an existing user with role Staff
+        var user = await SeedUser(UserRole.Staff);
+        var service = CreateService();
+
+        // WHEN the admin updates the role to Organizador
+        var summary = await service.UpdateUserRoleAsync(user.Id, UserRole.Organizador);
+
+        // THEN the returned summary reflects the new role and the row is persisted
+        Assert.Equal(user.Id, summary.Id);
+        Assert.Equal(user.Email, summary.Email);
+        Assert.Equal(UserRole.Organizador, summary.Role);
+
+        var persisted = await _context.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id);
+        Assert.Equal(UserRole.Organizador, persisted.Role);
+    }
+
+    [Fact]
+    public async Task UpdateUserRoleAsync_UnknownUser_ThrowsKeyNotFoundException()
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.UpdateUserRoleAsync(Guid.NewGuid(), UserRole.Admin));
     }
 
     #endregion

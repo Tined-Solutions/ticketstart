@@ -49,6 +49,17 @@ public interface IAdminService
     /// (<see cref="EventStatus.Pending"/>), oldest first.
     /// </summary>
     Task<PagedResult<EventSummary>> GetPendingEventsAsync(int page, int pageSize);
+
+    /// <summary>
+    /// Updates a user's role (AUM-001). The account row is never deleted —
+    /// role editing is the only revoke mechanism. The change applies on the
+    /// target's next login (the JWT role claim is frozen in the cookie).
+    /// </summary>
+    /// <param name="targetUserId">ID of the user whose role is changed</param>
+    /// <param name="newRole">The new role</param>
+    /// <returns>The updated user summary</returns>
+    /// <exception cref="KeyNotFoundException">User does not exist.</exception>
+    Task<UserSummary> UpdateUserRoleAsync(Guid targetUserId, UserRole newRole);
 }
 
 /// <summary>

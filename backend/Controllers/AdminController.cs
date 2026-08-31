@@ -410,6 +410,55 @@ public class AdminController : TicketeraControllerBase
         }
     }
 
+    /// <summary>
+    /// Updates a user's role (AUM-001). Inherited RequireAdminRole policy. The
+    /// self-edit guard (D4) runs BEFORE the service call so a self-edit leaves
+    /// no role change and no audit row. Unknown users → 404; every successful
+    /// edit records an UpdateUserRole audit entry referencing the target id
+    /// (ids + role only — no credentials, no email). The account row is never
+    /// deleted: role editing is the only revoke mechanism (SinAcceso grants
+    /// nothing). Changes apply on the target's next login (AUM-004).
+    /// </summary>
+    /// <param name="userId">ID of the target user</param>
+    /// <param name="request">The new role</param>
+    /// <returns>200 with the updated user summary; 400 self-edit; 404 unknown user</returns>
+    [HttpPut("users/{userId:guid}/role")]
+    public async Task<IActionResult> UpdateUserRole(Guid userId, [FromBody] AdminUpdateUserRoleRequest request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        // D4: controller-level self-edit guard, pre-service — guarantees the
+        // spec's "no role change or audit row is persisted" without service coupling.
+        if (userId == adminId)
+        {
+            return BadRequest(new { error = "You cannot change your own role" });
+        }
+
+        try
+        {
+            var summary = await _adminService.UpdateUserRoleAsync(userId, request.Role);
+
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.UpdateUserRole,
+                AuditResourceType.User,
+                userId,
+                Truncate($"Admin updated role for user {userId} to {request.Role}", 1000)));
+
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = "User not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating role for user {UserId}", userId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while updating the user role" });
+        }
+    }
+
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try
@@ -459,3 +508,10 @@ public class AdminUserResponse
 /// and audit-only — it is never stored on the event.
 /// </summary>
 public record RejectEventRequest(string? Reason = null);
+
+/// <summary>
+/// Request body for updating a user's role (AUM-001). Binds via the
+/// JsonStringEnumConverter — an invalid enum string fails automatic model
+/// validation ([ApiController] → 400) before reaching the action.
+/// </summary>
+public record AdminUpdateUserRoleRequest(UserRole Role);
