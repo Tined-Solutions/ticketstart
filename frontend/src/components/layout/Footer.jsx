@@ -16,10 +16,12 @@ export default function Footer() {
           </Link>
         </nav>
         <a
-          href="/"
-          className="text-brand-1 hover:text-brand-2 transition-colors duration-(--dur-micro)"
+          href="https://tinedsolutions.tech"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-text-muted transition-colors duration-(--dur-micro) hover:text-brand-1"
         >
-          Powered by TicketStart
+          Desarrollada por Tined Solutions
         </a>
       </div>
     </footer>

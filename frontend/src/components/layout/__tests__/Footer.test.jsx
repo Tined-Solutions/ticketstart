@@ -20,11 +20,12 @@ describe('Footer', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders the "Powered by TicketStart" link', () => {
+  it('renders the "Desarrollada por Tined Solutions" button linking to tinedsolutions.tech', () => {
     renderFooter()
-    const link = screen.getByRole('link', { name: /powered by TicketStart/i })
+    const link = screen.getByRole('link', { name: /desarrollada por tined solutions/i })
     expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/')
+    expect(link).toHaveAttribute('href', 'https://tinedsolutions.tech')
+    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('renders a link to the FAQ page', () => {
