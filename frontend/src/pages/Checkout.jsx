@@ -25,7 +25,7 @@ const shakeAnim = {
 }
 
 const inputClass =
-  'w-full px-4 py-2.5 bg-surface-elevated border border-white/10 rounded-lg ' +
+  'w-full px-4 py-2 bg-surface-elevated border border-white/10 rounded-lg ' +
   'text-text-1 placeholder:text-text-muted ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent ' +
   'transition-[border-color,box-shadow] duration-200'
@@ -264,33 +264,42 @@ export default function Checkout() {
           animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
           exit={prefersReducedMotion ? {} : { opacity: 0, y: -16 }}
           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          className="max-w-2xl mx-auto px-4 py-8"
+          className="bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15"
         >
           <Link
             to="/events"
-            className="inline-flex items-center gap-1 text-text-2 hover:text-text-1 mb-6 transition-colors"
+            className="inline-flex items-center gap-1 px-4 pt-6 text-text-2 hover:text-text-1 transition-colors sm:px-6"
           >
             ← Volver al catálogo
           </Link>
 
-          <p className="text-sm font-medium text-brand-1 mb-1" aria-hidden="true">
-            Paso 1 de 2
-          </p>
-          <h1 className="text-3xl font-display font-bold text-text-1 mb-6">
+          <div className="max-w-xl mx-auto px-4 pt-4 pb-6">
+          {/* Stepper — progress indicator for the 2-step flow, centered on the page */}
+          <div className="flex flex-col items-center gap-2">
+            <h3 className="text-sm font-semibold text-text-1">Paso 1 de 2</h3>
+            <div className="flex space-x-3" aria-hidden="true">
+              <span className="h-2 w-12 rounded-full bg-brand-1" />
+              <span className="h-2 w-12 rounded-full bg-gris-oscuro/25" />
+            </div>
+          </div>
+          <h1 className="mt-3 mb-4 text-center text-2xl font-display font-bold text-text-1">
             {isEditing ? 'Editar tus datos' : 'Reserva tus entradas'}
           </h1>
 
           {/* Event summary */}
-          <GlassCard className="mb-6 p-6">
+          <GlassCard
+            className="mb-5 p-5"
+            style={{ boxShadow: '0 12px 32px rgba(74,74,74,0.16)', borderColor: 'rgba(74,74,74,0.3)' }}
+          >
             <div className="flex gap-4">
               {cart.eventImageUrl ? (
                 <img
                   src={cart.eventImageUrl}
                   alt={cart.eventName}
-                  className="w-24 h-24 rounded-lg object-cover flex-shrink-0"
+                  className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-24 h-24 rounded-lg bg-surface-elevated flex items-center justify-center flex-shrink-0">
+                <div className="w-20 h-20 rounded-lg bg-surface-elevated flex items-center justify-center flex-shrink-0">
                   <span className="text-text-muted text-xs">Sin imagen</span>
                 </div>
               )}
@@ -320,12 +329,15 @@ export default function Checkout() {
             animate={prefersReducedMotion ? {} : shakeError ? shakeAnim : {}}
             onAnimationComplete={() => setShakeError(false)}
           >
-            <GlassCard className="p-6">
-              <h2 className="text-xl font-heading font-semibold text-text-1 mb-4">
+            <GlassCard
+              className="p-5"
+              style={{ boxShadow: '0 12px 32px rgba(74,74,74,0.16)', borderColor: 'rgba(74,74,74,0.3)' }}
+            >
+              <h2 className="text-lg font-heading font-semibold text-text-1 mb-3">
                 Datos del comprador
               </h2>
 
-              <form onSubmit={handleCreateReservation} className="space-y-4" noValidate>
+              <form onSubmit={handleCreateReservation} className="space-y-3.5" noValidate>
                 <div>
                   <label
                     htmlFor="purchaserName"
@@ -487,18 +499,41 @@ export default function Checkout() {
                   </div>
                 )}
 
-                <Button
-                  type="submit"
-                  variant="gradient"
-                  size="lg"
-                  loading={loading}
-                  className="w-full"
-                >
-                  {loading ? 'Reservando…' : isEditing ? 'Guardar cambios' : 'Reservar entradas'}
-                </Button>
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-purpura/30 bg-purpura/15 px-6 py-2.5 text-sm font-semibold text-purpura-dark transition-colors duration-200 hover:bg-purpura/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                  >
+                    {loading && (
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    )}
+                    {loading ? 'Reservando…' : isEditing ? 'Guardar cambios' : 'Reservar entradas'}
+                  </button>
+                </div>
               </form>
             </GlassCard>
           </motion.div>
+          </div>
         </motion.div>
       </AnimatePresence>
     )
