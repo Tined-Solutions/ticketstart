@@ -65,7 +65,8 @@ export default function Navbar() {
 
   // ── Role-aware link helpers ──
   const role = user?.role
-  const showStaff = role === 'Staff' || role === 'Admin'
+  // Organizadores escanean como un staff más: el link "Escanear" también es suyo.
+  const showScan = role === 'Staff' || role === 'Organizador' || role === 'Admin'
   const showOrganizer = role === 'Organizador' || role === 'Admin'
   const showAdmin = role === 'Admin'
 
@@ -113,7 +114,7 @@ export default function Navbar() {
             <NavLink to="/tickets/lookup" className={navLinkClass}>
               Mis Entradas
             </NavLink>
-            {showStaff && (
+            {showScan && (
               <NavLink to="/staff/scan" className={navLinkClass}>
                 Escanear
               </NavLink>
@@ -240,7 +241,7 @@ export default function Navbar() {
               >
                 Mis Entradas
               </NavLink>
-              {showStaff && (
+              {showScan && (
                 <NavLink
                   to="/staff/scan"
                   className={navLinkClass}
