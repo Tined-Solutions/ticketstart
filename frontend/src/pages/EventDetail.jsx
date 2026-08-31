@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { Ticket } from 'lucide-react'
 import { useEvent } from '../hooks/useEvent.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
@@ -57,11 +58,13 @@ export default function EventDetail() {
     : ''
 
   const handleSelectTicketType = (ticketTypeId) => {
-    // Clicking the already-chosen ticket keeps its quantity — cancelling is
-    // only possible via the decrement button down to 0.
+    // Single ticket type per purchase: choosing a different type replaces the
+    // previous one entirely (its quantity resets to 1). Clicking the already
+    // chosen ticket keeps its quantity — cancelling is only possible via the
+    // decrement button down to 0.
     if (selectedTicketTypeId === ticketTypeId) return
     setSelectedTicketTypeId(ticketTypeId)
-    setQuantities((prev) => (prev[ticketTypeId] ? prev : { ...prev, [ticketTypeId]: 1 }))
+    setQuantities({ [ticketTypeId]: 1 })
   }
 
   const updateQuantity = (ticketTypeId, nextQuantity) => {
@@ -246,38 +249,40 @@ export default function EventDetail() {
             </div>
 
             {/* Reservation summary — always visible, button disabled when no selection.
-            TODO: "Entradas seleccionadas" — el resumen solo refleja el tipo de
-            entrada activo; con las cantidades por tipo (chips en las cards) falta
-            mostrar el detalle completo de todas las selecciones o soportar
-            multi-selección real (la reserva backend es single-type por ahora). */}
-            <div className="mt-6">
-              <GlassCard className="p-4 md:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <p className="text-text-2 text-sm">Entradas seleccionadas</p>
-                    <p className="text-text-1 font-semibold">
-                      {selectedTicketTypeId && selectedQuantity > 0
-                        ? `${totalTickets} × ${selectedTicketType?.name}`
-                        : 'Ninguna'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-text-2 text-sm">Total</p>
-                    <p className="text-2xl font-display font-bold text-brand-1">
-                      {formatCurrency(totalPrice)}
-                    </p>
-                  </div>
+            Single ticket type per purchase: the summary reflects exactly the one
+            active selection (backend reservation is single-type). No card: a
+            horizontal divider separates the ticket grid from the detail below.
+            The CTA is a local button (not the shared Button) so its hover stays
+            subtle — no lift/translate — and its size stays contained. */}
+            <div className="mt-10">
+              <div aria-hidden="true" className="h-px w-full bg-gris-oscuro/15" />
+              <div className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-baseline sm:justify-between">
+                <div>
+                  <p className="text-sm text-text-2">Entradas seleccionadas</p>
+                  <p className="mt-1 font-display text-lg font-semibold text-text-1">
+                    {selectedTicketTypeId && selectedQuantity > 0
+                      ? `${totalTickets} × ${selectedTicketType?.name}`
+                      : 'Ninguna'}
+                  </p>
                 </div>
-                <Button
-                  variant="gradient"
-                  size="lg"
-                  className="w-full mt-4 sm:mt-0 sm:w-auto sm:self-end"
+                <div className="sm:text-right">
+                  <p className="text-sm text-text-2">Total</p>
+                  <p className="mt-1 font-display text-xl font-bold text-brand-1">
+                    {formatCurrency(totalPrice)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex sm:justify-end">
+                <button
+                  type="button"
                   onClick={handleReserve}
                   disabled={!selectedTicketType || selectedQuantity === 0}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-1 to-brand-2 px-5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
+                  <Ticket className="h-4 w-4" aria-hidden="true" />
                   Reservar entradas
-                </Button>
-              </GlassCard>
+                </button>
+              </div>
             </div>
           </>
         )}

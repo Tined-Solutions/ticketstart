@@ -214,6 +214,51 @@ describe('EventDetail', () => {
     expect(reserveButton).toBeDisabled()
   })
 
+  it('replaces the previous selection when choosing a different ticket type (single type per purchase)', async () => {
+    mockGet.mockResolvedValue({ data: mockEvent })
+
+    renderWithQueryClient(<EventDetail />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
+    await userEvent.click(screen.getByRole('radio', { name: /campo/i }))
+
+    // Platea is no longer selected: no leftover "elegida" chip, just the CTA.
+    const plateaRow = screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
+    expect(plateaRow).not.toHaveTextContent(/elegid/i)
+    expect(plateaRow).toHaveTextContent(/elegir entrada/i)
+
+    // The summary reflects exactly the one active selection.
+    expect(screen.getByText(/1 × campo/i)).toBeInTheDocument()
+    expect(screen.queryByText(/× platea/i)).toBeNull()
+  })
+
+  it('deselects a ticket type when decrementing to zero', async () => {
+    mockGet.mockResolvedValue({ data: mockEvent })
+
+    renderWithQueryClient(<EventDetail />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
+
+    const selectedRow = screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
+    const [decreaseButton] = selectedRow.querySelectorAll('button')
+
+    await userEvent.click(decreaseButton)
+
+    expect(screen.getByText(/ninguna/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reservar entradas/i })).toBeDisabled()
+    expect(
+      screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
+    ).toHaveTextContent(/elegir entrada/i)
+  })
+
   it('renders back link to the event catalog', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
