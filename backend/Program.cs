@@ -159,9 +159,11 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireOrganizadorRole", policy =>
         policy.RequireRole("Organizador", "Admin"));
     
-    // Policy for Staff role
-    options.AddPolicy("RequireStaffRole", policy =>
-        policy.RequireRole("Staff", "Admin"));
+    // Policy for the scan surface (staff scan event chooser + QR validation).
+    // Organizador scans "as staff" per product decision (2026-08-31); the
+    // explicit role list keeps the gate future-proof if a buyer role is added.
+    options.AddPolicy("RequireScanAccessRole", policy =>
+        policy.RequireRole("Staff", "Organizador", "Admin"));
     
     // Policy for Admin role only
     options.AddPolicy("RequireAdminRole", policy =>

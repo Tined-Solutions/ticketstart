@@ -431,7 +431,7 @@ public class EventControllerTests
     [Fact]
     public async Task Staff_ManagementList_Anon_401()
     {
-        // EHE-007: anonymous caller → 401 (route matched, RequireStaffRole denies).
+        // EHE-007: anonymous caller → 401 (route matched, RequireScanAccessRole denies).
         using var factory = new EventCatalogApiFactory();
         var client = factory.CreateClient();
 
@@ -443,12 +443,13 @@ public class EventControllerTests
     }
 
     [Fact]
-    public async Task Events_ManageRoute_NonStaffOrganizer_403()
+    public async Task Events_ManageRoute_OrganizerAllowed_200()
     {
         // Route test: GET /api/events/manage must NOT be swallowed by
         // [HttpGet("{id:guid}")] — the GUID constraint rejects the "manage"
-        // literal. An authenticated organizer (not Staff/Admin) gets 403 from the
-        // RequireStaffRole policy, proving the route resolved to the list action.
+        // literal. An authenticated organizer gets 200 (RequireScanAccessRole
+        // admits Organizador — organizers scan as staff), proving the route
+        // resolved to the list action, not a 404 route miss.
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
         var cookie = await factory.LoginAndGetCookieAsync(organizerId);
@@ -457,8 +458,27 @@ public class EventControllerTests
         // Act
         var response = await client.GetAsync("/api/events/manage");
 
-        // Assert — 403 (route matched + policy enforced), not 404 (route miss)
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // Assert — 200 (route matched + policy admits Organizador), not 404
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Tickets_Validate_OrganizerPassesAuthGate_400ForEmptyBody()
+    {
+        // Scan-surface authorization: POST /api/tickets/validate admits
+        // Organizador. An empty body returns 400 from endpoint validation; a
+        // 403 would mean the policy denied the role. 400 ⇒ the auth gate passed.
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/tickets/validate",
+            new { qrCodeData = "", eventId = Guid.Empty });
+
+        // Assert — 400 (body validation), NOT 403 (policy denial)
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     #endregion

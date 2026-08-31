@@ -9,7 +9,7 @@ namespace TicketeraOnline.Api.Controllers;
 
 /// <summary>
 /// Controller for ticket operations including lookup and validation.
-/// Handles QR code validation for staff and ticket retrieval for users.
+/// Handles QR code validation for staff and organizers and ticket retrieval for users.
 /// </summary>
 [ApiController]
 [Route("api/tickets")]
@@ -93,7 +93,7 @@ public class TicketController : TicketeraControllerBase
     /// <param name="request">QR code validation request</param>
     /// <returns>Validation result</returns>
     [HttpPost("validate")]
-    [Authorize(Policy = "RequireStaffRole")]
+    [Authorize(Policy = "RequireScanAccessRole")]
     [ProducesResponseType(typeof(ValidateQRCodeResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

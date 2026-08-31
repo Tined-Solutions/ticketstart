@@ -24,7 +24,7 @@ public interface IEventService
     /// <param name="includeExpired">
     /// When false (default), expired events are hidden from the caller — the query
     /// filters to future-dated events (EHE-003). Pass true from role-gated
-    /// management paths (EventOwnership / RequireStaffRole) so organizers, staff
+    /// management paths (EventOwnership / RequireScanAccessRole) so organizers, staff
     /// and admins keep full access to past events (EHE-006/007).
     /// </param>
     /// <returns>The event with calculated ticket availability, or null if not found</returns>

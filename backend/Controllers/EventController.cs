@@ -54,10 +54,10 @@ public class EventController : TicketeraControllerBase
     /// <summary>
     /// Scannable event list for the staff scan chooser (EHE-007): future events
     /// plus events ended within the 24h QR validation window. Role-gated:
-    /// Staff/Admin only.
+    /// Staff/Organizador/Admin (organizers scan as staff).
     /// </summary>
     [HttpGet("manage")]
-    [Authorize(Policy = "RequireStaffRole")]
+    [Authorize(Policy = "RequireScanAccessRole")]
     public async Task<IActionResult> GetAllEventsForManagement()
     {
         var events = await _eventService.GetScannableEventsAsync();

@@ -140,7 +140,7 @@ public class EventService : IEventService
         // `e.Date > now` predicate keeps the filter translatable to a single SQL
         // predicate — never call e.IsExpired(...) inside an IQueryable (EF Core
         // cannot translate the method call and would client-evaluate). Management
-        // callers (EventOwnership/RequireStaffRole) pass includeExpired:true.
+        // callers (EventOwnership/RequireScanAccessRole) pass includeExpired:true.
         if (_hideExpiredOptions.Value.Enabled && !includeExpired)
         {
             var now = _clock.GetUtcNow().UtcDateTime;
