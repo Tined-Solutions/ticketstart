@@ -962,6 +962,48 @@ describe('AdminPanel', () => {
     expect(screen.getByRole('menuitem', { name: /compras de concierto pasado/i })).toBeEnabled()
   })
 
+  it('shows the Ver preview for Pending events too (pre-approval review)', async () => {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({
+          data: {
+            items: [
+              {
+                id: 'event-pending',
+                name: 'Festival Pendiente',
+                date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                location: 'Anfiteatro Municipal',
+                organizerId: 'user-2',
+                createdAt: '2026-01-01T10:00:00Z',
+                status: 'Pending',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/festival pendiente/i)).toBeInTheDocument()
+    })
+
+    // Pre-approval review: the Ver (read-only preview) affordance is NOT
+    // reserved for past events — moderation needs it BEFORE approving, so the
+    // admin can see description, image and ticket prices first.
+    const pendingRow = eventRow('festival pendiente')
+    await userEvent.click(within(pendingRow).getByRole('button', { name: /ver festival pendiente/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-pending/view')
+  })
+
   it('sorts upcoming events soonest-first by date (all dates in the future)', async () => {
     render(<AdminPanel />)
 

@@ -440,17 +440,18 @@ export default function AdminPanel() {
                         </p>
                       </div>
                       <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                        {isPast && (
-                          <Button
-                            variant="glass"
-                            size="sm"
-                            onClick={() => navigate(`/organizer/events/${event.id}/view`)}
-                            aria-label={`Ver ${event.name}`}
-                            className={`min-h-[44px] ${ACTION_HOVER}`}
-                          >
-                            Ver
-                          </Button>
-                        )}
+                        {/* Ver is available for EVERY status: pre-approval
+                            review (Pending) needs the read-only preview as
+                            much as past-event consultation does. */}
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                          aria-label={`Ver ${event.name}`}
+                          className={`min-h-[44px] ${ACTION_HOVER}`}
+                        >
+                          Ver
+                        </Button>
                         {event.status !== 'Approved' && (
                           <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                             <Button

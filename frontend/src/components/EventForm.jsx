@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
+import { formatCurrency } from '../lib/format.js'
 
 function formatDateForInput(dateString) {
   if (!dateString) return ''
@@ -477,6 +478,26 @@ export default function EventForm({
             + Agregar tipo de entrada
           </button>
         </fieldset>
+      ) : readOnly ? (
+        // Read-only preview (moderation review / past-event consultation):
+        // show EVERYTHING the organizer entered — prices are public catalog
+        // content, so the reviewer must see them before approving.
+        <div className="ticket-types-section">
+          <h2>Tipos de entrada</h2>
+          {ticketTypes.filter((tt) => tt.name.trim()).length === 0 ? (
+            <p>El organizador no cargo tipos de entrada.</p>
+          ) : (
+            <ul className="ticket-types-preview">
+              {ticketTypes
+                .filter((tt) => tt.name.trim())
+                .map((tt) => (
+                  <li key={tt.key}>
+                    {tt.name} — {formatCurrency(tt.price)} — {tt.quantity} entradas
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
       ) : (
         <div className="ticket-types-section" role="note">
           <h2>Tipos de entrada</h2>
