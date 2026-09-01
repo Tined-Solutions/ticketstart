@@ -13,6 +13,8 @@ import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import AddTicketsModal from '../components/AddTicketsModal.jsx'
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
+import RoleEditModal from '../components/RoleEditModal.jsx'
+import ResetPasswordModal from '../components/ResetPasswordModal.jsx'
 import { fadeIn } from '../lib/motion.js'
 
 // Shared hover treatment for the events action buttons: grow a soft shadow on
@@ -41,6 +43,7 @@ function roleLabel(role) {
     Organizador: 'Organizador',
     Staff: 'Staff',
     Admin: 'Admin',
+    SinAcceso: 'Sin acceso',
   }
   return labels[role] || role
 }
@@ -53,6 +56,9 @@ function roleBadgeVariant(role) {
       return 'success'
     case 'Organizador':
       return 'info'
+    case 'SinAcceso':
+      // AUM-002/005: 'warning' signals the locked-out state, distinct from Admin's 'error'.
+      return 'warning'
     default:
       return 'info'
   }
@@ -94,6 +100,12 @@ export default function AdminPanel() {
   // Top-level section switch: only one section renders at a time inside the
   // single container (Eventos | Usuarios), so the page never scrolls vertically.
   const [activeSection, setActiveSection] = useState('eventos')
+
+  // AUM-005: user-management flows. Targets hold the user being edited/reset;
+  // both modals unmount via conditional render so ResetPasswordModal's
+  // one-time credential is never retained after closing (D14).
+  const [roleEditTarget, setRoleEditTarget] = useState(null)
+  const [resetPasswordTarget, setResetPasswordTarget] = useState(null)
 
   const loadData = useCallback((controller) => {
     setLoading(true)
@@ -337,6 +349,13 @@ export default function AdminPanel() {
     setUserPage(Math.min(Math.max(1, page), totalUserPages))
   }
 
+  const handleRoleEditSuccess = () => {
+    setRoleEditTarget(null)
+    setFeedback({ type: 'success', message: 'Rol actualizado correctamente' })
+    const controller = new AbortController()
+    loadData(controller)
+  }
+
   return (
     <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <header className="mb-4">
@@ -468,17 +487,18 @@ export default function AdminPanel() {
                             </p>
                           </div>
                           <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                            {isPast && (
-                              <Button
-                                variant="glass"
-                                size="sm"
-                                onClick={() => navigate(`/organizer/events/${event.id}/view`)}
-                                aria-label={`Ver ${event.name}`}
-                                className={ACTION_HOVER}
-                              >
-                                Ver
-                              </Button>
-                            )}
+                            {/* Ver is available for EVERY status: pre-approval
+                                review (Pending) needs the read-only preview as
+                                much as past-event consultation does. */}
+                            <Button
+                              variant="glass"
+                              size="sm"
+                              onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                              aria-label={`Ver ${event.name}`}
+                              className={ACTION_HOVER}
+                            >
+                              Ver
+                            </Button>
                             {event.status !== 'Approved' && (
                               <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                                 <Button
@@ -710,6 +730,7 @@ export default function AdminPanel() {
                           <option value="Admin">Admin</option>
                           <option value="Staff">Staff</option>
                           <option value="Organizador">Organizador</option>
+                          <option value="SinAcceso">Sin acceso</option>
                         </select>
                         <Button
                           variant="primary"
@@ -736,6 +757,7 @@ export default function AdminPanel() {
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Email</th>
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Rol</th>
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
+                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -749,6 +771,27 @@ export default function AdminPanel() {
                                   </td>
                                   <td className="py-2 px-3 text-text-2 align-middle" data-label="Fecha de registro">
                                     {formatDate(user.createdAt)}
+                                  </td>
+                                  <td className="py-2 px-3 align-middle" data-label="Acciones">
+                                    {/* AUM-005 (D12): per-row kebab menu — same pattern as the events section. */}
+                                    <DropdownMenu
+                                      triggerLabel={`Acciones de ${user.email}`}
+                                      align="right"
+                                      items={[
+                                        {
+                                          label: 'Editar rol',
+                                          ariaLabel: `Editar rol de ${user.email}`,
+                                          onClick: () => setRoleEditTarget(user),
+                                          disabled: false,
+                                        },
+                                        {
+                                          label: 'Restablecer contraseña',
+                                          ariaLabel: `Restablecer contraseña de ${user.email}`,
+                                          onClick: () => setResetPasswordTarget(user),
+                                          disabled: false,
+                                        },
+                                      ]}
+                                    />
                                   </td>
                                 </tr>
                               ))}
@@ -812,6 +855,22 @@ export default function AdminPanel() {
             const controller = new AbortController()
             loadData(controller)
           }}
+        />
+      )}
+
+      {/* AUM-005: user-management modals, conditionally mounted (D13/D14). */}
+      {roleEditTarget && (
+        <RoleEditModal
+          user={roleEditTarget}
+          onClose={() => setRoleEditTarget(null)}
+          onSuccess={handleRoleEditSuccess}
+        />
+      )}
+
+      {resetPasswordTarget && (
+        <ResetPasswordModal
+          user={resetPasswordTarget}
+          onClose={() => setResetPasswordTarget(null)}
         />
       )}
     </motion.div>

@@ -7,6 +7,7 @@ const mockNavigate = vi.fn()
 const mockGet = vi.fn()
 const mockDelete = vi.fn()
 const mockPost = vi.fn()
+const mockPut = vi.fn()
 const mockInvalidateQueries = vi.fn()
 
 vi.mock('react-router-dom', () => ({
@@ -22,6 +23,7 @@ vi.mock('../api/client.js', () => ({
     get: (...args) => mockGet(...args),
     delete: (...args) => mockDelete(...args),
     post: (...args) => mockPost(...args),
+    put: (...args) => mockPut(...args),
   },
 }))
 
@@ -166,7 +168,7 @@ describe('AdminPanel', () => {
     })
 
     // Users live behind the "Usuarios" tab (single-section layout)
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
 
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
@@ -183,7 +185,7 @@ describe('AdminPanel', () => {
     })
 
     // Role badges live in the users table, behind the "Usuarios" tab
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
@@ -210,7 +212,7 @@ describe('AdminPanel', () => {
     // Only one section renders at a time (single-container layout)
     expect(screen.queryByText('Usuarios (3)')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
 
     await waitFor(() => {
       expect(screen.getByText('Usuarios (3)')).toBeInTheDocument()
@@ -441,7 +443,7 @@ describe('AdminPanel', () => {
     })
 
     // Users re-fetched too — switch to the Usuarios tab to see them
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
@@ -473,7 +475,7 @@ describe('AdminPanel', () => {
     expect(screen.getByText(/no hay eventos en el sistema/i)).toBeInTheDocument()
 
     // Users still load — switch to the Usuarios tab to see them
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
@@ -503,7 +505,7 @@ describe('AdminPanel', () => {
     expect(screen.getByText('Eventos (3)')).toBeInTheDocument()
 
     // The users empty state lives behind the "Usuarios" tab
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
 
     await waitFor(() => {
       expect(screen.getByText('Usuarios (0)')).toBeInTheDocument()
@@ -544,7 +546,7 @@ describe('AdminPanel', () => {
     })
 
     // Users (flat array) live behind the "Usuarios" tab
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })
@@ -603,7 +605,7 @@ describe('AdminPanel', () => {
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
       })
-      await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+      await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /crear nuevo usuario/i })
@@ -798,7 +800,7 @@ describe('AdminPanel', () => {
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
       })
-      await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+      await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /crear nuevo usuario/i })
@@ -1000,6 +1002,48 @@ describe('AdminPanel', () => {
     expect(screen.getByRole('menuitem', { name: /compras de concierto pasado/i })).toBeEnabled()
   })
 
+  it('shows the Ver preview for Pending events too (pre-approval review)', async () => {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({
+          data: {
+            items: [
+              {
+                id: 'event-pending',
+                name: 'Festival Pendiente',
+                date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                location: 'Anfiteatro Municipal',
+                organizerId: 'user-2',
+                createdAt: '2026-01-01T10:00:00Z',
+                status: 'Pending',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/festival pendiente/i)).toBeInTheDocument()
+    })
+
+    // Pre-approval review: the Ver (read-only preview) affordance is NOT
+    // reserved for past events — moderation needs it BEFORE approving, so the
+    // admin can see description, image and ticket prices first.
+    const pendingRow = eventRow('festival pendiente')
+    await userEvent.click(within(pendingRow).getByRole('button', { name: /ver festival pendiente/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-pending/view')
+  })
+
   it('sorts upcoming events soonest-first by date (all dates in the future)', async () => {
     render(<AdminPanel />)
 
@@ -1112,7 +1156,7 @@ describe('AdminPanel — Users filter & pagination', () => {
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: /usuarios/i })).toBeInTheDocument()
     })
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByLabelText('Buscar usuarios')).toBeInTheDocument()
     })
@@ -1249,6 +1293,123 @@ describe('AdminPanel — Users filter & pagination', () => {
   })
 })
 
+// ── AUM-005: user-management flows (actions column, modals, SinAcceso) ──
+
+describe('AdminPanel — User management (AUM-005)', () => {
+  const usersWithSinAcceso = [
+    ...mockUsers,
+    {
+      id: 'user-4',
+      email: 'blocked@ticketera.com',
+      role: 'SinAcceso',
+      createdAt: '2026-04-01T10:00:00Z',
+    },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockDelete.mockReset()
+    mockPost.mockReset()
+    mockPut.mockReset()
+    mockNavigate.mockReset()
+    mockInvalidateQueries.mockReset()
+
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: usersWithSinAcceso, total: 4, page: 1, pageSize: 200 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+  })
+
+  it('offers role-edit and reset-password actions per user row (actions column)', async () => {
+    render(<AdminPanel />)
+
+    // The users section lives behind the "Usuarios" tab (single-container layout).
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
+
+    // The actions button's aria-label is unique per row (the email text itself
+    // also appears in the events section as the organizer email).
+    await userEvent.click(
+      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
+    )
+
+    expect(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /restablecer contraseña de staff@ticketera\.com/i })).toBeInTheDocument()
+  })
+
+  it('opens the role-edit modal from the actions menu and reloads the list after a successful PUT', async () => {
+    mockPut.mockResolvedValue({ data: {} })
+
+    render(<AdminPanel />)
+
+    // The users section lives behind the "Usuarios" tab (single-container layout).
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Editar rol' })
+    const select = within(dialog).getByLabelText('Rol')
+    await userEvent.selectOptions(select, 'Admin')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith('/admin/users/user-3/role', { role: 'Admin' })
+    })
+
+    // Success feedback + list reload (loadData re-run → /admin/users fetched again)
+    await waitFor(() => {
+      expect(screen.getByText(/rol actualizado correctamente/i)).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const usersCalls = mockGet.mock.calls.filter(([url]) => url === '/admin/users')
+      expect(usersCalls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('shows the row badge "Sin acceso" for a SinAcceso user and keeps the create-form select unchanged', async () => {
+    render(<AdminPanel />)
+    // The users section lives behind the "Usuarios" tab (single-container layout).
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => expect(screen.getByText('blocked@ticketera.com')).toBeInTheDocument())
+
+    // Label + badge render for SinAcceso
+    const row = screen.getByText('blocked@ticketera.com').closest('tr')
+    expect(within(row).getByText('Sin acceso')).toBeInTheDocument()
+
+    // Filter select includes SinAcceso
+    const filter = screen.getByLabelText('Filtrar por rol')
+    const filterValues = Array.from(filter.options).map((option) => option.value)
+    expect(filterValues).toContain('SinAcceso')
+
+    // Create-user select STILL offers only Organizador/Staff (spec MUST)
+    await userEvent.click(screen.getByRole('button', { name: 'Crear nuevo usuario' }))
+    const createSelect = await screen.findByLabelText('Rol')
+    const createValues = Array.from(createSelect.options).map((option) => option.value)
+    expect(createValues).toEqual(['', 'Organizador', 'Staff'])
+  })
+
+  it('filters users by the SinAcceso role', async () => {
+    render(<AdminPanel />)
+    // The users section lives behind the "Usuarios" tab (single-container layout).
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
+    await waitFor(() => expect(screen.getByText('blocked@ticketera.com')).toBeInTheDocument())
+
+    const usersTable = screen.getByRole('table') // the only <table> (events are flex rows)
+    await userEvent.selectOptions(screen.getByLabelText('Filtrar por rol'), 'SinAcceso')
+
+    expect(within(usersTable).getByText('blocked@ticketera.com')).toBeInTheDocument()
+    expect(within(usersTable).queryByText('staff@ticketera.com')).not.toBeInTheDocument()
+  })
+})
+
 // ── Visual Regression: Glass & Theme ──────────────────────────────────
 
 describe('AdminPanel — Visual Regression', () => {
@@ -1294,7 +1455,7 @@ describe('AdminPanel — Visual Regression', () => {
     })
 
     // Role badges live in the users table, behind the "Usuarios" tab
-    await userEvent.click(screen.getByRole('tab', { name: /usuarios/i }))
+    await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
     await waitFor(() => {
       expect(screen.getByText('admin@ticketera.com')).toBeInTheDocument()
     })

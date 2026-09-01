@@ -587,4 +587,25 @@ describe('EventForm — readOnly mode', () => {
       screen.queryByRole('button', { name: /crear evento/i })
     ).not.toBeInTheDocument()
   })
+
+  it('renders ticket types read-only with name, price and quantity (pre-approval review)', () => {
+    const event = buildEvent()
+
+    render(<EventForm mode="edit" readOnly initialData={event} />)
+
+    // The admin reviews EVERYTHING the organizer entered before approving —
+    // prices are public catalog content, so the preview must show them.
+    expect(
+      screen.getByText(/general — \$ 5\.000 — 200 entradas/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/vip — \$ 15\.000 — 50 entradas/i)
+    ).toBeInTheDocument()
+
+    // The stock-management note is edit-mode guidance; the read-only preview
+    // replaces it with the actual data.
+    expect(
+      screen.queryByText(/el stock de entradas se gestiona desde el panel/i)
+    ).not.toBeInTheDocument()
+  })
 })

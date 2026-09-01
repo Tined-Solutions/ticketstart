@@ -1383,6 +1383,55 @@ public class EventServiceTests : IDisposable
         Assert.DoesNotContain(old.Id, ids);
     }
 
+    [Fact]
+    public async Task GetScannableEvents_ExcludesUnapprovedEvents()
+    {
+        // EA-002 moderation gate: a Pending or Rejected event must never appear
+        // in the scanner chooser — only Approved events are scannable, even if
+        // they fall inside the 24h validation window.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var approved = CreateEventEntity(organizerId, "Approved", now.AddDays(1));
+        var pending = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Pending",
+            Description = "Description",
+            Date = now.AddDays(2),
+            Location = "Location",
+            OrganizerId = organizerId,
+            CreatedAt = now,
+            UpdatedAt = now,
+            Status = EventStatus.Pending
+        };
+        var rejected = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Rejected",
+            Description = "Description",
+            Date = now.AddDays(3),
+            Location = "Location",
+            OrganizerId = organizerId,
+            CreatedAt = now,
+            UpdatedAt = now,
+            Status = EventStatus.Rejected
+        };
+        _context.Events.AddRange(approved, pending, rejected);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = (await service.GetScannableEventsAsync()).ToList();
+
+        // Assert — only the approved event is scannable
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Single(ids);
+        Assert.Contains(approved.Id, ids);
+    }
+
     #endregion
 }
 

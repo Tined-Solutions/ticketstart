@@ -4,11 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TicketeraOnline.Api.Data;
+using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json;
 using ArbStatic = FsCheck.Fluent.Arb;
 using GenStatic = FsCheck.Fluent.Gen;
 using PropStatic = FsCheck.Fluent.Prop;
@@ -513,6 +515,148 @@ public class AuthenticationPropertyTests : IDisposable
             Assert.NotNull(roleClaim);
             Assert.Equal(role.ToString(), roleClaim.Value);
         }
+    }
+
+    #endregion
+
+    #region AUM-003 — PasswordGenerator properties (D9)
+
+    /// <summary>
+    /// AUM-003 `temp-password-passes-policy` (D9): for ANY number of Generate()
+    /// invocations the output MUST be 12–16 characters, alphanumeric only, and
+    /// therefore satisfy the login password policy (min 8 chars — mirrored from
+    /// AuthService.CreateUserAsync; the login path enforces the same length rule).
+    /// </summary>
+    [Property]
+    public Property GeneratedTempPasswords_AlwaysSatisfyTempPasswordPolicy()
+    {
+        var sampleCountArb = ArbStatic.From(GenStatic.Choose(1, 50));
+
+        return PropStatic.ForAll(sampleCountArb, (int samples) =>
+        {
+            for (var i = 0; i < samples; i++)
+            {
+                var password = PasswordGenerator.Generate();
+
+                // Length ∈ [12, 16] (spec: 12–16 chars, satisfying min-8).
+                if (password.Length < 12 || password.Length > 16) return false;
+
+                // Charset ⊆ alphanumeric.
+                if (password.Any(c => !char.IsAsciiLetterOrDigit(c))) return false;
+
+                // Passes the login min-8 validation.
+                if (password.Length < 8) return false;
+            }
+
+            return true;
+        });
+    }
+
+    [Fact]
+    public void PasswordGenerator_ConsecutiveCalls_ProduceRandomLookingCredentials()
+    {
+        // Deterministic companion: 200 consecutive calls all satisfy the policy
+        // and are not all identical (a constant string would pass a single check).
+        var seen = new HashSet<string>();
+        for (var i = 0; i < 200; i++)
+        {
+            var password = PasswordGenerator.Generate();
+            Assert.InRange(password.Length, 12, 16);
+            Assert.All(password, c => Assert.True(char.IsAsciiLetterOrDigit(c), $"Non-alphanumeric char: {c}"));
+            seen.Add(password);
+        }
+
+        Assert.True(seen.Count > 1, "Generator must not return a constant credential");
+    }
+
+    #endregion
+
+    #region AUM-003 — ResetPasswordAsync (D8)
+
+    [Fact]
+    public async Task ResetPasswordAsync_UnknownUser_ReturnsFailure_WithPinnedMessage()
+    {
+        // D6: the "User not found" string is the 404-mapping contract (mirrors
+        // CreateUser's string-mapping precedent) — pinned here on purpose.
+        var result = await _authService.ResetPasswordAsync(Guid.NewGuid());
+
+        Assert.False(result.Success);
+        Assert.Equal("User not found", result.Error);
+        Assert.Equal(string.Empty, result.TemporaryPassword);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ExistingUser_PersistsHashThatVerifies_OldPasswordStopsAuthenticating()
+    {
+        // GIVEN a user created with "password123"
+        var created = await _authService.CreateUserAsync(
+            "Reset Target", $"reset-{Guid.NewGuid()}@example.com", "password123", UserRole.Staff);
+        Assert.True(created.Success);
+
+        // WHEN the admin resets the password
+        var result = await _authService.ResetPasswordAsync(created.UserId);
+
+        // THEN a usable one-time credential is returned…
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(created.UserId, result.UserId);
+        Assert.InRange(result.TemporaryPassword.Length, 12, 16);
+
+        // …the stored hash verifies against the returned credential…
+        var stored = await _context.Users.AsNoTracking().SingleAsync(u => u.Id == created.UserId);
+        Assert.True(BCrypt.Net.BCrypt.Verify(result.TemporaryPassword, stored.PasswordHash));
+
+        // …and the previous password no longer authenticates (both at the hash
+        // level and through the actual login flow).
+        Assert.False(BCrypt.Net.BCrypt.Verify("password123", stored.PasswordHash));
+        var oldLogin = await _authService.LoginAsync(new LoginRequest
+        {
+            Email = created.Email,
+            Password = "password123"
+        });
+        Assert.False(oldLogin.Success);
+    }
+
+    #endregion
+
+    #region AUM-002 — Role enum append-only stability (D1)
+
+    /// <summary>
+    /// AUM-002 `role-enum-append-only` (D1): User.Role is INT-stored with no
+    /// value conversion (ApplicationDbContext snapshot Property&lt;int&gt;), so stored
+    /// ints 0/1/2 MUST keep deserializing to Organizador/Staff/Admin and
+    /// SinAcceso MUST be exactly index 3. The casts are intentional — they pin
+    /// the NUMERIC indexes independently of how members are declared, guarding
+    /// against silent renumbering that would corrupt existing rows.
+    /// </summary>
+    [Fact]
+    public void UserRole_StoredInts_DeserializeUnchanged_AndSinAccesoIsIndex3()
+    {
+        Assert.Equal(UserRole.Organizador, (UserRole)0);
+        Assert.Equal(UserRole.Staff, (UserRole)1);
+        Assert.Equal(UserRole.Admin, (UserRole)2);
+        Assert.Equal("SinAcceso", ((UserRole)3).ToString());
+    }
+
+    /// <summary>
+    /// AUM-002: the API serializes roles as strings (JsonStringEnumConverter on
+    /// UserRole), so the new value must round-trip by NAME in JSON — both on the
+    /// wire (inbound strings) and in responses (outbound serialization).
+    /// </summary>
+    [Fact]
+    public void UserRole_JsonRoundTrip_SerializesSinAccesoByName()
+    {
+        // Inbound: "SinAcceso" string deserializes to the enum (index 3).
+        var deserialized = JsonSerializer.Deserialize<UserRole>("\"SinAcceso\"");
+        Assert.Equal((UserRole)3, deserialized);
+
+        // Outbound: the enum serializes by name, not as a bare int.
+        var serialized = JsonSerializer.Serialize((UserRole)3);
+        Assert.Equal("\"SinAcceso\"", serialized);
+
+        // Existing roles keep their JSON names (regression guard).
+        Assert.Equal("\"Organizador\"", JsonSerializer.Serialize(UserRole.Organizador));
+        Assert.Equal("\"Staff\"", JsonSerializer.Serialize(UserRole.Staff));
+        Assert.Equal("\"Admin\"", JsonSerializer.Serialize(UserRole.Admin));
     }
 
     #endregion

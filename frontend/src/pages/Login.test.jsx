@@ -73,6 +73,9 @@ describe('Login', () => {
     { role: 'Organizador', path: '/organizer/dashboard' },
     { role: 'Staff', path: '/staff/scan' },
     { role: 'Admin', path: '/admin' },
+    // AUM-002 `sinacceso-redirect-home`: no organizer/staff/admin surface is
+    // offered — the revoked user lands on home.
+    { role: 'SinAcceso', path: '/' },
   ])('redirects $role users to $path after login', async ({ role, path }) => {
     mockLogin.mockResolvedValue({
       id: 'user-1',

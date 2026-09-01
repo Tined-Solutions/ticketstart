@@ -47,6 +47,14 @@ public class EventOwnershipHandler : AuthorizationHandler<EventOwnershipRequirem
             return;
         }
 
+        // AUM-002: SinAcceso is a pure revocation state — no policy (including
+        // EventOwnership) may grant it anything, even when the user still owns
+        // events (a revoked organizer keeps ownership rows after the role change).
+        if (role == UserRole.SinAcceso)
+        {
+            return; // Fail — the owner path never succeeds for the revoked role.
+        }
+
         // Get event ID from route
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext == null)

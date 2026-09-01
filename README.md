@@ -70,7 +70,7 @@ Copy `.env.template` → `.env`.
 |----------|---------|-------------|
 | `VITE_API_BASE_URL` | `/api` | Backend API URL. `/api` uses the Vite dev proxy; set to a full URL for production. |
 
-The Vite dev server proxies `/api/*` → `http://localhost:5029`. Adjust `vite.config.js` if your backend port differs.
+The Vite dev server proxies `/api/*` → `http://localhost:5193` (auto-detected in WSL; override with `VITE_API_TARGET` in `frontend/.env`). Adjust `vite.config.js` if your backend port differs.
 
 ## Database Migrations
 
@@ -89,11 +89,12 @@ dotnet ef database update --connection "Host=...;Port=5432;..."
 
 The `MigrationConnection` in `appsettings.json` targets Supabase port 5432 (direct, no pooler). The `DefaultConnection` targets port 6543 (pooler) and is used at runtime.
 
-Recent migrations added in JD Round 1:
-- `AddCurrentlyReserved` — track concurrent reservation state
-- `AddReservationPurchaserEmail` — email-based reservations instead of DNI
-- `UniqueTransactionMercadoPagoId` — enforce unique Mercado Pago transaction IDs
-- `AddAuditLogUserFkAndTracking` — audit log foreign key and tracking metadata
+Recent migrations (see `backend/Migrations/` for the full list):
+- `AddTicketReservationAndRefund` — ticket reservation and refunds tables
+- `AddEventNotificationTable` + `AddEventNameToEventNotification` — event date-change notifications
+- `AddEventApproval` — admin approval workflow for events
+- `AddRefunds` — refunds ledger
+- `AddPurchaserNameAndRecipientName` — purchaser and recipient names
 
 ## Running Locally
 
@@ -114,10 +115,10 @@ npm run dev
 ## Testing
 
 ```bash
-# Backend (438+ unit + property tests)
+# Backend (xUnit unit + FsCheck property tests)
 cd backend && dotnet test
 
-# Frontend (262+ unit tests)
+# Frontend (Vitest)
 cd frontend && npm test
 ```
 
@@ -141,8 +142,10 @@ All endpoints are prefixed with `/api`. Authenticated endpoints use httpOnly ses
 | `GET` | `/api/events/{id}` | — | Event detail with ticket types |
 | `POST` | `/api/events` | Organizador / Admin | Create event |
 | `PUT` | `/api/events/{id}` | Event owner / Admin | Update event |
-| `DELETE` | `/api/events/{id}` | Event owner / Admin | Delete event |
+| `DELETE` | `/api/events/{id}` | Admin | Delete event |
 | `POST` | `/api/events/{id}/image` | Event owner / Admin | Upload event image |
+
+> Note: event deletion is **Admin-only**. This reflects a pending merge (organizer-change PR); on the current branch the service guard still allows the event owner as well.
 
 ### Reservations
 
@@ -161,7 +164,7 @@ All endpoints are prefixed with `/api`. Authenticated endpoints use httpOnly ses
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/tickets/lookup?email=` | — | Lookup tickets by email (info-only, no QR data) |
+| `GET` | `/api/tickets/lookup?email=&dni=` | — | Lookup tickets by email + DNI (info-only, no QR data; DNI required) |
 | `POST` | `/api/tickets/resend` | — | Resend tickets by email (rate limited, requires captchaToken) |
 | `POST` | `/api/tickets/validate` | Staff / Admin | Validate QR code at event entrance |
 
@@ -178,8 +181,16 @@ All endpoints are prefixed with `/api`. Authenticated endpoints use httpOnly ses
 |--------|----------|------|-------------|
 | `GET` | `/api/admin/users?page=&pageSize=` | Admin | List all users (paginated, max 200) |
 | `POST` | `/api/admin/users` | Admin | Create a new user (admin-only registration) |
+| `PUT` | `/api/admin/users/{userId}/role` | Admin | Edit a user's role (self-edit returns 400; audited) |
+| `POST` | `/api/admin/users/{userId}/reset-password` | Admin | Generate a one-time temporary password (returned exactly once; audited) |
 | `GET` | `/api/admin/events?page=&pageSize=` | Admin | List all events (paginated, max 200) |
 | `GET` | `/api/admin/audit-logs?page=&pageSize=` | Admin | View audit log (paginated) |
+| `POST` | `/api/admin/events/{eventId}/ticket-types/{ticketTypeId}/stock` | Admin | Add stock to an existing ticket type |
+| `POST` | `/api/admin/events/{eventId}/ticket-types` | Admin | Create a new ticket type on an event |
+| `GET` | `/api/admin/events/{eventId}/purchases` | Admin | List an event's confirmed purchases (masked buyer data) |
+| `POST` | `/api/admin/events/{eventId}/purchases/{reservationId}/refund` | Admin | Refund tickets of a purchase |
+| `POST` | `/api/admin/events/{eventId}/approve` | Admin | Approve event for the public catalog |
+| `POST` | `/api/admin/events/{eventId}/reject` | Admin | Reject event (hides it from the catalog) |
 
 ### Authentication
 
@@ -187,7 +198,7 @@ Authentication is session-based via httpOnly cookies (HttpOnly, Secure, SameSite
 
 For mutating requests (POST, PUT, DELETE), the frontend sends an `X-CSRF-PROTECT` header for CSRF protection.
 
-Roles: `Organizador`, `Staff`, `Admin`. Role claims are embedded in the auth cookie and enforced via ASP.NET Core authorization policies.
+Roles: `Organizador`, `Staff`, `Admin`, `SinAcceso`. Role claims are embedded in the auth cookie and enforced via ASP.NET Core authorization policies. `SinAcceso` is a revocation state that grants nothing: no policy allows it, role-gated endpoints return 403, and login still succeeds (redirecting to home). Role changes and password resets apply on the user's **next login** — the JWT role claim stays frozen in the cookie (up to 7 days) and there is no session-revocation middleware. See `backend/AUTHORIZATION_MATRIX.md` for details.
 
 Interactive API docs (Swagger UI) are available at `/swagger` when running in Development mode.
 
@@ -221,11 +232,11 @@ ticketera-online/
 - **10-minute ticket reservations** with automatic expiration and concurrency control
 - **Mercado Pago Checkout Pro** integration with webhook processing
 - **HMAC-signed QR codes** for ticket validation with double-scan prevention
-- **Ticket lookup** by email (info-only DTO, no QR data)
+- **Ticket lookup** by email + DNI (info-only DTO, no QR data)
 - **QR scanner** (Staff y Organizador) with camera integration, visual + audio feedback, and scan history
 - **Organizer dashboard** with real-time metrics (sales, revenue, inventory, scans)
 - **Admin panel** with system-wide event/user management and audit logging
-- **Ticket resend** via Resend (rate limited: 3/hr per email, with Turnstile CAPTCHA placeholder)
+- **Ticket resend** via Resend (rate limited: 3/hr per email, with Cloudflare Turnstile CAPTCHA verification — real server-side token check; dummy token accepted in Development only)
 - **Email delivery** via Resend (confirmation + refund notifications)
 - **Structured logging** with sensitive-data redaction
 - **Global exception handling** with ProblemDetails (RFC 7807)

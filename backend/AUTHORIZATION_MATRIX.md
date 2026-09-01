@@ -1,81 +1,119 @@
-# Authorization Matrix
+# Matriz de Autorización — Referencia Rápida
 
-## Current Controllers Authorization Status
+> **Contrato canónico de comportamiento:** `openspec/specs/role-access/spec.md`.
+> Este archivo es una instantánea de referencia rápida. Ante cualquier discrepancia con el código, gana el código y se corrige este documento.
+> **Última actualización:** 2026-08-31.
 
-| Controller | Endpoint | Method | Authorization | Status |
-|------------|----------|--------|---------------|--------|
-| **AuthController** | `/api/auth/register` | POST | `[AllowAnonymous]` | ✅ Applied |
-| **AuthController** | `/api/auth/login` | POST | `[AllowAnonymous]` | ✅ Applied |
-> `TestAuthorizationController` was removed; `ScaffoldRemovalTests` asserts 404 for all its former routes.
+## Modelo de autenticación
 
-## Future Controllers Authorization Plan
+- JWT emitido en **cookie httpOnly** (`token`; HttpOnly, Secure, SameSite=Lax). No se usan headers `Authorization: Bearer`.
+- Las mutaciones (POST, PUT, PATCH, DELETE) requieren el header **`X-CSRF-PROTECT`** (`Middleware/CsrfHeaderMiddleware.cs`). Exenciones: `POST /api/auth/login` y `POST /api/payments/webhook` (callback de Mercado Pago).
+- Los roles viajan como claims del JWT: `Organizador`, `Staff`, `Admin`.
 
-### EventController (Task 7.4)
+## Políticas (definidas en `Program.cs`)
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/events` | GET | `[AllowAnonymous]` | Public event browsing |
-| `/api/events/{id}` | GET | `[AllowAnonymous]` | Public event details |
-| `/api/events` | POST | `[Authorize(Policy = "RequireOrganizadorRole")]` | Only organizers can create events |
-| `/api/events/manage` | GET | `[Authorize(Policy = "RequireScanAccessRole")]` | Scannable event list for the staff scan chooser (Staff/Organizador/Admin) |
-| `/api/events/{id}` | PUT | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can update |
-| `/api/events/{id}` | DELETE | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can delete |
-| `/api/events/{id}/image` | POST | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can upload images |
+| Política | Regla | Uso principal |
+|----------|-------|---------------|
+| `EventOwnership` | Handler custom: dueño del evento o Admin | Editar/eliminar evento, imagen, métricas por evento |
+| `RequireOrganizadorRole` | Rol `Organizador` o `Admin` | Crear eventos, métricas de organizador |
+| `RequireScanAccessRole` | Rol `Staff`, `Organizador` o `Admin` | Validar QR, lista de eventos escaneables |
+| `RequireAdminRole` | Solo rol `Admin` | Todo `AdminController`, reintento de envío de emails |
+| `[Authorize]` (sin política) | Cualquier usuario autenticado | `GET /api/auth/me` |
 
-### ReservationController (Task 9.2)
+## Handler de autorización
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/reservations` | POST | `[AllowAnonymous]` | Guests can reserve tickets |
-| `/api/reservations/{id}` | GET | `[AllowAnonymous]` | Anyone can check reservation status |
+| Handler | Requirement | Lógica |
+|---------|-------------|--------|
+| `EventOwnershipHandler` (`Authorization/EventOwnershipHandler.cs`) | `EventOwnershipRequirement` | Si el rol es `Admin`, pasa. Si no, extrae `eventId` de la ruta y verifica `OrganizerId == userId` contra la base de datos |
 
-### TicketController (Task 11.4)
+## Matriz rol × acción
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/tickets/lookup` | GET | `[AllowAnonymous]` | Public ticket lookup by email/DNI |
-| `/api/tickets/validate` | POST | `[Authorize(Policy = "RequireScanAccessRole")]` | Staff and organizers can validate tickets (organizer scans as staff) |
+| Acción | Público | Organizador | Staff | Admin |
+|--------|---------|-------------|-------|-------|
+| Ver catálogo y detalle de evento aprobado | ✅ | ✅ | ✅ | ✅ |
+| Reservar entradas, pagar, consultar entradas | ✅ | ✅ | ✅ | ✅ |
+| Crear evento | ❌ | ✅ | ❌ | ✅ |
+| Editar / subir imagen de evento propio | ❌ | ✅ | ❌ | ✅ |
+| Editar / subir imagen de cualquier evento | ❌ | ❌ | ❌ | ✅ |
+| **Eliminar evento** | ❌ | ❌ | ❌ | ✅ |
+| Ver métricas de evento propio | ❌ | ✅ | ❌ | ✅ |
+| Ver métricas de cualquier evento | ❌ | ❌ | ❌ | ✅ |
+| Revisar evento en vista read-only (cualquier estado, previo a aprobar) | ❌ | ✅ (propios) | ❌ | ✅ |
+| Escanear / validar QR | ❌ | ✅ | ✅ | ✅ |
+| Gestión admin (usuarios, eventos, aprobación, stock, tipos de entrada, compras, reembolsos, auditoría) | ❌ | ❌ | ❌ | ✅ |
 
-### PaymentController (Task 12.4)
+> **Nota:** la eliminación de eventos es **solo Admin**. Refleja un merge pendiente (PR de cambio de organizador); en la rama actual el guard del servicio (`EventService.DeleteEventAsync`) aún permite también al dueño.
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/payments/create-preference` | POST | `[AllowAnonymous]` | Guests can initiate payment |
-| `/api/payments/webhook` | POST | `[AllowAnonymous]` | Mercado Pago webhook (external) |
+## Autorización por controlador
 
-### MetricsController (Task 15.2)
+| Controlador | Endpoints y autorización |
+|-------------|--------------------------|
+| `AuthController` | `POST /login` y `POST /logout` públicos; `GET /me` autenticado |
+| `EventController` | `GET /` y `GET /{id}` públicos; `GET /manage` Staff/Organizador/Admin; `GET /{id}/manage` EventOwnership; `POST` RequireOrganizadorRole; `PUT /{id}`, `DELETE /{id}`, `POST /{id}/image` EventOwnership |
+| `ReservationController` | `POST /` (crear) y `PATCH /{id}` (actualizar comprador vía token de reserva) públicos |
+| `PaymentController` | `POST /create-preference`, `POST /webhook`, `POST /confirm` públicos; `POST /emails/retry-pending` Admin |
+| `TicketController` | `GET /lookup` y `POST /resend` públicos; `POST /validate` Staff/Organizador/Admin |
+| `MetricsController` | `GET /events/{id}` EventOwnership; `GET /organizer` RequireOrganizadorRole |
+| `AdminController` | Toda la clase con `RequireAdminRole` |
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/metrics/events/{id}` | GET | `[Authorize(Policy = "EventOwnership")]` | Only owner or admin can view metrics |
-| `/api/metrics/organizer` | GET | `[Authorize(Policy = "RequireOrganizadorRole")]` | Only organizers can view their metrics |
+## No confundir
 
-### AdminController (Task 16.1)
+### AdminController (policy-based, current)
 
-| Endpoint | Method | Authorization | Reason |
-|----------|--------|---------------|--------|
-| `/api/admin/users` | GET | `[Authorize(Roles = "Admin")]` | Admin-only system management |
-| `/api/admin/events` | GET | `[Authorize(Roles = "Admin")]` | Admin-only system management |
-| `/api/admin/audit-logs` | GET | `[Authorize(Roles = "Admin")]` | Admin-only audit access |
+The whole controller is gated at class level with `[Authorize(Policy = "RequireAdminRole")]`
+(`backend/Controllers/AdminController.cs`) — every endpoint below inherits it; there are no
+per-method overrides. Mutating verbs additionally require the `X-CSRF-PROTECT` header
+(`CsrfHeaderMiddleware`); only POST `/api/auth/login` and POST `/api/payments/webhook` are exempt.
+
+| Endpoint | Method | Authorization | Notes |
+|----------|--------|---------------|-------|
+| `/api/admin/users` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Create user account |
+| `/api/admin/users` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List all users |
+| `/api/admin/users/{userId:guid}/role` | PUT | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | **AUM-001**: edit user role — 400 on self-edit, 404 unknown user, audited (`UpdateUserRole`) |
+| `/api/admin/users/{userId:guid}/reset-password` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | **AUM-003**: one-time temporary credential in the response body (never stored/logged/audited), 404 unknown user, audited (`ResetPassword`), self-reset allowed |
+| `/api/admin/events` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List all events |
+| `/api/admin/audit-logs` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Audit log access |
+| `/api/admin/events/{eventId:guid}/ticket-types` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Add ticket type |
+| `/api/admin/events/{eventId:guid}/ticket-types/{ticketTypeId:guid}/stock` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Add ticket stock |
+| `/api/admin/events/{eventId:guid}/purchases` | GET | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | List event purchases |
+| `/api/admin/events/{eventId:guid}/purchases/{reservationId:guid}/refund` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Refund purchase |
+| `/api/admin/events/{eventId:guid}/approve` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Approve event |
+| `/api/admin/events/{eventId:guid}/reject` | POST | `[Authorize(Policy = "RequireAdminRole")]` (inherited) | Reject event |
 
 ## Role Capabilities Matrix
 
-| Feature | Guest | Organizador | Staff | Admin |
-|---------|-------|-------------|-------|-------|
-| Browse events | ✅ | ✅ | ✅ | ✅ |
-| View event details | ✅ | ✅ | ✅ | ✅ |
-| Reserve tickets | ✅ | ✅ | ✅ | ✅ |
-| Lookup tickets | ✅ | ✅ | ✅ | ✅ |
-| Create events | ❌ | ✅ | ❌ | ✅ |
-| Edit own events | ❌ | ✅ | ❌ | ✅ |
-| Delete own events | ❌ | ✅ | ❌ | ✅ |
-| View own metrics | ❌ | ✅ | ❌ | ✅ |
-| Scan tickets | ❌ | ✅ | ✅ | ✅ |
-| Validate tickets | ❌ | ✅ | ✅ | ✅ |
-| Edit any event | ❌ | ❌ | ❌ | ✅ |
-| Delete any event | ❌ | ❌ | ❌ | ✅ |
-| View all users | ❌ | ❌ | ❌ | ✅ |
-| View audit logs | ❌ | ❌ | ❌ | ✅ |
+| Feature | Guest | Organizador | Staff | Admin | SinAcceso |
+|---------|-------|-------------|-------|-------|-----------|
+| Browse events | ✅ | ✅ | ✅ | ✅ | ✅ |
+| View event details | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reserve tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Lookup tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Create events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Edit own events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Delete own events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| View own metrics | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Scan tickets | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Validate tickets | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Edit any event | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Delete any event | ❌ | ❌ | ❌ | ✅ | ❌ |
+| View all users | ❌ | ❌ | ❌ | ✅ | ❌ |
+| View audit logs | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Edit user role (AUM-001) | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Reset user password (AUM-003) | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+`SinAcceso` is a **pure revocation state** (AUM-002): no policy grants it anything, so every
+role-gated endpoint returns 403. Login still succeeds for a `SinAcceso` account and the
+frontend post-login redirect lands on `/`. The account row is never deleted or disabled —
+setting `SinAcceso` (via role editing) is the only revoke mechanism, because `AuditLogs`
+FK-restrictions depend on the user row existing.
+
+## Next-login semantics (AUM-004)
+
+Role changes and password resets apply on **next login**. The JWT role claim is frozen inside
+the httpOnly `token` cookie for up to 7 days, and this project intentionally does NOT include
+JWT-revocation middleware: a user whose role was changed (e.g. to `SinAcceso`) keeps the
+previous role's authority until their cookie expires or they log in again. The next login
+reads the role from the database, so the new role (and its restrictions) take effect then.
 
 ## Authorization Policies
 
@@ -130,3 +168,8 @@
 - Custom handlers are in `Authorization/` folder
 - Test controller available for verification
 - Documentation is comprehensive and up-to-date
+
+## No confundir
+
+- **No existe endpoint de registro público** — los usuarios se crean solo vía `POST /api/admin/users`.
+- **No existe `TestAuthorizationController`** — fue eliminado del código.

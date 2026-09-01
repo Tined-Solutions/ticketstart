@@ -1,0 +1,3 @@
+# Resúmenes de finalización de tareas (archivo histórico)
+
+Los archivos de esta carpeta son resúmenes de finalización generados por agentes durante la construcción original de `ticketera-online` (tareas 6.2, 9.1, 9.2, 10.1 y 11 del plan SDD inicial). Se conservan únicamente por trazabilidad histórica: documentaban el estado del código en el momento en que se escribió cada resumen. **Están supersados por los artefactos de openspec** — la fuente canónica del comportamiento actual es `openspec/specs/` y el estado de los cambios activos vive en `openspec/changes/`. No los uses como referencia del código actual.
