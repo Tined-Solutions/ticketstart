@@ -79,17 +79,17 @@ export default function OrganizerDashboard() {
       variants={fadeIn}
       initial="initial"
       animate="animate"
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10"
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4"
     >
-      <header className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
+      <header className="mb-4">
+        <h1 className="text-2xl md:text-3xl font-display font-bold text-text-1 text-center mb-2">
           Dashboard
         </h1>
         <p className="text-text-2 text-center">Gestiona tus eventos y consulta las metricas</p>
       </header>
 
       {loading ? (
-        <GlassCard className="py-12">
+        <GlassCard className="py-6">
           <div className="flex flex-col items-center gap-4" role="status" aria-label="Cargando tus eventos…">
             <Skeleton width="240px" height="18px" />
             <Skeleton width="180px" height="18px" />
@@ -97,23 +97,22 @@ export default function OrganizerDashboard() {
           </div>
         </GlassCard>
       ) : error ? (
-        <GlassCard className="text-center py-12" role="alert">
+        <GlassCard className="text-center py-6" role="alert">
           <p className="text-text-1 mb-3">{error}</p>
           <Button variant="secondary" onClick={handleRetry}>
             Reintentar
           </Button>
         </GlassCard>
       ) : (
-        <GlassCard className="p-6">
+        <GlassCard className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-border">
-            <h2 className="text-xl font-display font-semibold text-text-1 text-left">
+            <h2 className="text-lg font-display font-semibold text-text-1 text-left">
               Eventos ({metrics.length})
             </h2>
             <Button
               variant="primary"
               size="sm"
               onClick={() => navigate('/organizer/events/new')}
-              className="min-h-[44px]"
             >
               + Crear evento
             </Button>
@@ -142,27 +141,27 @@ export default function OrganizerDashboard() {
                 return (
                   <div
                     key={m.eventId}
-                    className={`flex flex-wrap items-center justify-between gap-3 py-3.5 px-1 hover:bg-surface-elevated transition-colors ${
+                    className={`flex flex-wrap items-center justify-between gap-3 py-2 px-1 hover:bg-surface-elevated transition-colors ${
                       isLast ? '' : 'border-b border-border'
                     }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-display text-base md:text-lg font-semibold text-gris-oscuro leading-tight break-words">
+                      <h3 className="font-display text-sm md:text-base font-semibold text-gris-oscuro leading-tight break-words">
                         {m.eventName}
                       </h3>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge variant={statusBadgeVariant(m.status)}>
                           {statusLabel(m.status)}
                         </Badge>
                         {isPast && <Badge variant="info">Finalizado</Badge>}
                       </div>
-                      <p className="mt-1 text-sm text-text-2">
+                      <p className="mt-0.5 text-sm text-text-2">
                         <span aria-hidden="true">📅</span>{' '}
                         <span>{formatEventDate(m.eventDate)}</span>
                         <span aria-hidden="true"> • </span>{' '}
                         <span>{m.location || '\u2014'}</span>
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-2">
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-2">
                         <span>
                           Entradas vendidas:{' '}
                           <span className="font-semibold text-gris-oscuro">{m.ticketsSold}</span>
@@ -189,7 +188,7 @@ export default function OrganizerDashboard() {
                         size="sm"
                         onClick={() => navigate(`/organizer/events/${m.eventId}/view`)}
                         aria-label={`Ver ${m.eventName}`}
-                        className={`min-h-[44px] ${ACTION_HOVER}`}
+                        className={ACTION_HOVER}
                       >
                         Ver
                       </Button>

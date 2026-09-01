@@ -9,7 +9,7 @@ import { staggerContainer, staggerItem } from '../lib/motion.js'
 
 export default function Home() {
   const { data: events = [], isLoading } = useEvents()
-  const featured = events.slice(0, 6)
+  const featured = events.slice(0, 3)
 
   return (
     <div className="home-page">
@@ -64,7 +64,7 @@ export default function Home() {
 
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="glass-surface p-0 overflow-hidden rounded-[var(--radius-card)]">
                   <Skeleton width="100%" height="200px" variant="rectangular" />
                   <div className="p-4 space-y-3">

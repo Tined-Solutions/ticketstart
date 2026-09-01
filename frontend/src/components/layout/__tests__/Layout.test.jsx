@@ -44,7 +44,7 @@ describe('Layout', () => {
     renderLayout(<div>content</div>)
 
     expect(screen.getByRole('link', { name: 'TicketStart' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /powered by TicketStart/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /desarrollada por tined solutions/i })).toBeInTheDocument()
     expect(document.querySelector('main')).toBeTruthy()
   })
 
