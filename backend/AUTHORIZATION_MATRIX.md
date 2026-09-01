@@ -38,6 +38,7 @@
 | **Eliminar evento** | ❌ | ❌ | ❌ | ✅ |
 | Ver métricas de evento propio | ❌ | ✅ | ❌ | ✅ |
 | Ver métricas de cualquier evento | ❌ | ❌ | ❌ | ✅ |
+| Revisar evento en vista read-only (cualquier estado, previo a aprobar) | ❌ | ✅ (propios) | ❌ | ✅ |
 | Escanear / validar QR | ❌ | ✅ | ✅ | ✅ |
 | Gestión admin (usuarios, eventos, aprobación, stock, tipos de entrada, compras, reembolsos, auditoría) | ❌ | ❌ | ❌ | ✅ |
 
