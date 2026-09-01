@@ -94,6 +94,11 @@ export default function AdminPanel() {
   const [userRole, setUserRole] = useState('')
   const [userPage, setUserPage] = useState(1)
 
+  // Events section: client-side filter over the fetched `events` array
+  // (same pattern as the Users filter: free-text search + approval status).
+  const [eventSearch, setEventSearch] = useState('')
+  const [eventStatus, setEventStatus] = useState('')
+
   // Toggles the create-user form inside the Users section (list ⇄ form).
   const [showCreateUser, setShowCreateUser] = useState(false)
 
@@ -305,18 +310,33 @@ export default function AdminPanel() {
     }
   }
 
+  // Events section: filter the fetched `events` array client-side — free text
+  // matches name, location, or the organizer's resolved email, plus the
+  // approval status dropdown.
+  const filteredEvents = events.filter((e) => {
+    const matchesStatus = eventStatus === '' || e.status === eventStatus
+    const q = eventSearch.trim().toLowerCase()
+    const matchesSearch =
+      q === '' ||
+      (e.name || '').toLowerCase().includes(q) ||
+      (e.location || '').toLowerCase().includes(q) ||
+      getOrganizerEmail(e.organizerId).toLowerCase().includes(q)
+    return matchesStatus && matchesSearch
+  })
+
   // Display copy: upcoming events first (soonest-to-start at the very top),
   // then already-ended (past) events sorted descending so the OLDEST ended
-  // event is last. Does NOT mutate `events` — header counts and Pendientes
-  // badge read the original.
+  // event is last. Does NOT mutate `events` — the Pendientes badge reads the
+  // original list, while the section header counts the filtered one.
   const now = new Date().getTime()
-  const upcoming = events
+  const upcoming = filteredEvents
     .filter((e) => new Date(e.date).getTime() >= now)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
-  const past = events
+  const past = filteredEvents
     .filter((e) => new Date(e.date).getTime() < now)
     .sort((a, b) => new Date(b.date) - new Date(a.date))
   const sortedEvents = [...upcoming, ...past]
+  const pendingCount = events.filter((e) => e.status === 'Pending').length
 
   // Users section: filter + paginate the fetched `users` array client-side.
   const filteredUsers = users.filter((u) => {
@@ -440,19 +460,52 @@ export default function AdminPanel() {
             {activeSection === 'eventos' ? (
               <div role="tabpanel" id="panel-eventos" aria-labelledby="tab-eventos">
                 {/* ── Events section ─────────────────────────────── */}
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <h2 className="font-display text-base font-semibold text-text-1">
-                    Eventos ({events.length})
-                  </h2>
-                  {events.filter((e) => e.status === 'Pending').length > 0 && (
-                    <Badge variant="warning">
-                      Pendientes: {events.filter((e) => e.status === 'Pending').length}
-                    </Badge>
-                  )}
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-display text-base font-semibold text-text-1">
+                      Eventos ({filteredEvents.length})
+                    </h2>
+                    {pendingCount > 0 && (
+                      <Badge variant="warning">Pendientes: {pendingCount}</Badge>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor="event-search" className="sr-only">
+                      Buscar eventos
+                    </label>
+                    <input
+                      id="event-search"
+                      type="search"
+                      value={eventSearch}
+                      onChange={(e) => setEventSearch(e.target.value)}
+                      placeholder="Buscar…"
+                      aria-label="Buscar eventos"
+                      className="w-44 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                    />
+                    <label htmlFor="event-status" className="sr-only">
+                      Filtrar por estado
+                    </label>
+                    <select
+                      id="event-status"
+                      value={eventStatus}
+                      onChange={(e) => setEventStatus(e.target.value)}
+                      aria-label="Filtrar por estado"
+                      className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                    >
+                      <option value="">Todos</option>
+                      <option value="Pending">Pendiente</option>
+                      <option value="Approved">Aprobado</option>
+                      <option value="Rejected">Rechazado</option>
+                    </select>
+                  </div>
                 </div>
 
                 {events.length === 0 ? (
                   <p className="text-text-2 text-center py-4">No hay eventos en el sistema.</p>
+                ) : filteredEvents.length === 0 ? (
+                  <p className="text-text-2 text-center py-4">
+                    No se encontraron eventos con esos filtros.
+                  </p>
                 ) : (
                   <div className="flex flex-col">
                     {sortedEvents.map((event, index) => {
