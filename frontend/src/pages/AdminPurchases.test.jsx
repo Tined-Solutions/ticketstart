@@ -243,6 +243,79 @@ describe('AdminPurchases', () => {
     expect(screen.getByText('Confirmada')).toBeInTheDocument()
     expect(screen.getByText('1 de 1 reembolsadas')).toBeInTheDocument()
   })
+
+  it('filters rows by a partial email (case-insensitive substring)', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /buscar compras/i }), 'maria')
+
+    // Only the maria@test.com row remains; the juan row is filtered out.
+    expect(screen.getByText('maria@test.com')).toBeInTheDocument()
+    expect(screen.queryByText('juan.perez@gmail.com')).not.toBeInTheDocument()
+  })
+
+  it('filters rows by DNI substring', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /buscar compras/i }), '31234561')
+
+    // Only the juan.perez@gmail.com row (DNI 31234561) remains; maria is gone.
+    expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    expect(screen.queryByText('maria@test.com')).not.toBeInTheDocument()
+  })
+
+  it('orders rows newest-first by purchasedAt after filtering', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    // res-2 (maria) purchasedAt 2026-07-02 is NEWER than res-1 (juan) 2026-07-01,
+    // so the newest-first sort must render maria ABOVE juan.
+    const rows = screen.getAllByRole('row')
+    const mariaRow = rows.findIndex((r) => r.textContent.includes('maria@test.com'))
+    const juanRow = rows.findIndex((r) => r.textContent.includes('juan.perez@gmail.com'))
+    expect(mariaRow).toBeGreaterThan(-1)
+    expect(juanRow).toBeGreaterThan(-1)
+    expect(mariaRow).toBeLessThan(juanRow)
+  })
+
+  it('clearing the search restores all rows', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    const searchBox = screen.getByRole('searchbox', { name: /buscar compras/i })
+    await userEvent.type(searchBox, 'maria')
+    expect(screen.queryByText('juan.perez@gmail.com')).not.toBeInTheDocument()
+
+    await userEvent.clear(searchBox)
+    expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    expect(screen.getByText('maria@test.com')).toBeInTheDocument()
+  })
+
+  it('shows a filtered empty-state message when no row matches the search', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /buscar compras/i }), 'zzzz-not-a-real-buyer')
+
+    expect(screen.getByText(/no se encontraron compras con ese buscador/i)).toBeInTheDocument()
+  })
 })
 
 describe('AdminPurchases — refund dialog amount (APR-010/D4)', () => {

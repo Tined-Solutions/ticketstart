@@ -199,6 +199,7 @@ export default function AdminPurchases() {
 
   const [refundTarget, setRefundTarget] = useState(null)
   const [refundError, setRefundError] = useState('')
+  const [search, setSearch] = useState('')
 
   const queryKey = ['admin', 'purchases', id]
 
@@ -242,6 +243,23 @@ export default function AdminPurchases() {
   // dialog derives unitPriceCents/capCents from it). Y comes from the payload verbatim.
   const totalAmount = data?.purchases?.reduce((sum, purchase) => sum + purchase.amount, 0) ?? 0
   const netAmount = data ? totalAmount - data.totalRefunded : 0
+
+  // Client-side smart search: compact a row when the free-text term matches the
+  // purchaser email (case-insensitive substring) OR the DNI (substring). Empty
+  // term matches everything. Purely derived — never mutates data.purchases.
+  const filteredPurchases = (data?.purchases ?? []).filter((purchase) => {
+    const q = search.trim().toLowerCase()
+    if (q === '') return true
+    return (
+      (purchase.purchaserEmail || '').toLowerCase().includes(q) ||
+      (purchase.purchaserDni || '').toLowerCase().includes(q)
+    )
+  })
+  // Newest-first ordering (most recent purchasedAt at the top). Derived copy —
+  // the stat cards and refund dialog still read the raw `data.purchases` rows.
+  const sortedPurchases = [...filteredPurchases].sort(
+    (a, b) => new Date(b.purchasedAt) - new Date(a.purchasedAt)
+  )
 
   return (
     <div className="relative -mt-16 min-h-[calc(100svh-56px)] bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
@@ -318,8 +336,26 @@ export default function AdminPurchases() {
 
       {data && !isLoading && !isError && (
         <GlassCard className="p-6">
+          {data.purchases.length > 0 && (
+            <div className="mb-4">
+              <label htmlFor="purchase-search" className="sr-only">
+                Buscar compras
+              </label>
+              <input
+                id="purchase-search"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por comprador o DNI…"
+                aria-label="Buscar compras"
+                className="w-44 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+              />
+            </div>
+          )}
           {data.purchases.length === 0 ? (
             <p className="text-text-2 text-center py-8">No hay compras confirmadas para este evento.</p>
+          ) : sortedPurchases.length === 0 ? (
+            <p className="text-text-2 text-center py-8">No se encontraron compras con ese buscador.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="admin-table w-full border-collapse text-left text-sm">
@@ -336,7 +372,7 @@ export default function AdminPurchases() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.purchases.map((purchase) => {
+                  {sortedPurchases.map((purchase) => {
                     const badge = refundBadge(purchase.quantity, purchase.refundedQuantity)
                     return (
                       <tr key={purchase.reservationId} className="border-b border-border hover:bg-surface-elevated transition-colors">
