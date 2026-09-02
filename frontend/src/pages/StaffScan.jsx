@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Camera } from 'lucide-react'
 import { Html5Qrcode } from 'html5-qrcode'
 import apiClient from '../api/client.js'
 import Badge from '../components/ui/Badge.jsx'
@@ -322,7 +323,8 @@ export default function StaffScan() {
 
         <div className="flex gap-3 justify-center flex-wrap mt-4">
           {!scanning && !result && (
-            <button onClick={startScanning} className="button-primary">
+            <button onClick={startScanning} className="button-accent inline-flex items-center gap-2">
+              <Camera className="w-5 h-5" aria-hidden="true" />
               Iniciar Escaneo
             </button>
           )}
@@ -332,7 +334,7 @@ export default function StaffScan() {
             </button>
           )}
           {result && (
-            <button onClick={resetScan} className="button-primary">
+            <button onClick={resetScan} className="button-accent">
               Escanear Otro
             </button>
           )}
