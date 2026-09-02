@@ -250,15 +250,19 @@ export default function StaffScan() {
   // -----------------------------------------------------------------------
 
   return (
-    <motion.div
-      variants={fadeInScale}
-      initial="initial"
-      animate="animate"
-      className="max-w-3xl mx-auto px-4 sm:px-6 py-10 overflow-x-hidden"
-    >
+    <div className="relative -mt-16 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Mis entradas" (TicketLookup)
+          page. It starts at the very top, behind the translucent fixed navbar,
+          so there is no white gap between the navbar and the page background. */}
+      <motion.div
+        variants={fadeInScale}
+        initial="initial"
+        animate="animate"
+        className="max-w-3xl mx-auto px-4 sm:px-6 pt-28 pb-12 overflow-x-hidden"
+      >
       {/* Page header */}
-      <header className="mb-8 text-center">
-        <h1 className="text-4xl font-display font-bold text-text-1 mb-2">
+      <header className="mb-6 text-center">
+        <h1 className="text-3xl font-display font-bold text-gris-oscuro mb-2">
           Escanear QR
         </h1>
         <p className="text-text-2">Escanee los codigos QR de los tickets para validar su entrada al evento.</p>
@@ -457,6 +461,7 @@ export default function StaffScan() {
           </div>
         </section>
       )}
-    </motion.div>
+      </motion.div>
+    </div>
   )
 }
