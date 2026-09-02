@@ -154,10 +154,11 @@ public class AdminControllerPurchaseTests
     #region POST /api/admin/events/{eventId}/purchases/{reservationId}/refund — APR-003/007/008
 
     [Fact]
-    public async Task RefundPurchase_Success_PassesQuantityBodyAndWritesAuditWithoutMotivo()
+    public async Task RefundPurchase_Success_PassesAmountBodyAndWritesAuditWithoutMotivo()
     {
         // Arrange (APR-003/007/008): body { quantity, amount } flows to the service
-        // 4-arg call; audit detail includes the quantity but no motivo/refund-reason field.
+        // 4-arg call with the EXACT decimal amount; audit detail includes the quantity
+        // AND the amount but no motivo/refund-reason field (APR-007/008).
         var adminId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
         var reservationId = Guid.NewGuid();
@@ -166,14 +167,15 @@ public class AdminControllerPurchaseTests
         // Act
         var result = await _controller.RefundPurchase(eventId, reservationId, new RefundPurchaseRequest(2, 200m));
 
-        // Assert — 200 + the service received (reservationId, 2, adminId)
+        // Assert — 200 + the service received (reservationId, 2, 200m, adminId)
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(200, okResult.StatusCode);
         _mockPurchaseService.Verify(
-            s => s.RefundPurchaseAsync(reservationId, 2, It.IsAny<decimal>(), adminId), Times.Once);
+            s => s.RefundPurchaseAsync(reservationId, 2, 200m, adminId), Times.Once);
 
         // Assert — exactly one audit entry: RefundPurchase/Payment, reservation id,
-        // details WITH the quantity and WITHOUT any motivo/refund-reason (APR-007/008)
+        // details WITH the quantity and the amount and WITHOUT any motivo/refund-reason
+        // (APR-007/008)
         _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
             c.UserId == adminId &&
             c.Action == AuditActionType.RefundPurchase &&
@@ -181,6 +183,8 @@ public class AdminControllerPurchaseTests
             c.ResourceId == reservationId &&
             c.Details != null &&
             c.Details.Contains("2 tickets", StringComparison.OrdinalIgnoreCase) &&
+            c.Details.Contains("amount", StringComparison.OrdinalIgnoreCase) &&
+            c.Details.Contains("200", StringComparison.OrdinalIgnoreCase) &&
             !c.Details.Contains("motivo", StringComparison.OrdinalIgnoreCase) &&
             !c.Details.Contains("reason", StringComparison.OrdinalIgnoreCase))), Times.Once);
     }

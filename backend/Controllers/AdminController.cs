@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Globalization;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 
@@ -283,8 +284,9 @@ public class AdminController : TicketeraControllerBase
     /// <param name="request">Body with the number of tickets to refund (K &gt; 0) and the
     /// admin-defined refund amount (0 &lt; A ≤ unit price × K)</param>
     /// <returns>200 on success; 404 when the reservation is missing; 409 when K ≤ 0,
-    /// K &gt; active remaining, the purchase has no Approved transaction or a ticket
-    /// IsUsed</returns>
+    /// K &gt; active remaining, the amount is invalid (A ≤ 0, A &gt; unit price × K, A
+    /// with more than 2 decimal places), the purchase has no Approved transaction or a
+    /// ticket IsUsed</returns>
     [HttpPost("events/{eventId:guid}/purchases/{reservationId:guid}/refund")]
     public async Task<IActionResult> RefundPurchase(Guid eventId, Guid reservationId,
         [FromBody] RefundPurchaseRequest request)
@@ -296,12 +298,15 @@ public class AdminController : TicketeraControllerBase
             await _adminPurchaseService.RefundPurchaseAsync(reservationId, request.Quantity, request.Amount, adminId);
 
             // APR-007: audit AFTER the transaction commits, best-effort, no motivo.
+            // The admin-defined refund amount is part of the audit trail (D5) —
+            // formatted with InvariantCulture so the detail is culture-free.
             await TryLogAuditAsync(adminId, new AuditLogContext(
                 adminId,
                 AuditActionType.RefundPurchase,
                 AuditResourceType.Payment,
                 reservationId,
-                Truncate($"Admin refunded {request.Quantity} tickets of purchase {reservationId} for event {eventId}", 1000)));
+                Truncate(string.Create(CultureInfo.InvariantCulture,
+                    $"Admin refunded {request.Quantity} tickets of purchase {reservationId} for event {eventId}, amount {request.Amount}"), 1000)));
 
             return Ok(new { message = "Purchase refunded successfully" });
         }
