@@ -219,7 +219,7 @@ export default function TicketLookup() {
   // -- Render -----------------------------------------------------------
 
   return (
-    <div className="relative -mt-16 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+    <div className="relative -mt-16 overflow-x-hidden bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
       {/* Gradient background identical to the "Eventos destacados" section on
           the home page. It starts at the very top, behind the fixed navbar
           (which is translucent), so there is no white gap between the navbar
