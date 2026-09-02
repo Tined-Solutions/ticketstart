@@ -114,7 +114,7 @@ export default function OrganizerDashboard() {
               Eventos ({metrics.length})
             </h2>
             <Button
-              variant="primary"
+              variant="accent"
               size="sm"
               onClick={() => navigate('/organizer/events/new')}
             >

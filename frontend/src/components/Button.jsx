@@ -3,6 +3,8 @@ import { forwardRef } from 'react'
 const variantClasses = {
   primary:
     'bg-primary text-primary-content hover:bg-primary-hover focus-visible:ring-primary',
+  accent:
+    'bg-accent text-white hover:bg-accent-hover focus-visible:ring-accent',
   secondary:
     'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary',
   danger:
