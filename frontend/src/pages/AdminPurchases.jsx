@@ -238,6 +238,11 @@ export default function AdminPurchases() {
     setRefundTarget(null)
   }
 
+  // APR-016: display-only derivations — NEVER mutate purchase.amount (the refund
+  // dialog derives unitPriceCents/capCents from it). Y comes from the payload verbatim.
+  const totalAmount = data?.purchases?.reduce((sum, purchase) => sum + purchase.amount, 0) ?? 0
+  const netAmount = data ? totalAmount - data.totalRefunded : 0
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <header className="mb-8">
@@ -246,7 +251,7 @@ export default function AdminPurchases() {
         </h1>
         {data && (
           <p className="text-text-2 text-center">
-            {data.eventName} · Reembolsado: {formatCurrency(data.totalRefunded)}
+            {data.eventName} · Total: {formatCurrency(totalAmount)} · Reembolsado: {formatCurrency(data.totalRefunded)} · Neto: {formatCurrency(netAmount)}
           </p>
         )}
       </header>
@@ -304,7 +309,7 @@ export default function AdminPurchases() {
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="DNI">{purchase.purchaserDni}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Tipo">{purchase.ticketType}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Cantidad">{purchase.quantity}</td>
-                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Monto">{formatCurrency(purchase.amount)}</td>
+                        <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Monto">{formatCurrency(purchase.refundedQuantity > 0 ? purchase.amount - purchase.refundedAmount : purchase.amount)}</td>
                         <td className="py-3.5 px-4 text-text-2 align-middle" data-label="Fecha">{formatDate(purchase.purchasedAt)}</td>
                         <td className="py-3.5 px-4 align-middle" data-label="Estado">
                           <Badge variant={badge.variant}>{badge.label}</Badge>

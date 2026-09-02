@@ -449,3 +449,94 @@ describe('AdminPurchases — route guard (APR-010)', () => {
     expect(await screen.findByText(/compras del evento/i)).toBeInTheDocument()
   })
 })
+
+describe('AdminPurchases — net amount (APR-016)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockPost.mockReset()
+    mockEventId = 'event-1'
+    useAuth.mockReturnValue({ user: null, isAuthenticated: false })
+    useTheme.mockReturnValue({ theme: 'dark', setTheme: vi.fn(), toggle: vi.fn() })
+  })
+
+  it('renders the net Monto for partially refunded, fully refunded, and non-refunded rows', async () => {
+    // Local fixture: partial (amount 200 − 50), fully refunded (150 − 150), non-refunded (200)
+    const fixture = {
+      eventId: 'event-1',
+      eventName: 'Recital de Rock Nacional',
+      purchases: [
+        {
+          reservationId: 'res-1',
+          purchaserEmail: 'juan.perez@gmail.com',
+          purchaserDni: '31234561',
+          ticketType: 'General',
+          quantity: 2,
+          amount: 200,
+          purchasedAt: '2026-07-01T10:00:00Z',
+          refundedQuantity: 0,
+          refundedAmount: 0,
+          linkUnverified: false,
+        },
+        {
+          reservationId: 'res-partial',
+          purchaserEmail: 'ana.gomez@gmail.com',
+          purchaserDni: '28901234',
+          ticketType: 'Platea',
+          quantity: 2,
+          amount: 200,
+          purchasedAt: '2026-07-03T10:00:00Z',
+          refundedQuantity: 1,
+          refundedAmount: 50,
+          linkUnverified: false,
+        },
+        {
+          reservationId: 'res-2',
+          purchaserEmail: 'maria@test.com',
+          purchaserDni: '25123458',
+          ticketType: 'VIP',
+          quantity: 1,
+          amount: 150,
+          purchasedAt: '2026-07-02T10:00:00Z',
+          refundedQuantity: 1,
+          refundedAmount: 150,
+          linkUnverified: false,
+        },
+      ],
+      totalRefunded: 200,
+    }
+    mockGet.mockResolvedValue({ data: fixture })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+
+    // Non-refunded row (refundedQuantity 0) keeps the original amount
+    const nonRefundedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('juan.perez@gmail.com'))
+    expect(within(nonRefundedRow).getByText('$ 200')).toBeInTheDocument()
+    expect(within(nonRefundedRow).getByText('Confirmada')).toBeInTheDocument()
+
+    // Partially refunded row: amount 200 − refundedAmount 50 → $ 150, warning badge visible
+    const partialRow = screen.getAllByRole('row').find((r) => r.textContent.includes('ana.gomez@gmail.com'))
+    expect(within(partialRow).getByText('$ 150')).toBeInTheDocument()
+    expect(within(partialRow).getByText('1 de 2 reembolsadas')).toBeInTheDocument()
+
+    // Fully refunded row: amount 150 − refundedAmount 150 → $ 0, error badge still visible
+    const refundedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('maria@test.com'))
+    expect(within(refundedRow).getByText('$ 0')).toBeInTheDocument()
+    expect(within(refundedRow).getByText('1 de 1 reembolsadas')).toBeInTheDocument()
+  })
+
+  it('header shows Total, Reembolsado, and Neto (X = Σ amount, Y = totalRefunded verbatim, Z = X − Y)', async () => {
+    mockGet.mockResolvedValue({ data: mockPurchases })
+
+    renderPage()
+
+    // Existing fixture: Σ amount = 200 + 150 = 350, totalRefunded = 150, neto = 350 − 150 = 200
+    await waitFor(() => {
+      expect(screen.getByText(/total: \$ 350 · reembolsado: \$ 150 · neto: \$ 200/i)).toBeInTheDocument()
+    })
+  })
+})
