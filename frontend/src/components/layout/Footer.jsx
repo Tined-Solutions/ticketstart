@@ -5,12 +5,12 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border py-6 px-4 mt-auto">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-2">
-        <p>&copy; {year} TicketStart. All rights reserved.</p>
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-1">
+        <p>&copy; {year} TicketStart</p>
         <nav className="flex items-center gap-4" aria-label="Enlaces del pie de página">
           <Link
             to="/faq"
-            className="text-text-2 hover:text-brand-1 transition-colors duration-(--dur-micro)"
+            className="hover:text-brand-1 transition-colors duration-(--dur-micro)"
           >
             Preguntas frecuentes
           </Link>
@@ -19,7 +19,7 @@ export default function Footer() {
           href="https://tinedsolutions.tech"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-text-muted transition-colors duration-(--dur-micro) hover:text-brand-1"
+          className="hover:text-brand-1 transition-colors duration-(--dur-micro)"
         >
           Desarrollada por Tined Solutions
         </a>
