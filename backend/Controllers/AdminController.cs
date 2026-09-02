@@ -280,7 +280,8 @@ public class AdminController : TicketeraControllerBase
     /// </summary>
     /// <param name="eventId">Event owning the purchase (used in the audit detail)</param>
     /// <param name="reservationId">Confirmed reservation to refund</param>
-    /// <param name="request">Body with the number of tickets to refund (K &gt; 0)</param>
+    /// <param name="request">Body with the number of tickets to refund (K &gt; 0) and the
+    /// admin-defined refund amount (0 &lt; A ≤ unit price × K)</param>
     /// <returns>200 on success; 404 when the reservation is missing; 409 when K ≤ 0,
     /// K &gt; active remaining, the purchase has no Approved transaction or a ticket
     /// IsUsed</returns>
@@ -292,7 +293,7 @@ public class AdminController : TicketeraControllerBase
 
         try
         {
-            await _adminPurchaseService.RefundPurchaseAsync(reservationId, request.Quantity, adminId);
+            await _adminPurchaseService.RefundPurchaseAsync(reservationId, request.Quantity, request.Amount, adminId);
 
             // APR-007: audit AFTER the transaction commits, best-effort, no motivo.
             await TryLogAuditAsync(adminId, new AuditLogContext(
@@ -542,12 +543,13 @@ public class AdminController : TicketeraControllerBase
 public record AdminCreateUserRequest(string Name, string Email, string Password, UserRole Role);
 
 /// <summary>
-/// Request body for a quantity-based purchase refund (APR-003/D8). Plain positional
-/// record with NO data annotations — validation lives in the service, which throws
-/// InvalidOperationException → 409 for K ≤ 0 or K &gt; active (uniform 200/404/409/500
-/// mapping). Missing body → automatic 400 via [ApiController].
+/// Request body for a purchase refund with an admin-defined amount (APR-003). Plain
+/// positional record with NO data annotations — validation lives in the service,
+/// which throws InvalidOperationException → 409 for K ≤ 0, K &gt; active or an
+/// invalid amount (A ≤ 0, A &gt; unit price × K, A with more than 2 decimal places —
+/// uniform 200/404/409/500 mapping). Missing body → automatic 400 via [ApiController].
 /// </summary>
-public record RefundPurchaseRequest(int Quantity);
+public record RefundPurchaseRequest(int Quantity, decimal Amount);
 
 /// <summary>
 /// Response returned after a user is created by an administrator.

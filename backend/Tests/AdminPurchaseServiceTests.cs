@@ -154,7 +154,7 @@ public class AdminPurchaseServiceTests : IDisposable
         var adminId = Guid.NewGuid();
 
         // Act
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — exactly 2 of the 4 tickets marked refunded with RefundedAt set
         var tickets = await TicketsOf(reservationId);
@@ -176,7 +176,7 @@ public class AdminPurchaseServiceTests : IDisposable
         var adminId = Guid.NewGuid();
 
         // Act
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — all tickets refunded
         var tickets = await TicketsOf(reservationId);
@@ -200,7 +200,7 @@ public class AdminPurchaseServiceTests : IDisposable
         var selectedIds = tickets.OrderBy(t => t.CreatedAt).Take(2).Select(t => t.Id).ToArray();
 
         // Act
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — exactly one Refunds row with the operation snapshot
         var refund = Assert.Single(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
@@ -220,8 +220,8 @@ public class AdminPurchaseServiceTests : IDisposable
         var adminId = Guid.NewGuid();
 
         // Act — first partial refund (2 of 4), then a second refund (the last 2)
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — two Refunds rows appended; TotalRefunded = Σ Amounts
         var refunds = await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync();
@@ -245,7 +245,7 @@ public class AdminPurchaseServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, 3, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, 3, 300m, adminId));
 
         // Assert — nothing mutated: no ticket, no Refunds row, tx still Approved
         var tickets = await TicketsOf(reservationId);
@@ -266,7 +266,7 @@ public class AdminPurchaseServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, quantity, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, quantity, 200m, adminId));
 
         // Assert — no state change
         var tickets = await TicketsOf(reservationId);
@@ -287,7 +287,7 @@ public class AdminPurchaseServiceTests : IDisposable
         var oldestTwo = tickets.OrderBy(t => t.CreatedAt).Take(2).Select(t => t.Id).ToHashSet();
 
         // Act
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — exactly the two earliest-CreatedAt tickets are marked refunded
         var after = await TicketsOf(reservationId);
@@ -305,8 +305,8 @@ public class AdminPurchaseServiceTests : IDisposable
         var adminId = Guid.NewGuid();
 
         // Act — "request 1" refunds 2, "request 2" refunds 2: both observe committed state
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
-        await _service.RefundPurchaseAsync(reservationId, 2, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
+        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
 
         // Assert — each ticket refunded exactly once; total refunded == 4
         var tickets = await TicketsOf(reservationId);
@@ -327,7 +327,7 @@ public class AdminPurchaseServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, 1, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, 1, 100m, adminId));
 
         var tickets = await TicketsOf(reservationId);
         Assert.All(tickets, t => Assert.False(t.IsRefunded));
@@ -344,7 +344,7 @@ public class AdminPurchaseServiceTests : IDisposable
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.RefundPurchaseAsync(reservationId, 1, adminId));
+            () => _service.RefundPurchaseAsync(reservationId, 1, 100m, adminId));
 
         var tickets = await TicketsOf(reservationId);
         Assert.All(tickets, t => Assert.False(t.IsRefunded));
@@ -358,7 +358,7 @@ public class AdminPurchaseServiceTests : IDisposable
     {
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.RefundPurchaseAsync(Guid.NewGuid(), 1, Guid.NewGuid()));
+            () => _service.RefundPurchaseAsync(Guid.NewGuid(), 1, 100m, Guid.NewGuid()));
     }
 
     #endregion

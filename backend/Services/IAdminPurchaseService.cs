@@ -26,17 +26,21 @@ public interface IAdminPurchaseService
 
     /// <summary>
     /// Refunds K tickets of a purchase atomically: marks the K oldest non-refunded,
-    /// non-used tickets refunded (APR-013), inserts one Refunds ledger row with
-    /// Amount = unit price × K (APR-012/D7) and flips the Approved Transaction to
-    /// Refunded ONLY when the operation leaves zero active tickets (D2).
+    /// non-used tickets refunded (APR-013), inserts one Refunds ledger row with the
+    /// admin-defined amount (APR-012: 0 &lt; A ≤ unit price × K, stored verbatim) and
+    /// flips the Approved Transaction to Refunded ONLY when the operation leaves zero
+    /// active tickets (D2).
     /// </summary>
     /// <param name="reservationId">Confirmed reservation to refund</param>
     /// <param name="quantity">Number of tickets to refund (K, must be &gt; 0 and ≤ active)</param>
+    /// <param name="amount">Admin-defined refund amount (A, must be &gt; 0, ≤ unit price × K
+    /// and carry at most 2 decimal places; validated inside the transaction)</param>
     /// <param name="adminId">Admin performing the refund (recorded in the Refunds row)</param>
     /// <exception cref="KeyNotFoundException">Reservation does not exist</exception>
     /// <exception cref="InvalidOperationException">No Approved transaction, K ≤ 0,
-    /// K &gt; active remaining, or any ticket IsUsed (APR-003/APR-004)</exception>
-    Task RefundPurchaseAsync(Guid reservationId, int quantity, Guid adminId);
+    /// K &gt; active remaining, any ticket IsUsed, or an invalid amount — A ≤ 0,
+    /// A &gt; unit price × K or A with more than 2 decimal places (APR-003/APR-004)</exception>
+    Task RefundPurchaseAsync(Guid reservationId, int quantity, decimal amount, Guid adminId);
 }
 
 /// <summary>

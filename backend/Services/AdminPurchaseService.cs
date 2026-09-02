@@ -120,9 +120,9 @@ public class AdminPurchaseService : IAdminPurchaseService
     }
 
     /// <inheritdoc />
-    public async Task RefundPurchaseAsync(Guid reservationId, int quantity, Guid adminId)
+    public async Task RefundPurchaseAsync(Guid reservationId, int quantity, decimal amount, Guid adminId)
     {
-        _logger.LogInformation("Admin {AdminId} refunding {Quantity} tickets of reservation {ReservationId}", adminId, quantity, reservationId);
+        _logger.LogInformation("Admin {AdminId} refunding {Quantity} tickets of reservation {ReservationId} for {Amount}", adminId, quantity, reservationId, amount);
 
         var strategy = _context.Database.CreateExecutionStrategy();
 
@@ -193,6 +193,8 @@ public class AdminPurchaseService : IAdminPurchaseService
                 }
 
                 // APR-012: exactly one immutable Refunds ledger row per operation.
+                // WU1 parity: the ledger still stores unit price × K; task 2.2 switches
+                // it to the admin-defined `amount` stored verbatim.
                 var unitPrice = reservation.TicketType.Price;   // D7
                 _context.Refunds.Add(new Refund
                 {
