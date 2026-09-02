@@ -348,7 +348,7 @@ export default function AdminPurchases() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por comprador o DNI…"
                 aria-label="Buscar compras"
-                className="w-44 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
+                className="w-full sm:w-72 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
               />
             </div>
           )}
