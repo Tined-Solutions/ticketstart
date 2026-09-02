@@ -25,7 +25,9 @@ public class Refund
     /// <summary>Number of tickets refunded by this operation (K).</summary>
     public int Quantity { get; set; }
 
-    /// <summary>Amount refunded by this operation = unit price × K (D7).</summary>
+    /// <summary>Amount refunded by this operation — the admin-defined amount stored
+    /// verbatim (0 &lt; A ≤ unit price × K; NOT necessarily unit price × K — D7 now
+    /// describes the CAP only).</summary>
     public decimal Amount { get; set; }
 
     /// <summary>Admin who performed the refund; NULL only for backfilled legacy rows.</summary>

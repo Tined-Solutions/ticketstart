@@ -215,19 +215,33 @@ public class AdminPurchaseServiceTests : IDisposable
     [Fact]
     public async Task RefundPurchaseAsync_Cumulative_SecondRefundAppendsAndFlipsAtZero()
     {
-        // Arrange (APR-012 cumulative): 4 active tickets; refund K=2 twice.
+        // Arrange (APR-012 cumulative): 4 active tickets; refund K=2 twice with CUSTOM
+        // amounts. Σ Refunds must stay ≤ tx.Amount (400 = 4 × 100) after EVERY op.
         var (_, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 4);
         var adminId = Guid.NewGuid();
 
-        // Act — first partial refund (2 of 4), then a second refund (the last 2)
-        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
-        await _service.RefundPurchaseAsync(reservationId, 2, 200m, adminId);
+        // Act — first partial refund (2 of 4) with a custom amount
+        await _service.RefundPurchaseAsync(reservationId, 2, 150.25m, adminId);
 
-        // Assert — two Refunds rows appended; TotalRefunded = Σ Amounts
+        // Assert after op 1 — one row, verbatim amount, Σ ≤ tx.Amount
+        var refundsAfterFirst = await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync();
+        var sumAfterFirst = refundsAfterFirst.Sum(r => r.Amount);
+        Assert.Single(refundsAfterFirst);
+        Assert.Equal(150.25m, sumAfterFirst);
+        Assert.True(sumAfterFirst <= 400m);
+
+        // Act — second refund (the last 2) with another custom amount (still ≤ the
+        // per-operation cap of unit price × K = 200)
+        await _service.RefundPurchaseAsync(reservationId, 2, 199.5m, adminId);
+
+        // Assert — two Refunds rows appended; TotalRefunded = Σ Amounts ≤ tx.Amount
         var refunds = await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync();
         Assert.Equal(2, refunds.Count);
-        Assert.All(refunds, r => Assert.Equal(200m, r.Amount));
-        Assert.Equal(400m, refunds.Sum(r => r.Amount));
+        Assert.Equal(150.25m, refunds[0].Amount);
+        Assert.Equal(199.5m, refunds[1].Amount);
+        var totalRefunded = refunds.Sum(r => r.Amount);
+        Assert.Equal(349.75m, totalRefunded);
+        Assert.True(totalRefunded <= 400m);
 
         // Assert — all 4 tickets refunded, and the tx flipped only at zero active
         var tickets = await TicketsOf(reservationId);
@@ -273,6 +287,110 @@ public class AdminPurchaseServiceTests : IDisposable
         Assert.All(tickets, t => Assert.False(t.IsRefunded));
         Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
         var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_AmountZeroOrNegative_ThrowsNoChange()
+    {
+        // Arrange (APR-003: A ≤ 0 blocked). Quantity is valid so the AMOUNT guard fires.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert — 0 and negative amounts are rejected with the exact message
+        foreach (var amount in new[] { 0m, -1m })
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => _service.RefundPurchaseAsync(reservationId, 1, amount, adminId));
+            Assert.Equal("Refund amount must be greater than zero", ex.Message);
+        }
+
+        // Assert — no state change
+        var tickets = await TicketsOf(reservationId);
+        Assert.All(tickets, t => Assert.False(t.IsRefunded));
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_AmountAboveCap_ThrowsNoChange()
+    {
+        // Arrange (APR-003: A > unit price × K blocked): 4 active tickets, refund K=2 →
+        // cap = 100 × 2 = 200; amount 200.01 exceeds it by one cent.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RefundPurchaseAsync(reservationId, 2, 200.01m, adminId));
+        Assert.Equal("Cannot refund 200.01 for 2 tickets; maximum is 200", ex.Message);
+
+        // Assert — no ticket, no Refunds row, tx still Approved
+        var tickets = await TicketsOf(reservationId);
+        Assert.All(tickets, t => Assert.False(t.IsRefunded));
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_AmountMoreThanTwoDecimals_RejectedNotRounded()
+    {
+        // Arrange (APR-003/D3: > 2 decimal places rejected, NEVER rounded to 33.33).
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RefundPurchaseAsync(reservationId, 1, 33.333m, adminId));
+        Assert.Equal("Refund amount cannot have more than 2 decimal places", ex.Message);
+
+        // Assert — no Refunds row exists and nothing was rounded/persisted
+        Assert.Empty(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        var tickets = await TicketsOf(reservationId);
+        Assert.All(tickets, t => Assert.False(t.IsRefunded));
+        var tx = await _context.Transactions.SingleAsync(t => t.ReservationId == reservationId);
+        Assert.Equal(TransactionStatus.Approved, tx.Status);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_QuantityGuardFiresBeforeAmountGuard()
+    {
+        // Arrange (D3 guard ordering): K=3 > 2 active with a VALID amount — the failure
+        // must report the QUANTITY violation; amount validation must never run.
+        var (_, reservationId, _, _) = await SeedConfirmedPurchase(quantity: 2);
+        var adminId = Guid.NewGuid();
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RefundPurchaseAsync(reservationId, 3, 100m, adminId));
+        Assert.Contains("Cannot refund 3 tickets", ex.Message);
+        Assert.Contains("active remaining", ex.Message);
+        Assert.DoesNotContain("Refund amount", ex.Message);
+    }
+
+    [Fact]
+    public async Task RefundPurchaseAsync_CustomAmountStoredVerbatim()
+    {
+        // Arrange (APR-012/D3): partial refund K=2 of 4 with a custom amount of 50.5 —
+        // the ledger must store 50.5 EXACTLY (verbatim), not 50.50-rounded price math.
+        var (_, reservationId, _, mpId) = await SeedConfirmedPurchase(quantity: 4);
+        var adminId = Guid.NewGuid();
+
+        // Act
+        await _service.RefundPurchaseAsync(reservationId, 2, 50.5m, adminId);
+
+        // Assert — one Refunds row with Amount == 50.5 verbatim
+        var refund = Assert.Single(await _context.Refunds.Where(r => r.ReservationId == reservationId).AsNoTracking().ToListAsync());
+        Assert.Equal(50.5m, refund.Amount);
+        Assert.Equal(2, refund.Quantity);
+        Assert.Equal(adminId, refund.AdminId);
+
+        // Assert — 2 tickets marked refunded, tx stays Approved (partial op, D2)
+        var tickets = await TicketsOf(reservationId);
+        Assert.Equal(2, tickets.Count(t => t.IsRefunded));
+        var tx = await _context.Transactions.SingleAsync(t => t.MercadoPagoId == mpId);
         Assert.Equal(TransactionStatus.Approved, tx.Status);
     }
 

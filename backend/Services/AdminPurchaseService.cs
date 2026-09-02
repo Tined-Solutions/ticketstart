@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 
@@ -133,7 +134,8 @@ public class AdminPurchaseService : IAdminPurchaseService
             try
             {
                 // D7: unit price comes from the reservation's TicketType (canonical,
-                // stable decimal(18,2); Amount = Price × K is exact).
+                // stable decimal(18,2)). It caps the admin-defined amount (≤ Price × K);
+                // the ledger stores the admin's amount verbatim.
                 var reservation = await _context.Reservations
                     .Include(r => r.TicketType)
                     .FirstOrDefaultAsync(r => r.Id == reservationId);
@@ -168,6 +170,28 @@ public class AdminPurchaseService : IAdminPurchaseService
                     throw new InvalidOperationException($"Cannot refund {quantity} tickets; {active} active remaining");
                 }
 
+                // APR-003 amount guards (D3): validated INSIDE the transaction against
+                // the locked reservation's TicketType (race-safe), AFTER the quantity
+                // guard and BEFORE the Approved-tx check — quantity violations win.
+                // Order: A ≤ 0 → > 2 decimal places → > cap (unit price × K).
+                var unitPrice = reservation.TicketType.Price;
+                if (amount <= 0m)
+                {
+                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: amount {Amount} must be greater than zero", reservationId, amount);
+                    throw new InvalidOperationException("Refund amount must be greater than zero");
+                }
+                if (decimal.Round(amount, 2) != amount)
+                {
+                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: amount {Amount} has more than 2 decimal places", reservationId, amount);
+                    throw new InvalidOperationException("Refund amount cannot have more than 2 decimal places");
+                }
+                if (amount > unitPrice * quantity)
+                {
+                    _logger.LogWarning("Refund of reservation {ReservationId} blocked: amount {Amount} exceeds the {Quantity}-ticket cap {Cap}", reservationId, amount, quantity, unitPrice * quantity);
+                    throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                        $"Cannot refund {amount} for {quantity} tickets; maximum is {unitPrice * quantity}"));
+                }
+
                 // APR-003: the Approved transaction is FLIPPED (only at zero active),
                 // never duplicated.
                 var approvedTx = await _context.Transactions
@@ -192,16 +216,15 @@ public class AdminPurchaseService : IAdminPurchaseService
                     ticket.RefundedAt = now;
                 }
 
-                // APR-012: exactly one immutable Refunds ledger row per operation.
-                // WU1 parity: the ledger still stores unit price × K; task 2.2 switches
-                // it to the admin-defined `amount` stored verbatim.
-                var unitPrice = reservation.TicketType.Price;   // D7
+                // APR-012: exactly one immutable Refunds ledger row per operation, with
+                // the admin-defined amount stored VERBATIM (0 < A ≤ unit price × K;
+                // unitPrice × K is just the cap, not the stored value).
                 _context.Refunds.Add(new Refund
                 {
                     ReservationId = reservationId,
                     TicketIds = selected.Select(t => t.Id).ToArray(),
                     Quantity = quantity,
-                    Amount = unitPrice * quantity,
+                    Amount = amount,
                     AdminId = adminId,
                     CreatedAt = now
                 });
