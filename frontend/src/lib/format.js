@@ -49,17 +49,22 @@ export function toDateTimeLocalValue(dateString) {
 }
 
 /**
- * Formats a numeric amount as an ARS currency string (whole pesos — ARS/UYU
- * convention does not show centavos).
+ * Formats a numeric amount as an ARS currency string.
  * Returns "$ --" for null or undefined values.
  *
+ * By default shows whole pesos only (ARS/UYU convention does not show
+ * centavos). Pass `{ fractionDigits: 2 }` to render centavos with the es-AR
+ * comma separator (e.g. "$ 300,50") — used by the refund dialog's live amount
+ * preview so the admin can confirm cent-exact amounts (D2).
+ *
  * @param {number|null|undefined} amount
+ * @param {{ fractionDigits?: number }} [options]
  * @returns {string}
  */
-export function formatCurrency(amount) {
+export function formatCurrency(amount, { fractionDigits = 0 } = {}) {
   if (amount === undefined || amount === null) return '$ --'
   return `$ ${Number(amount).toLocaleString('es-AR', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   })}`
 }

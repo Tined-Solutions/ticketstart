@@ -88,4 +88,24 @@ describe('formatCurrency', () => {
     const result = formatCurrency(1234567)
     expect(result).toContain('1.234.567')
   })
+
+  it('defaults to whole pesos when no options are passed', () => {
+    expect(formatCurrency(300)).toBe('$ 300')
+    expect(formatCurrency(300.4)).toBe('$ 300')
+    expect(formatCurrency(300.6)).toBe('$ 301')
+  })
+
+  it('shows cents with fractionDigits: 2 (es-AR comma separator)', () => {
+    expect(formatCurrency(300.5, { fractionDigits: 2 })).toBe('$ 300,50')
+    expect(formatCurrency(50, { fractionDigits: 2 })).toBe('$ 50,00')
+  })
+
+  it('keeps thousands separators with fractionDigits: 2', () => {
+    expect(formatCurrency(1234.56, { fractionDigits: 2 })).toBe('$ 1.234,56')
+  })
+
+  it('returns "$ --" for null/undefined regardless of fractionDigits', () => {
+    expect(formatCurrency(null, { fractionDigits: 2 })).toBe('$ --')
+    expect(formatCurrency(undefined, { fractionDigits: 2 })).toBe('$ --')
+  })
 })
