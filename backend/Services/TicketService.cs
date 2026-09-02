@@ -516,10 +516,11 @@ public class TicketService : ITicketService
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
-        // Filter in memory: DNI matched by digits only, and only unused (active) tickets.
+        // Filter in memory: DNI matched by digits only, only unused (active) tickets,
+        // and only tickets for events that have not started yet (past events are excluded).
         // Refunded tickets are excluded too (APR-005).
         var activeTickets = tickets
-            .Where(t => NormalizeDocument(t.PurchaserDNI) == dniKey && !t.IsUsed && !t.IsRefunded)
+            .Where(t => NormalizeDocument(t.PurchaserDNI) == dniKey && !t.IsUsed && !t.IsRefunded && t.Event.Date >= DateTime.UtcNow)
             .ToList();
 
         if (activeTickets.Count == 0)
@@ -531,11 +532,12 @@ public class TicketService : ITicketService
 
         // Group by event to return a summary without QR codes
         var responses = activeTickets
-            .GroupBy(t => new { t.EventId, EventName = t.Event.Name, t.Event.Date, TicketTypeName = t.TicketType.Name })
+            .GroupBy(t => new { t.EventId, EventName = t.Event.Name, t.Event.Date, EventLocation = t.Event.Location, TicketTypeName = t.TicketType.Name })
             .Select(g => new TicketLookupInfoResponse
             {
                 EventName = g.Key.EventName,
                 EventDate = g.Key.Date,
+                EventLocation = g.Key.EventLocation,
                 TicketType = g.Key.TicketTypeName,
                 Quantity = g.Count(),
                 PurchaserEmail = MaskEmail(trimmedEmail)

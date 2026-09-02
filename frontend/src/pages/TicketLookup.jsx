@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Turnstile } from '@marsidev/react-turnstile'
 import apiClient from '../api/client.js'
-import { formatEventDate, formatCurrency } from '../lib/format.js'
+import { formatEventDate } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
@@ -25,10 +25,10 @@ function validateEmail(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket card (info-only — no QR, no download, no print)
+// Ticket card (info-only — one card per event, ticket types with quantities)
 // ---------------------------------------------------------------------------
 
-function TicketCard({ ticket }) {
+function TicketCard({ group }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -36,45 +36,24 @@ function TicketCard({ ticket }) {
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
     >
       <GlassCard className="relative p-4 md:p-6">
-        <div className="absolute top-3 right-3">
-          <Badge variant={ticket.isUsed ? 'error' : 'success'}>
-            {ticket.isUsed ? 'Usada' : 'Valida'}
-          </Badge>
-        </div>
-
-        <h3 className="font-display font-semibold text-lg text-gris-oscuro mb-2 pr-20">
-          {ticket.eventName}
+        <h3 className="font-display font-semibold text-lg text-gris-oscuro mb-2">
+          {group.eventName}
         </h3>
-        <p className="text-text-2 text-sm">{formatEventDate(ticket.eventDate)}</p>
-        <p className="text-text-2 text-sm mb-3">{ticket.eventLocation}</p>
+        <p className="text-text-2 text-sm">{formatEventDate(group.eventDate)}</p>
+        <p className="text-text-2 text-sm mb-3">{group.eventLocation}</p>
 
         <hr className="border-gris-oscuro/10 my-3" />
 
-        <div className="flex justify-between items-center">
-          <span className="text-text-2 text-sm">{ticket.ticketTypeName}</span>
-          <span className="font-semibold text-purpura-dark">{formatCurrency(ticket.price)}</span>
-        </div>
-
-        {ticket.quantity !== undefined && ticket.quantity !== null && (
-          <p className="text-text-muted text-xs mt-2">
-            Cantidad: {ticket.quantity}
-          </p>
-        )}
-
-        {ticket.isUsed && ticket.usedAt && (
-          <p className="text-text-muted text-xs mt-1 ticket-used-at">
-            Usada el{' '}
-            {new Date(ticket.usedAt).toLocaleDateString('es-AR', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              // es-AR defaults to h12 ("p. m."); force 24h to match formatEventDate.
-              hour12: false,
-            })}
-          </p>
-        )}
+        <ul className="space-y-1.5">
+          {group.types.map((type) => (
+            <li key={type.ticketType}>
+              <span className="font-semibold text-gris-oscuro">
+                {type.quantity}
+              </span>{' '}
+              <span className="text-text-2 text-sm">{type.ticketType}</span>
+            </li>
+          ))}
+        </ul>
       </GlassCard>
     </motion.div>
   )
@@ -204,6 +183,38 @@ export default function TicketLookup() {
       setResendLoading(false)
     }
   }
+
+  // -- Derived: group response items by event (one card per event) ----------
+
+  // Group by event name + date; each group carries the info-only fields and a
+  // list of ticket types with their quantities.
+  const groupedByEvent = tickets
+    ? tickets.reduce((groups, item) => {
+        const groupKey = `${item.eventName}|${item.eventDate}`
+        const existing = groups.find(
+          (g) => `${g.eventName}|${g.eventDate}` === groupKey
+        )
+        if (existing) {
+          existing.types.push({
+            ticketType: item.ticketType,
+            quantity: item.quantity,
+          })
+        } else {
+          groups.push({
+            eventName: item.eventName,
+            eventDate: item.eventDate,
+            eventLocation: item.eventLocation,
+            types: [{ ticketType: item.ticketType, quantity: item.quantity }],
+          })
+        }
+        return groups
+      }, [])
+    : []
+
+  // Total count is the SUM of quantities, not the number of response items.
+  const totalTickets = tickets
+    ? tickets.reduce((sum, item) => sum + item.quantity, 0)
+    : 0
 
   // -- Render -----------------------------------------------------------
 
@@ -361,13 +372,16 @@ export default function TicketLookup() {
         {tickets && tickets.length > 0 && (
           <div className="mt-6">
             <h2 className="text-xl font-display font-bold text-gris-oscuro mb-4">
-              {tickets.length === 1
+              {totalTickets === 1
                 ? '1 entrada encontrada'
-                : `${tickets.length} entradas encontradas`}
+                : `${totalTickets} entradas encontradas`}
             </h2>
             <div className="space-y-4">
-              {tickets.map((ticket) => (
-                <TicketCard key={ticket.id} ticket={ticket} />
+              {groupedByEvent.map((group) => (
+                <TicketCard
+                  key={`${group.eventName}|${group.eventDate}`}
+                  group={group}
+                />
               ))}
             </div>
           </div>

@@ -768,8 +768,10 @@ public class TicketLookupPropertyTests : IDisposable
 
     /// <summary>
     /// Seeds an organizer, event, and ticket type for active-lookup tests.
+    /// Defaults to a future event date (30 days out); pass <paramref name="eventDate"/>
+    /// to control when the event takes place (e.g. a past date for exclusion tests).
     /// </summary>
-    private async Task<(Event Event, TicketType TicketType)> SeedActiveLookupDataAsync()
+    private async Task<(Event Event, TicketType TicketType)> SeedActiveLookupDataAsync(DateTime? eventDate = null)
     {
         var organizer = new User
         {
@@ -785,7 +787,7 @@ public class TicketLookupPropertyTests : IDisposable
             Id = Guid.NewGuid(),
             Name = "Test Event",
             Description = "Test Description",
-            Date = DateTime.UtcNow.AddDays(30),
+            Date = eventDate ?? DateTime.UtcNow.AddDays(30),
             Location = "Test Location",
             OrganizerId = organizer.Id,
             CreatedAt = DateTime.UtcNow,
@@ -856,9 +858,33 @@ public class TicketLookupPropertyTests : IDisposable
         Assert.Single(resultList);
         var summary = resultList.First();
         Assert.Equal("Test Event", summary.EventName);
+        Assert.Equal("Test Location", summary.EventLocation);
         Assert.Equal("General Admission", summary.TicketType);
         Assert.Equal(2, summary.Quantity);
         Assert.Equal("b***@test.com", summary.PurchaserEmail);
+    }
+
+    /// <summary>
+    /// Active lookup excludes tickets for events that have already started or passed,
+    /// even when the ticket itself is unused and matches email + DNI.
+    /// Validates: Requirement 8.2, 8.5 — info-only lookup shows only future events
+    /// </summary>
+    [Fact]
+    public async Task ActiveLookup_ExcludesTicketsForPastEvents()
+    {
+        // Arrange — event already started (10 days ago), ticket unused and matching
+        var (eventEntity, ticketType) = await SeedActiveLookupDataAsync(DateTime.UtcNow.AddDays(-10));
+        var email = "buyer@test.com";
+        var dni = "12345678";
+
+        await SeedActiveLookupTicketAsync(eventEntity.Id, ticketType.Id, email, dni, isUsed: false);
+
+        // Act
+        var results = await _ticketService.LookupActiveTicketsByEmailAndDniAsync(email, dni);
+        var resultList = results.ToList();
+
+        // Assert — past-event tickets are not shown, even unused
+        Assert.Empty(resultList);
     }
 
     /// <summary>
