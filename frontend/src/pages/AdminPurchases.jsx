@@ -21,6 +21,19 @@ function formatDate(dateString) {
   })
 }
 
+// D4: decimal-STRING → integer cents. Cents derive from the string representation,
+// NEVER from float arithmetic (0.29 × 100 → 28.999…); String(number) is
+// shortest-round-trip so 2-decimal API values round-trip exactly.
+function toCents(value) {
+  const [intPart, decPart = ''] = String(value).split('.')
+  return Number(intPart) * 100 + Number(`${decPart}00`.slice(0, 2))
+}
+
+// Integer cents → decimal string for the number input ("5000" → "50").
+function centsToInput(cents) {
+  return String(cents / 100)
+}
+
 function refundBadge(qty, refundedQty) {
   if (refundedQty === 0) return { variant: 'success', label: 'Confirmada' }
   const de = refundedQty >= qty
@@ -33,8 +46,57 @@ function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, re
   const dialogRef = useDialog({ onClose: onCancel })
   const [selectedQuantity, setSelectedQuantity] = useState(1)
   const activeRemaining = purchase.quantity - purchase.refundedQuantity
-  const unitPrice = purchase.amount / purchase.quantity
+  // D4: cents math — unit price derived from the transaction amount; Math.round is
+  // the anomaly fallback (exact while tx.Amount = unit price × quantity).
+  const unitPriceCents = Math.round(toCents(purchase.amount) / purchase.quantity)
+  const capCents = unitPriceCents * selectedQuantity
+
+  // D4: the amount state + isAmountDirty flag. Not dirty → the prefill (K × unit
+  // price) recomputes on quantity change; dirty → the value is kept and re-validated
+  // against the new cap (validation below is derived, so it flags immediately).
+  const [amount, setAmount] = useState(() => centsToInput(unitPriceCents))
+  const [isAmountDirty, setIsAmountDirty] = useState(false)
+
   const ticketsLabel = purchase.quantity === 1 ? 'entrada' : 'entradas'
+
+  const handleQuantityChange = (e) => {
+    const next = Number(e.target.value)
+    setSelectedQuantity(next)
+    if (!isAmountDirty && next >= 1) {
+      setAmount(centsToInput(unitPriceCents * next))
+    }
+  }
+
+  const handleAmountChange = (e) => {
+    setAmount(e.target.value)
+    setIsAmountDirty(true)
+  }
+
+  // D1: a percent click is a ONE-SHOT amount write (no persistent percent state).
+  // D4: percent → amount via integer-cents math, half-up.
+  const applyPercent = (pct) => {
+    setAmount(centsToInput(Math.round((pct * capCents) / 100)))
+    setIsAmountDirty(true)
+  }
+
+  // D4 inline validation, mirroring the backend D3 guards: > 2 decimals → ≤ 0 →
+  // > cap (unit price × K). Blocks submit with an inline error, no mutation.
+  const decPart = String(amount).split('.')[1] ?? ''
+  const amountCents = toCents(amount)
+  let amountError = ''
+  if (decPart.length > 2) {
+    amountError = 'El monto no puede tener más de 2 decimales'
+  } else if (Number.isNaN(amountCents) || amountCents <= 0) {
+    amountError = 'El monto debe ser mayor a cero'
+  } else if (amountCents > capCents) {
+    amountError = `El monto no puede superar ${formatCurrency(capCents / 100, { fractionDigits: 2 })} para ${selectedQuantity} ${ticketsLabel}`
+  }
+
+  const handleConfirm = () => {
+    if (amountError) return
+    onConfirm(selectedQuantity, Number(amount))
+  }
+
   return (
     <div
       ref={dialogRef}
@@ -63,14 +125,53 @@ function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, re
             min={1}
             max={activeRemaining}
             value={selectedQuantity}
-            onChange={(e) => setSelectedQuantity(Number(e.target.value))}
+            onChange={handleQuantityChange}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-text-1 min-h-[44px]"
             aria-label="Cantidad a reembolsar"
           />
           <p className="mt-2 text-sm text-text-2">
-            Reembolsar {selectedQuantity} × {formatCurrency(unitPrice)} ={' '}
-            {formatCurrency(unitPrice * selectedQuantity)}
+            Reembolsar {selectedQuantity} ×{' '}
+            {formatCurrency(unitPriceCents / 100, { fractionDigits: 2 })} ={' '}
+            {formatCurrency(unitPriceCents * selectedQuantity / 100, { fractionDigits: 2 })}
           </p>
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="refund-amount" className="block text-sm text-text-2 mb-1">
+            Monto a reembolsar
+          </label>
+          <input
+            id="refund-amount"
+            type="number"
+            step="0.01"
+            min="0"
+            value={amount}
+            onChange={handleAmountChange}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-text-1 min-h-[44px]"
+            aria-label="Monto a reembolsar"
+          />
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Porcentajes rápidos">
+            {[25, 50, 75, 100].map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() => applyPercent(pct)}
+                aria-label={`Aplicar ${pct}% del monto`}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-2 hover:bg-surface-elevated transition-colors min-h-[44px]"
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-sm text-text-2">
+            Monto a reembolsar:{' '}
+            {formatCurrency(Number.isNaN(amountCents) ? null : amountCents / 100, { fractionDigits: 2 })}
+          </p>
+          {amountError && (
+            <p className="mt-2 text-sm text-rose-600" role="alert">
+              {amountError}
+            </p>
+          )}
         </div>
 
         {error && (
@@ -83,7 +184,7 @@ function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, re
           <Button variant="secondary" onClick={onCancel} disabled={refunding} className="min-h-[44px]">
             Cancelar
           </Button>
-          <Button variant="danger" onClick={() => onConfirm(selectedQuantity)} disabled={refunding} className="min-h-[44px]">
+          <Button variant="danger" onClick={handleConfirm} disabled={refunding} className="min-h-[44px]">
             {refunding ? 'Reembolsando…' : 'Reembolsar'}
           </Button>
         </div>
@@ -111,8 +212,9 @@ export default function AdminPurchases() {
   })
 
   const refundMutation = useMutation({
-    mutationFn: async ({ reservationId, quantity }) => {
-      const response = await apiClient.post(`/admin/events/${id}/purchases/${reservationId}/refund`, { quantity })
+    mutationFn: async ({ reservationId, quantity, amount }) => {
+      // APR-010: the wire carries ONLY { quantity, amount } — never a percent.
+      const response = await apiClient.post(`/admin/events/${id}/purchases/${reservationId}/refund`, { quantity, amount })
       return response.data
     },
     onSuccess: () => {
@@ -123,10 +225,10 @@ export default function AdminPurchases() {
     },
   })
 
-  const handleConfirmRefund = (quantity) => {
+  const handleConfirmRefund = (quantity, amount) => {
     if (!refundTarget) return
     setRefundError('')
-    refundMutation.mutate({ reservationId: refundTarget.reservationId, quantity }, {
+    refundMutation.mutate({ reservationId: refundTarget.reservationId, quantity, amount }, {
       onError: (err) => setRefundError(getErrorMessage(err)),
     })
   }

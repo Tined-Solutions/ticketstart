@@ -147,7 +147,7 @@ describe('AdminPurchases', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/event not found/i)
   })
 
-  it('partial refund via quantity selector posts {quantity} and updates the row', async () => {
+  it('partial refund via quantity selector posts {quantity, amount} and updates the row', async () => {
     // First GET returns the pre-refund list; after invalidation the refetch returns
     // res-1 with refundedQuantity 2 (fully refunded) and totalRefunded updated.
     let callCount = 0
@@ -185,19 +185,25 @@ describe('AdminPurchases', () => {
     expect(quantityInput).toHaveAttribute('min', '1')
     expect(quantityInput).toHaveAttribute('max', '2')
 
-    // Live preview: unitPrice = amount / quantity = 200 / 2 = 100
-    expect(within(dialog).getByText(/reembolsar 1 × \$ 100 = \$ 100/i)).toBeInTheDocument()
+    // Amount input: prefilled to K × unit price (1 × 100 = 100), step 0.01
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    expect(amountInput).toHaveAttribute('step', '0.01')
+    expect(amountInput).toHaveValue(100)
 
-    // Select K=2 → preview updates live
+    // Live preview with cents: unitPrice = amount / quantity = 200 / 2 = 100
+    expect(within(dialog).getByText(/reembolsar 1 × \$ 100,00 = \$ 100,00/i)).toBeInTheDocument()
+
+    // Select K=2 → the amount prefill recomputes to 2 × 100 = 200
     await userEvent.clear(quantityInput)
     await userEvent.type(quantityInput, '2')
-    expect(within(dialog).getByText(/reembolsar 2 × \$ 100 = \$ 200/i)).toBeInTheDocument()
+    expect(amountInput).toHaveValue(200)
+    expect(within(dialog).getByText(/reembolsar 2 × \$ 100,00 = \$ 200,00/i)).toBeInTheDocument()
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
 
-    // POST sent to the refund endpoint WITH the quantity body (APR-010)
+    // POST sent to the refund endpoint WITH the {quantity, amount} body (APR-010)
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund', { quantity: 2 })
+      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund', { quantity: 2, amount: 200 })
     })
 
     // Query invalidation → refetch → the row now shows the new refundedQuantity
@@ -233,6 +239,174 @@ describe('AdminPurchases', () => {
     expect(mockGet).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Confirmada')).toBeInTheDocument()
     expect(screen.getByText('1 de 1 reembolsadas')).toBeInTheDocument()
+  })
+})
+
+describe('AdminPurchases — refund dialog amount (APR-010/D4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockReset()
+    mockPost.mockReset()
+    mockEventId = 'event-1'
+    useAuth.mockReturnValue({ user: { role: 'Admin' }, isAuthenticated: true })
+    useTheme.mockReturnValue({ theme: 'dark', setTheme: vi.fn(), toggle: vi.fn() })
+    mockPost.mockResolvedValue({ data: { message: 'Purchase refunded successfully' } })
+  })
+
+  function seedPurchases(purchases) {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events/event-1/purchases') {
+        return Promise.resolve({ data: { eventId: 'event-1', eventName: 'Recital', purchases, totalRefunded: 0 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+  }
+
+  async function openDialog(purchases = mockPurchases.purchases) {
+    seedPurchases(purchases)
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('juan.perez@gmail.com')).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /reembolsar compra de juan\.perez@gmail\.com/i }))
+    return screen.getByRole('dialog')
+  }
+
+  it('prefills the amount input to K × unit price and recomputes on quantity change (3 × 100 → 300)', async () => {
+    const purchase = { ...mockPurchases.purchases[0], quantity: 3, amount: 300 }
+    const dialog = await openDialog([purchase])
+
+    // Prefill for the default quantity 1: 1 × unit price 100 = 100
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    expect(amountInput).toHaveValue(100)
+
+    // Selecting K=3 recomputes the prefill to 3 × 100 = 300
+    const quantityInput = within(dialog).getByLabelText(/cantidad a reembolsar/i)
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '3')
+    expect(amountInput).toHaveValue(300)
+
+    // Confirming WITHOUT edits posts the prefilled amount (300) — untouched dialog = full-price behavior
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund', { quantity: 3, amount: 300 })
+    })
+  })
+
+  it('25% helper converts client-side to 50 via integer-cents math and never posts a percent', async () => {
+    const dialog = await openDialog()
+
+    const quantityInput = within(dialog).getByLabelText(/cantidad a reembolsar/i)
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '2')
+
+    // One-shot amount write (D1): 25% of the 200 cap = 50
+    await userEvent.click(within(dialog).getByRole('button', { name: /aplicar 25%/i }))
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    expect(amountInput).toHaveValue(50)
+
+    // Live preview shows cents (D2)
+    expect(within(dialog).getByText(/\$ 50,00/)).toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+
+    // The post body carries {quantity, amount} EXACTLY — never a percent key
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith('/admin/events/event-1/purchases/res-1/refund', { quantity: 2, amount: 50 })
+    })
+    const body = mockPost.mock.calls[0][1]
+    expect(Object.keys(body)).toEqual(['quantity', 'amount'])
+  })
+
+  it('100% helper fills the full cap amount', async () => {
+    const dialog = await openDialog()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /aplicar 100%/i }))
+    expect(within(dialog).getByLabelText(/monto a reembolsar/i)).toHaveValue(100)
+  })
+
+  it('amount ≤ 0 blocks submit with an inline error and no mutation', async () => {
+    const dialog = await openDialog()
+
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+
+    // Inline validation error (role="alert") appears, submit blocked
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/mayor a cero/i)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('amount above the cap blocks submit with an inline error and no mutation', async () => {
+    const dialog = await openDialog()
+
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '100.01')
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/no puede superar/i)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('amounts with more than 2 decimals are flagged inline (mirrors D3 reject, never round)', async () => {
+    const dialog = await openDialog()
+
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '33.333')
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/2 decimales/i)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('re-validates the amount against the new cap when quantity changes while dirty', async () => {
+    const dialog = await openDialog()
+
+    const quantityInput = within(dialog).getByLabelText(/cantidad a reembolsar/i)
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '2')
+
+    // Dirty the amount: 150 is valid for K=2 (cap 200)
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '150')
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+
+    // Back to K=1 → the new cap is 100 < 150 → inline error appears, submit blocked
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '1')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/no puede superar/i)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows a cents preview for cent-exact amounts', async () => {
+    const dialog = await openDialog()
+
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '50.5')
+
+    expect(within(dialog).getByText(/\$ 50,50/)).toBeInTheDocument()
+  })
+
+  it('resets the amount state on remount (cancel → reopen shows the prefill again)', async () => {
+    const dialog = await openDialog()
+
+    const amountInput = within(dialog).getByLabelText(/monto a reembolsar/i)
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '33')
+
+    // Cancel unmounts the dialog; reopening must show a FRESH prefill (100)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /reembolsar compra de juan\.perez@gmail\.com/i }))
+    const reopened = screen.getByRole('dialog')
+    expect(within(reopened).getByLabelText(/monto a reembolsar/i)).toHaveValue(100)
+    expect(within(reopened).queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
