@@ -300,9 +300,6 @@ export default function TicketLookup() {
                 loading={loading}
               >
                 {loading ? 'Buscando...' : 'Buscar entradas'}
-                {!loading && (
-                  <span aria-hidden="true" className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">→</span>
-                )}
               </Button>
             </div>
           </form>
@@ -439,9 +436,6 @@ export default function TicketLookup() {
                 disabled={resendLoading || !turnstileToken}
               >
                 {resendLoading ? 'Enviando...' : 'Reenviar entradas'}
-                {!resendLoading && (
-                  <span aria-hidden="true" className="text-purpura-dark transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">→</span>
-                )}
               </Button>
             </div>
           </form>
