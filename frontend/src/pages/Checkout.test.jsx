@@ -554,10 +554,11 @@ describe('Checkout', () => {
     // Should be back on the edit form with the reservation still active
     expect(screen.getByRole('heading', { name: /editar tus datos/i })).toBeInTheDocument()
 
-    // Form data should be preserved
+    // Form data should be preserved (DNI shows the formatted value — the
+    // component formats valid documents when the input is not focused)
     expect(screen.getByLabelText(/nombre completo/i)).toHaveValue('Carlos Ruiz')
     expect(screen.getByLabelText('Email')).toHaveValue('carlos@test.com')
-    expect(screen.getByLabelText(/^dni$/i)).toHaveValue('11222333')
+    expect(screen.getByLabelText(/^dni$/i)).toHaveValue('11.222.333')
 
     // The "Guardar cambios" button should be available
     expect(
@@ -597,6 +598,9 @@ describe('Checkout', () => {
       target: { value: 'Nombre Editado' },
     })
     fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'editado@test.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirmar email'), {
       target: { value: 'editado@test.com' },
     })
     fireEvent.change(screen.getByLabelText(/^dni$/i), {

@@ -98,6 +98,13 @@ export function validateDocument(raw, country) {
     return { valid: false, clean: '', formatted: '', error: 'El documento es obligatorio' }
   }
 
+  // Documents may only contain digits plus separators (dots, hyphens, spaces).
+  // Any other character (letters, symbols) is rejected instead of being
+  // silently stripped by cleanDocument.
+  if (/[^\d\s.\-]/.test(raw)) {
+    return { valid: false, clean, formatted: clean, error: 'El documento solo puede contener números' }
+  }
+
   let result
   if (country === 'UY') {
     result = validateCedulaUruguaya(clean)
