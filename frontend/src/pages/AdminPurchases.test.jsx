@@ -119,8 +119,11 @@ describe('AdminPurchases', () => {
     expect(screen.getByText('1 de 1 reembolsadas')).toBeInTheDocument()
     expect(screen.getByText('Confirmada')).toBeInTheDocument()
 
-    // Per-event totalRefunded is displayed
-    expect(screen.getByText(/reembolsado: \$ 150/i)).toBeInTheDocument()
+    // Stat cards: Total = Σ amount (200+150 = 350), Reembolsado = totalRefunded (150),
+    // Neto = Total − Reembolsado (350 − 150 = 200)
+    expect(within(screen.getByTestId('stat-total')).getByText('$ 350')).toBeInTheDocument()
+    expect(within(screen.getByTestId('stat-reembolsado')).getByText('$ 150')).toBeInTheDocument()
+    expect(within(screen.getByTestId('stat-neto')).getByText('$ 200')).toBeInTheDocument()
 
     // The fully-refunded row (refundedQuantity >= quantity) must NOT offer a refund action
     const refundedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('maria@test.com'))
@@ -209,7 +212,7 @@ describe('AdminPurchases', () => {
     // Query invalidation → refetch → the row now shows the new refundedQuantity
     // ("2 de 2 reembolsadas") and totalRefunded grew
     await waitFor(() => {
-      expect(screen.getByText(/reembolsado: \$ 350/i)).toBeInTheDocument()
+      expect(within(screen.getByTestId('stat-reembolsado')).getByText('$ 350')).toBeInTheDocument()
     })
     const updatedRow = screen.getAllByRole('row').find((r) => r.textContent.includes('juan.perez@gmail.com'))
     expect(within(updatedRow).getByText('2 de 2 reembolsadas')).toBeInTheDocument()
@@ -529,14 +532,16 @@ describe('AdminPurchases — net amount (APR-016)', () => {
     expect(within(refundedRow).getByText('1 de 1 reembolsadas')).toBeInTheDocument()
   })
 
-  it('header shows Total, Reembolsado, and Neto (X = Σ amount, Y = totalRefunded verbatim, Z = X − Y)', async () => {
+  it('stat cards show Total, Reembolsado, and Neto (X = Σ amount, Y = totalRefunded verbatim, Z = X − Y)', async () => {
     mockGet.mockResolvedValue({ data: mockPurchases })
 
     renderPage()
 
     // Existing fixture: Σ amount = 200 + 150 = 350, totalRefunded = 150, neto = 350 − 150 = 200
     await waitFor(() => {
-      expect(screen.getByText(/total: \$ 350 · reembolsado: \$ 150 · neto: \$ 200/i)).toBeInTheDocument()
+      expect(within(screen.getByTestId('stat-total')).getByText('$ 350')).toBeInTheDocument()
+      expect(within(screen.getByTestId('stat-reembolsado')).getByText('$ 150')).toBeInTheDocument()
+      expect(within(screen.getByTestId('stat-neto')).getByText('$ 200')).toBeInTheDocument()
     })
   })
 })

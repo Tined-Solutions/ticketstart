@@ -244,17 +244,59 @@ export default function AdminPurchases() {
   const netAmount = data ? totalAmount - data.totalRefunded : 0
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div className="relative -mt-16 min-h-[calc(100svh-56px)] bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Mis entradas" (TicketLookup) page.
+          It starts at the very top, behind the translucent fixed navbar, so there
+          is no white gap between the navbar and the page background. */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
       <header className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 text-center mb-2">
+        <h1 className="text-2xl md:text-3xl font-display font-bold text-text-1 text-center mb-2">
           Compras del evento
         </h1>
         {data && (
-          <p className="text-text-2 text-center">
-            {data.eventName} · Total: {formatCurrency(totalAmount)} · Reembolsado: {formatCurrency(data.totalRefunded)} · Neto: {formatCurrency(netAmount)}
+          <p className="text-lg md:text-2xl font-display text-text-2 text-center">
+            {data.eventName}
           </p>
         )}
       </header>
+
+      {data && !isLoading && !isError && (
+        <section
+          aria-label="Resumen de la compra del evento"
+          className="mb-6 mx-auto grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl"
+        >
+          <GlassCard
+            data-testid="stat-total"
+            className="p-4 border-t-4"
+            style={{ borderTopColor: 'var(--purpura)' }}
+          >
+            <p className="text-xs text-text-2 font-sans">Total</p>
+            <p className="text-lg md:text-xl font-display font-bold text-text-1 mt-1">
+              {formatCurrency(totalAmount)}
+            </p>
+          </GlassCard>
+          <GlassCard
+            data-testid="stat-reembolsado"
+            className="p-4 border-t-4"
+            style={{ borderTopColor: 'var(--naranja)' }}
+          >
+            <p className="text-xs text-text-2 font-sans">Reembolsado</p>
+            <p className="text-lg md:text-xl font-display font-bold text-text-1 mt-1">
+              {formatCurrency(data.totalRefunded)}
+            </p>
+          </GlassCard>
+          <GlassCard
+            data-testid="stat-neto"
+            className="p-4 border-t-4"
+            style={{ borderTopColor: 'var(--verde)' }}
+          >
+            <p className="text-xs text-text-2 font-sans">Neto</p>
+            <p className="text-lg md:text-xl font-display font-bold text-text-1 mt-1">
+              {formatCurrency(netAmount)}
+            </p>
+          </GlassCard>
+        </section>
+      )}
 
       {isLoading && (
         <GlassCard className="py-12">
@@ -346,6 +388,7 @@ export default function AdminPurchases() {
           error={refundError}
         />
       )}
+      </div>
     </div>
   )
 }
