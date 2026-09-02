@@ -266,7 +266,7 @@ export default function StaffScan() {
         <h1 className="text-3xl font-display font-bold text-gris-oscuro mb-2">
           Escanear QR
         </h1>
-        <p className="text-text-2">Escanee los codigos QR de los tickets para validar su entrada al evento.</p>
+        <p className="text-text-2">Escaneá el código QR de la entrada para validar el ingreso al evento.</p>
       </header>
 
       {/* Event selector & controls */}
