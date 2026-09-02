@@ -171,14 +171,18 @@ export default function Faq() {
   const prefersReducedMotion = useReducedMotion()
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+    <div className="relative -mt-16 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Mis entradas" (TicketLookup)
+          page. It starts at the very top, behind the translucent fixed navbar,
+          so there is no white gap between the navbar and the page background. */}
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-28 pb-12">
       <motion.header
         initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-        className="text-center mb-10"
+        className="text-center mb-6"
       >
-        <h1 className="text-4xl md:text-5xl font-display font-bold text-text-1 mb-3">
+        <h1 className="text-3xl font-display font-bold text-gris-oscuro mb-2">
           Preguntas frecuentes
         </h1>
         <p className="text-text-2 text-lg max-w-xl mx-auto">
@@ -200,6 +204,7 @@ export default function Faq() {
           <FaqGroups />
         </motion.div>
       )}
+      </div>
     </div>
   )
 }
