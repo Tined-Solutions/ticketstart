@@ -377,7 +377,11 @@ export default function AdminPanel() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+    <div className="relative -mt-16 min-h-[calc(100svh-56px)] bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Mis entradas" (TicketLookup)
+          page. It starts at the very top, behind the translucent fixed navbar,
+          so there is no white gap between the navbar and the page background. */}
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
       <header className="mb-4">
         <h1 className="text-2xl md:text-3xl font-display font-bold text-text-1 text-center mb-2">
           Panel de administración
@@ -926,6 +930,7 @@ export default function AdminPanel() {
           onClose={() => setResetPasswordTarget(null)}
         />
       )}
-    </motion.div>
+      </motion.div>
+    </div>
   )
 }
