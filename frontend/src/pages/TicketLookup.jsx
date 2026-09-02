@@ -225,14 +225,22 @@ export default function TicketLookup() {
       <section>
         <header className="text-center mb-6">
           <h1 className="text-3xl font-display font-bold text-gris-oscuro mb-2">
-            Buscar mis entradas
+            Mis Entradas
           </h1>
           <p className="text-text-2">
-            Ingresa tu email y tu DNI para recuperar tus entradas
+            Recuperá tus entradas y solicitá que te las reenvíen a tu email.
           </p>
         </header>
 
         <GlassCard className="p-4 md:p-6">
+          <header className="mb-4">
+            <h2 className="text-xl font-display font-bold text-gris-oscuro mb-1">
+              Buscar mis entradas
+            </h2>
+            <p className="text-text-2 text-sm">
+              Ingresa tu email y tu DNI para recuperar tus entradas
+            </p>
+          </header>
           <form onSubmit={handleLookupSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="lookup-email" className="sr-only">
