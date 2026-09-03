@@ -397,7 +397,7 @@ export default function TicketLookup() {
               Reenviar entradas
             </h2>
             <p className="text-text-2 text-sm">
-              Si no encuentras tus entradas, podemos reenviartelas por email
+              Si no encontrás tus entradas, podemos reenviártelas por email
             </p>
           </header>
 
