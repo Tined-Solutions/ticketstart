@@ -38,7 +38,13 @@ public class TurnstileService : ITurnstileService
                 content,
                 cancellationToken);
 
+            var statusCode = (int)response.StatusCode;
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogInformation(
+                "Turnstile siteverify responded {StatusCode}: {ResponseBody}",
+                statusCode,
+                json.Length > 800 ? json[..800] : json);
+
             var result = JsonSerializer.Deserialize<TurnstileVerifyResponse>(json);
 
             if (result?.Success == true)
