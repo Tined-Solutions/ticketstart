@@ -49,7 +49,7 @@ export default function DropdownMenu({
         aria-expanded={open}
         aria-label={triggerLabel}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full border border-gris-oscuro/15 bg-white/60 text-gris-oscuro transition-colors hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1"
+        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-gris-oscuro/15 bg-white/60 text-gris-oscuro transition-colors hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1"
       >
         <span aria-hidden="true">⋯</span>
       </button>
@@ -68,10 +68,13 @@ export default function DropdownMenu({
               aria-label={item.ariaLabel}
               title={item.title}
               onClick={() => handleItemClick(item)}
-              className={`block w-full min-h-[36px] px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black/5 focus-visible:bg-black/5 focus-visible:outline-none ${
+              className={`block w-full min-h-[44px] px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black/5 focus-visible:bg-black/5 focus-visible:outline-none ${
                 item.variant === 'danger' ? 'text-rose-600' : 'text-gris-oscuro'
               }`}
             >
+              {item.icon && (
+                <span className="mr-2 inline-flex align-[-0.15em]">{item.icon}</span>
+              )}
               {item.label}
             </button>
           ))}

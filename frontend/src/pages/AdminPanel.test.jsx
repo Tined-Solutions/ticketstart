@@ -1332,17 +1332,17 @@ describe('AdminPanel — User management (AUM-005)', () => {
     // The users section lives behind the "Usuarios" tab (single-container layout).
     await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
 
-    // The actions button's aria-label is unique per row (the email text itself
-    // also appears in the events section as the organizer email).
-    await userEvent.click(
-      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
-    )
-
-    expect(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /restablecer contraseña de staff@ticketera\.com/i })).toBeInTheDocument()
+    // Two separate icon buttons per row (Pencil + KeyRound), each with an
+    // accessible name scoped to the user's email.
+    expect(
+      screen.getByRole('button', { name: /editar rol de staff@ticketera\.com/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /restablecer contraseña de staff@ticketera\.com/i })
+    ).toBeInTheDocument()
   })
 
-  it('opens the role-edit modal from the actions menu and reloads the list after a successful PUT', async () => {
+  it('opens the role-edit modal from the actions button and reloads the list after a successful PUT', async () => {
     mockPut.mockResolvedValue({ data: {} })
 
     render(<AdminPanel />)
@@ -1351,9 +1351,8 @@ describe('AdminPanel — User management (AUM-005)', () => {
     await userEvent.click(await screen.findByRole('tab', { name: /usuarios/i }))
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /acciones de staff@ticketera\.com/i })
+      await screen.findByRole('button', { name: /editar rol de staff@ticketera\.com/i })
     )
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Editar rol de staff@ticketera.com' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Editar rol' })
     const select = within(dialog).getByLabelText('Rol')
