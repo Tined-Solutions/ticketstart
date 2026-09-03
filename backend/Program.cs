@@ -305,6 +305,11 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Apply forwarded headers from reverse proxies (Render terminates TLS and forwards
+// X-Forwarded-Proto/X-Forwarded-For). Must run before any middleware that reads the
+// request scheme or RemoteIpAddress (UseHttpsRedirection, rate limiters, audit logs).
+app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
