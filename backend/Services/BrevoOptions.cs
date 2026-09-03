@@ -12,7 +12,7 @@ public class BrevoOptions
     public const string SectionName = "Brevo";
 
     /// <summary>
-    /// Brevo API key (Settings → SMTP & API → API Keys).
+    /// Brevo API key (Settings → SMTP and API → API Keys).
     /// Sent as the `api-key` header on every request.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
