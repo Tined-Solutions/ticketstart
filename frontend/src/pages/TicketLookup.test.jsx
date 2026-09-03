@@ -51,30 +51,27 @@ vi.mock('@marsidev/react-turnstile', () => ({
 // ---------------------------------------------------------------------------
 
 const mockTicket = {
-  id: 'ticket-001',
-  eventId: 'event-1',
   eventName: 'Recital de Rock Nacional',
   eventDate: '2026-08-15T21:00:00Z',
   eventLocation: 'Estadio Luna Park, Buenos Aires',
-  ticketTypeName: 'Platea',
-  price: 15000,
+  ticketType: 'Platea',
   quantity: 2,
-  isUsed: false,
-  usedAt: null,
-  createdAt: '2026-07-10T12:00:00Z',
+  purchaserEmail: 'j***@example.com',
 }
 
-const mockUsedTicket = {
+const mockVipTicket = {
   ...mockTicket,
-  id: 'ticket-002',
+  ticketType: 'VIP',
+  quantity: 1,
+}
+
+const mockOtherEvent = {
   eventName: 'Feria de Emprendedores',
   eventDate: '2026-09-01T14:00:00Z',
   eventLocation: 'La Rural, Buenos Aires',
-  ticketTypeName: 'General',
-  price: 0,
+  ticketType: 'General',
   quantity: 1,
-  isUsed: true,
-  usedAt: '2026-09-01T15:30:00Z',
+  purchaserEmail: 'j***@example.com',
 }
 
 // ---------------------------------------------------------------------------
@@ -264,14 +261,14 @@ describe('TicketLookup', () => {
   // -- Successful lookup ------------------------------------------------
 
   it('calls the lookup API with email and DNI and displays tickets on success', async () => {
-    mockGet.mockResolvedValue({ data: [mockTicket, mockUsedTicket] })
+    mockGet.mockResolvedValue({ data: [mockTicket, mockOtherEvent] })
 
     render(<TicketLookup />)
     const form = fillLookupForm(userEvent.setup())
     await form.submit()
 
     await waitFor(() => {
-      expect(screen.getByText(/2 entradas encontradas/i)).toBeInTheDocument()
+      expect(screen.getByText(/3 entradas encontradas/i)).toBeInTheDocument()
     })
 
     expect(mockGet).toHaveBeenCalledWith('/tickets/lookup', {
@@ -286,6 +283,18 @@ describe('TicketLookup', () => {
 
   it('displays a single ticket result with correct heading', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
+
+    render(<TicketLookup />)
+    const form = fillLookupForm(userEvent.setup())
+    await form.submit()
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 entradas encontradas/i)).toBeInTheDocument()
+    })
+  })
+
+  it('displays "1 entrada encontrada" for a single ticket', async () => {
+    mockGet.mockResolvedValue({ data: [{ ...mockTicket, quantity: 1 }] })
 
     render(<TicketLookup />)
     const form = fillLookupForm(userEvent.setup())
@@ -333,50 +342,9 @@ describe('TicketLookup', () => {
     ).not.toBeInTheDocument()
   })
 
-  // -- Ticket used status -----------------------------------------------
-
-  it('shows "Usada" badge and usage date for used tickets', async () => {
-    mockGet.mockResolvedValue({ data: [mockUsedTicket] })
-
-    render(<TicketLookup />)
-    const form = fillLookupForm(userEvent.setup())
-    await form.submit()
-
-    await waitFor(() => {
-      const badges = screen.getAllByText(/^Usada$/)
-      expect(badges.length).toBe(1)
-      expect(badges[0]).toBeInTheDocument()
-    })
-
-    const usedAtParagraph = document.querySelector('.ticket-used-at')
-    expect(usedAtParagraph).toBeInTheDocument()
-    expect(usedAtParagraph.textContent).toMatch(/septiembre/i)
-    // Usage time must be 24h (es-AR defaults to h12; TicketLookup forces 24h).
-    // Computed dynamically so the assertion is timezone-robust.
-    const expectedUsedAt = new Date('2026-09-01T15:30:00Z').toLocaleTimeString('es-AR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-    expect(usedAtParagraph.textContent).toContain(expectedUsedAt)
-    expect(usedAtParagraph.textContent).not.toMatch(/a\. m\.|p\. m\./i)
-  })
-
-  it('shows "Valida" badge for unused tickets', async () => {
-    mockGet.mockResolvedValue({ data: [mockTicket] })
-
-    render(<TicketLookup />)
-    const form = fillLookupForm(userEvent.setup())
-    await form.submit()
-
-    await waitFor(() => {
-      expect(screen.getByText(/valida/i)).toBeInTheDocument()
-    })
-  })
-
   // -- Ticket details ---------------------------------------------------
 
-  it('displays ticket type and price', async () => {
+  it('displays ticket type and quantity, not price', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
@@ -384,13 +352,15 @@ describe('TicketLookup', () => {
     await form.submit()
 
     await waitFor(() => {
-      expect(screen.getByText(/platea/i)).toBeInTheDocument()
+      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getByText('Platea')).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/\$ 15\.000/)).toBeInTheDocument()
+    // Info-only contract: no price is shown
+    expect(screen.queryByText(/\$ 15\.000/)).not.toBeInTheDocument()
   })
 
-  it('displays ticket quantity when present', async () => {
+  it('displays ticket quantity next to the ticket type', async () => {
     mockGet.mockResolvedValue({ data: [mockTicket] })
 
     render(<TicketLookup />)
@@ -401,7 +371,32 @@ describe('TicketLookup', () => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/cantidad: 2/i)).toBeInTheDocument()
+    // The quantity and the type name live on the same line ("2 Platea")
+    const typeLine = screen.getByText('Platea').closest('li')
+    expect(typeLine).toBeInTheDocument()
+    expect(typeLine.textContent).toMatch(/^2\s*Platea$/)
+  })
+
+  it('groups tickets of the same event into a single card with per-type quantities', async () => {
+    mockGet.mockResolvedValue({ data: [mockTicket, mockVipTicket] })
+
+    render(<TicketLookup />)
+    const form = fillLookupForm(userEvent.setup())
+    await form.submit()
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 entradas encontradas/i)).toBeInTheDocument()
+    })
+
+    // Exactly ONE card for the event (headings: page h1 + card h3 for the event)
+    const eventHeadings = screen.getAllByRole('heading', { name: /recital/i })
+    expect(eventHeadings.length).toBe(1)
+
+    // Both ticket-type lines are visible: "2 Platea" and "1 VIP"
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('Platea')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('VIP')).toBeInTheDocument()
   })
 
   // -- Empty state ------------------------------------------------------

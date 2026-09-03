@@ -26,6 +26,10 @@
   .button-primary:hover:not(:disabled) { background: var(--primary-hover); }
   .button-secondary { background: var(--accent-light); color: var(--accent); font-weight: 500; }
   .button-secondary:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
+  /* Primary action in the brand accent (purpura) — used on the scan page
+      instead of the orange primary so it matches the app's action color. */
+  .button-accent { background: var(--accent); color: #fff; font-weight: 500; }
+  .button-accent:hover:not(:disabled) { background: var(--accent-hover); }
   .button-danger { background: #dc2626; color: #fff; font-weight: 500; }
   .button-danger:hover:not(:disabled) { opacity: 0.9; }
 }

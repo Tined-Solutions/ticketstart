@@ -5,12 +5,15 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border py-6 px-4 mt-auto">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-2">
-        <p>&copy; {year} TicketStart. All rights reserved.</p>
-        <nav className="flex items-center gap-4" aria-label="Enlaces del pie de página">
+      {/* 3-column grid on sm+ so the middle link ("Preguntas frecuentes") is
+          truly centered; flex justify-between shifted it toward the narrower
+          copyright column. Mobile stays stacked and centered. */}
+      <div className="max-w-7xl mx-auto flex flex-col items-center gap-2 text-sm text-text-1 sm:grid sm:grid-cols-3 sm:items-center">
+        <p className="sm:justify-self-start">&copy; {year} TicketStart</p>
+        <nav className="flex items-center gap-4 sm:justify-self-center" aria-label="Enlaces del pie de página">
           <Link
             to="/faq"
-            className="text-text-2 hover:text-brand-1 transition-colors duration-(--dur-micro)"
+            className="hover:text-brand-1 transition-colors duration-(--dur-micro)"
           >
             Preguntas frecuentes
           </Link>
@@ -19,7 +22,7 @@ export default function Footer() {
           href="https://tinedsolutions.tech"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-text-muted transition-colors duration-(--dur-micro) hover:text-brand-1"
+          className="hover:text-brand-1 transition-colors duration-(--dur-micro) sm:justify-self-end"
         >
           Desarrollada por Tined Solutions
         </a>

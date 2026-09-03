@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { Check, X, Eye, TicketPlus, ShoppingCart, Pencil, Trash2, KeyRound } from 'lucide-react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
@@ -9,6 +10,7 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import PasswordInput from '../components/ui/PasswordInput.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import DropdownMenu from '../components/ui/DropdownMenu.jsx'
+import Tooltip from '../components/ui/Tooltip.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import AddTicketsModal from '../components/AddTicketsModal.jsx'
@@ -23,6 +25,24 @@ import { fadeIn } from '../lib/motion.js'
 // later @media block, so it reliably overrides the base hover transforms.
 const ACTION_HOVER =
   'hover:shadow-[0_8px_20px_rgba(74,74,74,0.18)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none'
+
+// Responsive helper: true below the `sm` breakpoint. Defensive when matchMedia
+// is unavailable (e.g. jsdom) — defaults to desktop so tests render the full
+// action row.
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return window.matchMedia('(max-width: 639px)').matches
+  })
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const mql = window.matchMedia('(max-width: 639px)')
+    const handler = (e) => setIsMobile(e.matches)
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [])
+  return isMobile
+}
 
 const USERS_PER_PAGE = 10
 
@@ -111,6 +131,7 @@ export default function AdminPanel() {
   // one-time credential is never retained after closing (D14).
   const [roleEditTarget, setRoleEditTarget] = useState(null)
   const [resetPasswordTarget, setResetPasswordTarget] = useState(null)
+  const isMobile = useIsMobile()
 
   const loadData = useCallback((controller) => {
     setLoading(true)
@@ -377,7 +398,11 @@ export default function AdminPanel() {
   }
 
   return (
-    <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+    <div className="relative -mt-16 min-h-[calc(100svh-56px)] bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+      {/* Gradient background identical to the "Mis entradas" (TicketLookup)
+          page. It starts at the very top, behind the translucent fixed navbar,
+          so there is no white gap between the navbar and the page background. */}
+      <motion.div variants={fadeIn} initial="initial" animate="animate" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
       <header className="mb-4">
         <h1 className="text-2xl md:text-3xl font-display font-bold text-text-1 text-center mb-2">
           Panel de administración
@@ -516,6 +541,75 @@ export default function AdminPanel() {
                       const isPast = new Date(event.date) < new Date()
                       const readonlyTitle = 'Evento finalizado — solo lectura'
                       const isLast = index === sortedEvents.length - 1
+
+                      // Single source of truth for a row's actions (icon + label),
+                      // reused by the desktop inline buttons AND the mobile kebab.
+                      const rowItems = [
+                        {
+                          label: 'Ver',
+                          ariaLabel: `Ver ${event.name}`,
+                          icon: <Eye className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => navigate(`/organizer/events/${event.id}/view`),
+                          disabled: false,
+                        },
+                        ...(event.status !== 'Approved'
+                          ? [{
+                              label: 'Aprobar',
+                              ariaLabel: `Aprobar ${event.name}`,
+                              icon: <Check className="h-4 w-4" aria-hidden="true" />,
+                              onClick: () => handleApprove(event),
+                              disabled: isPast || busyApprovalId === event.id,
+                            }]
+                          : []),
+                        ...(event.status === 'Pending'
+                          ? [{
+                              label: 'Rechazar',
+                              ariaLabel: `Rechazar ${event.name}`,
+                              icon: <X className="h-4 w-4" aria-hidden="true" />,
+                              onClick: () => handleReject(event),
+                              disabled: isPast || busyApprovalId === event.id,
+                            }]
+                          : []),
+                        {
+                          label: 'Agregar entradas',
+                          ariaLabel: `Agregar entradas a ${event.name}`,
+                          icon: <TicketPlus className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => setAddTicketsTarget(event),
+                          disabled: isPast,
+                        },
+                        {
+                          label: 'Compras',
+                          ariaLabel: `Compras de ${event.name}`,
+                          icon: <ShoppingCart className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => navigate(`/admin/events/${event.id}/purchases`),
+                          disabled: false,
+                        },
+                        {
+                          label: 'Editar',
+                          ariaLabel: `Editar ${event.name}`,
+                          icon: <Pencil className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => navigate(`/organizer/events/${event.id}`),
+                          disabled: isPast,
+                          title: isPast ? readonlyTitle : undefined,
+                        },
+                        {
+                          label: 'Eliminar',
+                          ariaLabel: `Eliminar ${event.name}`,
+                          icon: <Trash2 className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => handleDeleteClick(event),
+                          disabled: isPast,
+                          variant: 'danger',
+                          title: isPast ? readonlyTitle : undefined,
+                        },
+                      ]
+
+                      // Menu-only actions shown in the desktop kebab (the quick
+                      // icon buttons render inline); on mobile everything folds
+                      // into a single kebab.
+                      const menuOnlyItems = rowItems.filter((i) =>
+                        ['Compras', 'Editar', 'Eliminar'].includes(i.label)
+                      )
+
                       return (
                         <div
                           key={event.id}
@@ -539,86 +633,82 @@ export default function AdminPanel() {
                               <span aria-hidden="true"> • </span> <span>{getOrganizerEmail(event.organizerId)}</span>
                             </p>
                           </div>
-                          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                            {/* Ver is available for EVERY status: pre-approval
-                                review (Pending) needs the read-only preview as
-                                much as past-event consultation does. */}
-                            <Button
-                              variant="glass"
-                              size="sm"
-                              onClick={() => navigate(`/organizer/events/${event.id}/view`)}
-                              aria-label={`Ver ${event.name}`}
-                              className={ACTION_HOVER}
-                            >
-                              Ver
-                            </Button>
-                            {event.status !== 'Approved' && (
-                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                                <Button
-                                  variant="gradient"
-                                  size="sm"
-                                  onClick={() => handleApprove(event)}
-                                  disabled={isPast || busyApprovalId === event.id}
-                                  aria-label={`Aprobar ${event.name}`}
-                                  className={ACTION_HOVER}
-                                >
-                                  Aprobar
-                                </Button>
-                              </span>
+                          <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+                            {isMobile ? (
+                              /* Mobile: fold every action into a single kebab so
+                                 the row never crowds with 5 icon buttons. */
+                              <Tooltip label="Acciones">
+                                <DropdownMenu
+                                  triggerLabel="Acciones"
+                                  align="right"
+                                  items={rowItems}
+                                />
+                              </Tooltip>
+                            ) : (
+                              <>
+                                {/* Ver is available for EVERY status: pre-approval
+                                    review (Pending) needs the read-only preview as
+                                    much as past-event consultation does. */}
+                                <Tooltip label="Ver">
+                                  <Button
+                                    variant="glass"
+                                    size="sm"
+                                    onClick={() => navigate(`/organizer/events/${event.id}/view`)}
+                                    aria-label={`Ver ${event.name}`}
+                                    className={ACTION_HOVER}
+                                  >
+                                    <Eye className="h-4 w-4" aria-hidden="true" />
+                                  </Button>
+                                </Tooltip>
+                                {event.status !== 'Approved' && (
+                                  <Tooltip label="Aprobar">
+                                    <Button
+                                      variant="success"
+                                      size="sm"
+                                      onClick={() => handleApprove(event)}
+                                      disabled={isPast || busyApprovalId === event.id}
+                                      aria-label={`Aprobar ${event.name}`}
+                                      className={ACTION_HOVER}
+                                    >
+                                      <Check className="h-4 w-4" aria-hidden="true" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {event.status === 'Pending' && (
+                                  <Tooltip label="Rechazar">
+                                    <Button
+                                      variant="reject"
+                                      size="sm"
+                                      onClick={() => handleReject(event)}
+                                      disabled={isPast || busyApprovalId === event.id}
+                                      aria-label={`Rechazar ${event.name}`}
+                                      className={ACTION_HOVER}
+                                    >
+                                      <X className="h-4 w-4" aria-hidden="true" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                <Tooltip label="Agregar entradas">
+                                  <Button
+                                    variant="glass"
+                                    size="sm"
+                                    onClick={() => setAddTicketsTarget(event)}
+                                    disabled={isPast}
+                                    aria-label={`Agregar entradas a ${event.name}`}
+                                    className={ACTION_HOVER}
+                                  >
+                                    <TicketPlus className="h-4 w-4" aria-hidden="true" />
+                                  </Button>
+                                </Tooltip>
+                                <Tooltip label="Acciones">
+                                  <DropdownMenu
+                                    triggerLabel="Acciones"
+                                    align="right"
+                                    items={menuOnlyItems}
+                                  />
+                                </Tooltip>
+                              </>
                             )}
-                            {event.status === 'Pending' && (
-                              <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => handleReject(event)}
-                                  disabled={isPast || busyApprovalId === event.id}
-                                  aria-label={`Rechazar ${event.name}`}
-                                  className={`!bg-rose-50/70 !text-rose-700 border border-rose-300/60 !hover:bg-rose-100 ${ACTION_HOVER}`}
-                                >
-                                  Rechazar
-                                </Button>
-                              </span>
-                            )}
-                            <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
-                              <Button
-                                variant="glass"
-                                size="sm"
-                                onClick={() => setAddTicketsTarget(event)}
-                                disabled={isPast}
-                                aria-label={`Agregar entradas a ${event.name}`}
-                                className={ACTION_HOVER}
-                              >
-                                Agregar entradas
-                              </Button>
-                            </span>
-                            <DropdownMenu
-                              triggerLabel="Acciones"
-                              align="right"
-                              items={[
-                                {
-                                  label: 'Compras',
-                                  ariaLabel: `Compras de ${event.name}`,
-                                  onClick: () => navigate(`/admin/events/${event.id}/purchases`),
-                                  disabled: false,
-                                },
-                                {
-                                  label: 'Editar',
-                                  ariaLabel: `Editar ${event.name}`,
-                                  onClick: () => navigate(`/organizer/events/${event.id}`),
-                                  disabled: isPast,
-                                  title: isPast ? readonlyTitle : undefined,
-                                },
-                                {
-                                  label: 'Eliminar',
-                                  ariaLabel: `Eliminar ${event.name}`,
-                                  onClick: () => handleDeleteClick(event),
-                                  disabled: isPast,
-                                  variant: 'danger',
-                                  title: isPast ? readonlyTitle : undefined,
-                                },
-                              ]}
-                            />
                           </div>
                         </div>
                       )
@@ -786,11 +876,11 @@ export default function AdminPanel() {
                           <option value="SinAcceso">Sin acceso</option>
                         </select>
                         <Button
-                          variant="primary"
+                          variant="accent"
                           onClick={() => setShowCreateUser(true)}
                           aria-label="Crear nuevo usuario"
                         >
-                          Crear nuevo usuario
+                          + Crear nuevo usuario
                         </Button>
                       </div>
                     </div>
@@ -803,48 +893,53 @@ export default function AdminPanel() {
                       </p>
                     ) : (
                       <>
-                        <div className="overflow-x-auto">
+                        <div className="overflow-hidden">
                           <table className="admin-table w-full border-collapse text-left text-sm">
                             <thead>
                               <tr className="border-b-2 border-border">
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Email</th>
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Rol</th>
                                 <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Fecha de registro</th>
-                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap">Acciones</th>
+                                <th className="py-2 px-3 text-text-1 font-semibold whitespace-nowrap text-center">Acciones</th>
                               </tr>
                             </thead>
                             <tbody>
                               {pageUsers.map((user) => (
                                 <tr key={user.id} className="border-b border-border hover:bg-surface-elevated transition-colors">
-                                  <td className="py-2 px-3 text-text-1 align-middle" data-label="Email">{user.email}</td>
+                                  <td className="max-w-[20rem] truncate py-2 px-3 text-text-1 align-middle" data-label="Email" title={user.email}>{user.email}</td>
                                   <td className="py-2 px-3 align-middle" data-label="Rol">
                                     <Badge variant={roleBadgeVariant(user.role)}>
                                       {roleLabel(user.role)}
                                     </Badge>
                                   </td>
-                                  <td className="py-2 px-3 text-text-2 align-middle" data-label="Fecha de registro">
+                                  <td className="md:max-w-[8.5rem] py-2 px-3 text-text-2 align-middle whitespace-normal" data-label="Fecha de registro">
                                     {formatDate(user.createdAt)}
                                   </td>
                                   <td className="py-2 px-3 align-middle" data-label="Acciones">
-                                    {/* AUM-005 (D12): per-row kebab menu — same pattern as the events section. */}
-                                    <DropdownMenu
-                                      triggerLabel={`Acciones de ${user.email}`}
-                                      align="right"
-                                      items={[
-                                        {
-                                          label: 'Editar rol',
-                                          ariaLabel: `Editar rol de ${user.email}`,
-                                          onClick: () => setRoleEditTarget(user),
-                                          disabled: false,
-                                        },
-                                        {
-                                          label: 'Restablecer contraseña',
-                                          ariaLabel: `Restablecer contraseña de ${user.email}`,
-                                          onClick: () => setResetPasswordTarget(user),
-                                          disabled: false,
-                                        },
-                                      ]}
-                                    />
+                                    <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-2">
+                                      <Tooltip label="Editar rol">
+                                        <Button
+                                          variant="glass"
+                                          size="sm"
+                                          onClick={() => setRoleEditTarget(user)}
+                                          aria-label={`Editar rol de ${user.email}`}
+                                          className={ACTION_HOVER}
+                                        >
+                                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                                        </Button>
+                                      </Tooltip>
+                                      <Tooltip label="Restablecer contraseña">
+                                        <Button
+                                          variant="glass"
+                                          size="sm"
+                                          onClick={() => setResetPasswordTarget(user)}
+                                          aria-label={`Restablecer contraseña de ${user.email}`}
+                                          className={ACTION_HOVER}
+                                        >
+                                          <KeyRound className="h-4 w-4" aria-hidden="true" />
+                                        </Button>
+                                      </Tooltip>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -926,6 +1021,7 @@ export default function AdminPanel() {
           onClose={() => setResetPasswordTarget(null)}
         />
       )}
-    </motion.div>
+      </motion.div>
+    </div>
   )
 }

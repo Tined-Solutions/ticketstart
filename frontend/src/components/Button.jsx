@@ -3,6 +3,12 @@ import { forwardRef } from 'react'
 const variantClasses = {
   primary:
     'bg-primary text-primary-content hover:bg-primary-hover focus-visible:ring-primary',
+  accent:
+    'bg-accent text-white hover:bg-accent-hover focus-visible:ring-accent',
+  success:
+    'bg-verde text-white hover:brightness-95 focus-visible:ring-verde-dark',
+  reject:
+    'bg-danger text-white hover:brightness-95 focus-visible:ring-danger',
   secondary:
     'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary',
   danger:

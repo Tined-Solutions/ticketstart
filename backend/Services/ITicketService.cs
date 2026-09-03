@@ -136,6 +136,7 @@ public class TicketLookupInfoResponse
 {
     public string EventName { get; set; } = string.Empty;
     public DateTime EventDate { get; set; }
+    public string EventLocation { get; set; } = string.Empty;
     public string TicketType { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public string PurchaserEmail { get; set; } = string.Empty;

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import Badge from './Badge.jsx'
-import { validateDocument } from '../../utils/identityValidation.js'
+import { validateDocument, cleanDocument } from '../../utils/identityValidation.js'
 
 const COUNTRY_OPTIONS = [
   { value: 'AR', label: 'Argentina', flag: '🇦🇷' },
@@ -34,7 +34,9 @@ export default function IdentityDocumentInput({
 
   const handleChange = (e) => {
     if (onChange) {
-      onChange(e.target.value)
+      // Documents are digits-only: strip every non-digit so letters/symbols
+      // never enter the field. Formatting (dots/hyphen) is display-only.
+      onChange(cleanDocument(e.target.value))
     }
   }
 
@@ -77,14 +79,14 @@ export default function IdentityDocumentInput({
         </label>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         {/* Country selector */}
         <select
           value={country}
           onChange={handleCountryChange}
           disabled={disabled}
           aria-label="País del documento"
-          className="px-3 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
+          className="w-full sm:w-auto min-w-0 px-3 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
             text-gris-oscuro text-sm
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
             transition-[border-color,box-shadow] duration-200 disabled:opacity-50"
@@ -107,9 +109,10 @@ export default function IdentityDocumentInput({
           onBlur={handleBlur}
           disabled={disabled}
           placeholder={country === 'AR' ? '12.345.678' : '1.234.567-8'}
+          maxLength={8}
           aria-invalid={isInvalid ? 'true' : undefined}
           aria-describedby={describedBy}
-          className={`flex-1 px-4 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
+          className={`w-full sm:flex-1 min-w-0 px-4 py-2.5 bg-white/60 border border-gris-oscuro/15 rounded-lg backdrop-blur-sm
             text-gris-oscuro placeholder:text-text-muted
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:border-transparent
             transition-[border-color,box-shadow] duration-200 disabled:opacity-50
