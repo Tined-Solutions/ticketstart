@@ -9,7 +9,7 @@
 // external domains. A Pages Function is the supported way to keep the
 // same-origin topology (no CORS, cookies stay SameSite=Lax).
 
-const DEFAULT_API_BACKEND = 'https://api-staging.onrender.com'
+const DEFAULT_API_BACKEND = 'https://ticketstart.onrender.com'
 
 export async function onRequest(context) {
   const { request, env } = context
