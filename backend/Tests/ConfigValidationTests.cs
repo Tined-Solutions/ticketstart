@@ -134,12 +134,12 @@ public class ConfigValidationTests : IDisposable
     {
         // Arrange
         SetValidConfig();
-        SetEnv("Resend__ApiKey", "");
+        SetEnv("Brevo__ApiKey", "");
         var factory = new ConfigurableApiFactory();
 
         // Act & Assert
         var ex = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
-        Assert.Contains("Resend", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Brevo", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ApiKey", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 

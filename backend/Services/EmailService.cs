@@ -14,7 +14,7 @@ public class EmailService : IEmailService
     private readonly IResendClient _resendClient;
     private readonly ITicketService _ticketService;
     private readonly ILogger<EmailService> _logger;
-    private readonly ResendOptions _options;
+    private readonly BrevoOptions _options;
 
     private string ResolvedFrom =>
         string.IsNullOrEmpty(_options.FromName)
@@ -25,7 +25,7 @@ public class EmailService : IEmailService
         IResendClient resendClient,
         ITicketService ticketService,
         ILogger<EmailService> logger,
-        IOptions<ResendOptions> options)
+        IOptions<BrevoOptions> options)
     {
         _resendClient = resendClient;
         _ticketService = ticketService;

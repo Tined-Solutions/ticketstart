@@ -47,9 +47,12 @@ builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
     client.BaseAddress = new Uri("https://api.mercadopago.com/");
 });
 
-// Configure Resend email
-builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
-builder.Services.AddHttpClient<IResendClient, ResendClient>();
+// Configure transactional email. Staging sends via Brevo (API v3): senders
+// are verified in the Brevo dashboard by code, so no domain is required.
+// ResendClient remains in the codebase as the alternative once a domain is
+// verified — swap the registration below and the "Brevo" config section.
+builder.Services.Configure<BrevoOptions>(builder.Configuration.GetSection(BrevoOptions.SectionName));
+builder.Services.AddHttpClient<IResendClient, BrevoClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IEventNotificationQueue, EventNotificationQueue>();
 builder.Services.AddScoped<IRetryableEmailSender, RetryableEmailSender>();
@@ -75,16 +78,12 @@ builder.Services.Configure<HideExpiredEventsOptions>(hideExpiredSection);
 builder.Services.AddSingleton(TimeProvider.System);
 
 
-var resendSettings = builder.Configuration.GetSection("Resend");
-var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
-var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
-
-// PROD GATE: fail-fast if Production environment is configured with a Resend sandbox address.
-// resend.dev addresses cannot deliver in production — this prevents silent email loss.
-if (builder.Environment.IsProduction() &&
-    resendFromEmail.EndsWith("@resend.dev", StringComparison.OrdinalIgnoreCase))
-    throw new InvalidOperationException(
-        "Resend:FromEmail '@resend.dev' is not allowed in Production. Use a verified production email address.");
+// Validate the active provider (Brevo) fail-fast at startup.
+// Brevo has no sandbox gate like Resend's @resend.dev: an unverified sender
+// fails at send time with a clear API error instead.
+var brevoSettings = builder.Configuration.GetSection("Brevo");
+var brevoApiKey = GetRequiredValue(brevoSettings, "ApiKey");
+var brevoFromEmail = GetRequiredValue(brevoSettings, "FromEmail");
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();

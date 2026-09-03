@@ -17,7 +17,7 @@ public class EmailPropertyTests
     private readonly Mock<IResendClient> _mockResendClient;
     private readonly Mock<ITicketService> _mockTicketService;
     private readonly Mock<ILogger<EmailService>> _mockLogger;
-    private readonly IOptions<ResendOptions> _options;
+    private readonly IOptions<BrevoOptions> _options;
     private readonly EmailService _emailService;
 
     public EmailPropertyTests()
@@ -25,7 +25,7 @@ public class EmailPropertyTests
         _mockResendClient = new Mock<IResendClient>();
         _mockTicketService = new Mock<ITicketService>();
         _mockLogger = new Mock<ILogger<EmailService>>();
-        _options = Options.Create(new ResendOptions
+        _options = Options.Create(new BrevoOptions
         {
             ApiKey = "test-resend-api-key",
             FromEmail = "tickets@ticketera.example.com",
