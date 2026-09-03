@@ -559,7 +559,7 @@ export default function AdminPanel() {
                             {event.status !== 'Approved' && (
                               <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                                 <Button
-                                  variant="gradient"
+                                  variant="success"
                                   size="sm"
                                   onClick={() => handleApprove(event)}
                                   disabled={isPast || busyApprovalId === event.id}
@@ -573,12 +573,12 @@ export default function AdminPanel() {
                             {event.status === 'Pending' && (
                               <span title={isPast ? readonlyTitle : undefined} className="inline-flex">
                                 <Button
-                                  variant="secondary"
+                                  variant="reject"
                                   size="sm"
                                   onClick={() => handleReject(event)}
                                   disabled={isPast || busyApprovalId === event.id}
                                   aria-label={`Rechazar ${event.name}`}
-                                  className={`!bg-rose-50/70 !text-rose-700 border border-rose-300/60 !hover:bg-rose-100 ${ACTION_HOVER}`}
+                                  className={ACTION_HOVER}
                                 >
                                   Rechazar
                                 </Button>

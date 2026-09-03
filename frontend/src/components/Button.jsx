@@ -5,6 +5,10 @@ const variantClasses = {
     'bg-primary text-primary-content hover:bg-primary-hover focus-visible:ring-primary',
   accent:
     'bg-accent text-white hover:bg-accent-hover focus-visible:ring-accent',
+  success:
+    'bg-verde-dark text-white hover:brightness-95 focus-visible:ring-verde-dark',
+  reject:
+    'bg-naranja-dark text-white hover:brightness-95 focus-visible:ring-naranja-dark',
   secondary:
     'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary',
   danger:
