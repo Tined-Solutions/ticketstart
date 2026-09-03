@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TicketeraOnline.Api.Models;
 
 namespace TicketeraOnline.Api.Services;
@@ -68,7 +69,14 @@ public class TurnstileService : ITurnstileService
 
     private class TurnstileVerifyResponse
     {
+        // Cloudflare returns camelCase JSON ("success", "error-codes"). The
+        // project's global JSON options do NOT use camelCase policy, so the
+        // property names must be mapped explicitly — without this, Success
+        // always deserializes as false and every valid token is rejected.
+        [JsonPropertyName("success")]
         public bool Success { get; set; }
+
+        [JsonPropertyName("error-codes")]
         public string[]? ErrorCodes { get; set; }
     }
 }
