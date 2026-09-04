@@ -35,9 +35,18 @@ public class R2StorageClient : IR2StorageClient
     private readonly string _secretKey;
     private readonly string _serviceUrl;
 
-    public R2StorageClient(HttpClient httpClient, IConfiguration configuration)
+    public R2StorageClient(IConfiguration configuration)
     {
-        _httpClient = httpClient;
+        // Cloudflare R2 rejects the TLS handshake from Render's datacenter IP
+        // when the client offers TLS 1.3 ("sslv3 alert handshake failure").
+        // Forcing TLS 1.2 only changes the ClientHello enough to pass.
+        _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+            {
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12,
+            },
+        });
         _accessKey = configuration["CloudflareR2:AccessKey"]
             ?? throw new InvalidOperationException("CloudflareR2:AccessKey is not configured");
         _secretKey = configuration["CloudflareR2:SecretKey"]

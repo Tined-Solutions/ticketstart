@@ -178,7 +178,7 @@ builder.Services.AddProblemDetails();
 // Configure Cloudflare R2 storage. The AWS SDK cannot negotiate TLS with R2
 // from Linux containers ("sslv3 alert handshake failure"), so storage goes
 // through R2StorageClient — raw HttpClient + SigV4, the transport that works.
-builder.Services.AddHttpClient<IR2StorageClient, R2StorageClient>();
+builder.Services.AddSingleton<IR2StorageClient, R2StorageClient>();
 
 // Add controllers
 builder.Services.AddControllers();
