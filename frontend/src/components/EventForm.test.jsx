@@ -349,8 +349,10 @@ describe('EventForm — create mode', () => {
     const uploadCall = mockPost.mock.calls[0]
     expect(uploadCall[0]).toBe('/uploads/event-image')
     expect(uploadCall[1]).toBeInstanceOf(FormData)
-    // No manual multipart Content-Type header — axios sets the boundary
-    expect(uploadCall[2]).toBeUndefined()
+    // The explicit multipart header is REQUIRED — without it axios's
+    // transformRequest JSON-serializes the FormData (client default is
+    // application/json) and the backend rejects the upload with 415.
+    expect(uploadCall[2]?.headers?.['Content-Type']).toBe('multipart/form-data')
     const createCall = mockPost.mock.calls[1]
     expect(createCall[0]).toBe('/events')
     expect(createCall[1].imageUrl).toBe('https://r2.example.com/img.jpg')

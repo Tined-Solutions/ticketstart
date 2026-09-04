@@ -146,7 +146,14 @@ export default function EventForm({
         setPhase('uploading')
         const formData = new FormData()
         formData.append('image', imageFile)
-        const uploadResponse = await apiClient.post('/uploads/event-image', formData)
+        // The explicit multipart header is REQUIRED: without it, axios's
+        // transformRequest JSON-serializes the FormData because the client
+        // default Content-Type is application/json — the adapter only strips
+        // that header for real FormData, too late. The browser still adds the
+        // boundary to the Content-Type it sends.
+        const uploadResponse = await apiClient.post('/uploads/event-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
         uploadedUrl = uploadResponse.data.imageUrl
       }
 
