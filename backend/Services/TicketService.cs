@@ -630,6 +630,19 @@ public class TicketService : ITicketService
     }
 
     /// <summary>
+    /// Returns the QR payload for a ticket, or null when the ticket does not
+    /// exist. The public QR image endpoint renders the PNG on demand from this
+    /// immutable payload (no storage upload involved).
+    /// </summary>
+    public async Task<string?> GetTicketQrCodeDataAsync(Guid ticketId)
+    {
+        var ticket = await _context.Tickets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == ticketId);
+        return ticket?.QRCodeData;
+    }
+
+    /// <summary>
     /// Masks an email address for display (e.g., "b***@test.com").
     /// </summary>
     private static string MaskEmail(string email)

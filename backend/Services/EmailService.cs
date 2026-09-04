@@ -1,5 +1,3 @@
-using Amazon.S3;
-using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,7 +17,6 @@ public class EmailService : IEmailService
     private readonly ILogger<EmailService> _logger;
     private readonly BrevoOptions _options;
     private readonly IConfiguration _configuration;
-    private readonly IAmazonS3 _s3Client;
 
     private string ResolvedFrom =>
         string.IsNullOrEmpty(_options.FromName)
@@ -31,15 +28,13 @@ public class EmailService : IEmailService
         ITicketService ticketService,
         ILogger<EmailService> logger,
         IOptions<BrevoOptions> options,
-        IConfiguration configuration,
-        IAmazonS3 s3Client)
+        IConfiguration configuration)
     {
         _resendClient = resendClient;
         _ticketService = ticketService;
         _logger = logger;
         _options = options.Value;
         _configuration = configuration;
-        _s3Client = s3Client;
     }
 
     /// <inheritdoc />
@@ -67,7 +62,7 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketQrCodes.Add((ticket, await UploadQrCodeImageAsync(ticket, imageBase64)));
+            ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
@@ -130,7 +125,7 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketQrCodes.Add((ticket, await UploadQrCodeImageAsync(ticket, imageBase64)));
+            ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
@@ -256,58 +251,23 @@ public class EmailService : IEmailService
     }
 
     /// <summary>
-    /// Uploads a ticket's QR PNG to Cloudflare R2 and returns its public URL so
-    /// the QR renders in every email client (Gmail/Outlook block data URIs and
-    /// Brevo cannot render inline Content-ID images). Falls back to a data URI
-    /// if the upload fails so the email can still be sent — the QR always
-    /// remains available as a downloadable attachment.
+    /// Builds the QR image src for the email body: the public QR endpoint URL
+    /// (the API renders the PNG on demand from the ticket's immutable payload),
+    /// with a data URI fallback. The QR is intentionally NOT uploaded to R2:
+    /// the AWS SDK cannot negotiate TLS with R2 from the Render Linux container
+    /// ("sslv3 alert handshake failure"), while the endpoint sidesteps storage
+    /// entirely and always renders in every email client.
     /// </summary>
-    private async Task<string> UploadQrCodeImageAsync(Ticket ticket, string imageBase64)
+    private string GetQrImageSrc(Ticket ticket, string imageBase64)
     {
-        var bucketName = _configuration["CloudflareR2:BucketName"];
-        var publicUrl = _configuration["CloudflareR2:PublicUrl"];
-
-        if (string.IsNullOrWhiteSpace(bucketName) || string.IsNullOrWhiteSpace(publicUrl))
+        var publicBaseUrl = _configuration["MercadoPago:WebhookBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl))
         {
-            _logger.LogWarning("R2 configuration missing; QR image will be embedded as data URI");
-            return $"data:image/png;base64,{imageBase64}";
+            return $"{publicBaseUrl.TrimEnd('/')}/api/tickets/{ticket.Id}/qr.png";
         }
 
-        try
-        {
-            var objectKey = $"qr/{ticket.Id}.png";
-            using var memoryStream = new MemoryStream(Convert.FromBase64String(imageBase64));
-
-            // DisablePayloadSigning=true forces UNSIGNED-PAYLOAD signing, which
-            // Cloudflare R2 accepts (same pattern as EventService uploads).
-            var putRequest = new PutObjectRequest
-            {
-                BucketName = bucketName,
-                Key = objectKey,
-                InputStream = memoryStream,
-                ContentType = "image/png",
-                AutoCloseStream = false,
-                DisablePayloadSigning = true
-            };
-
-            var response = await _s3Client.PutObjectAsync(putRequest);
-
-            if (response.HttpStatusCode != System.Net.HttpStatusCode.OK)
-            {
-                _logger.LogWarning(
-                    "Failed to upload QR image to R2 (status {StatusCode}); falling back to data URI",
-                    response.HttpStatusCode);
-                return $"data:image/png;base64,{imageBase64}";
-            }
-
-            _logger.LogInformation("Uploaded QR image for ticket {TicketId} to R2", ticket.Id);
-            return $"{publicUrl.TrimEnd('/')}/{objectKey}";
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "QR image upload to R2 failed; falling back to data URI");
-            return $"data:image/png;base64,{imageBase64}";
-        }
+        _logger.LogWarning("MercadoPago:WebhookBaseUrl not configured; QR image will be embedded as data URI");
+        return $"data:image/png;base64,{imageBase64}";
     }
 
     /// <inheritdoc />

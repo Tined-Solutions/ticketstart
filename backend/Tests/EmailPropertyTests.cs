@@ -1,6 +1,4 @@
 using System.Globalization;
-using Amazon.S3;
-using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,7 +18,6 @@ public class EmailPropertyTests
     private readonly Mock<IResendClient> _mockResendClient;
     private readonly Mock<ITicketService> _mockTicketService;
     private readonly Mock<ILogger<EmailService>> _mockLogger;
-    private readonly Mock<IAmazonS3> _mockS3;
     private readonly IOptions<BrevoOptions> _options;
     private readonly EmailService _emailService;
 
@@ -29,14 +26,9 @@ public class EmailPropertyTests
         _mockResendClient = new Mock<IResendClient>();
         _mockTicketService = new Mock<ITicketService>();
         _mockLogger = new Mock<ILogger<EmailService>>();
-        _mockS3 = new Mock<IAmazonS3>();
-        _mockS3
-            .Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = System.Net.HttpStatusCode.OK });
 
         var configuration = new Mock<IConfiguration>();
-        configuration.Setup(c => c["CloudflareR2:BucketName"]).Returns("test-bucket");
-        configuration.Setup(c => c["CloudflareR2:PublicUrl"]).Returns("https://pub-test.r2.dev");
+        configuration.Setup(c => c["MercadoPago:WebhookBaseUrl"]).Returns("https://api.example.com");
 
         _options = Options.Create(new BrevoOptions
         {
@@ -51,8 +43,7 @@ public class EmailPropertyTests
             _mockTicketService.Object,
             _mockLogger.Object,
             _options,
-            configuration.Object,
-            _mockS3.Object);
+            configuration.Object);
     }
 
     private static Event CreateEvent(string name = "Test Event")
@@ -151,12 +142,12 @@ public class EmailPropertyTests
 
             Assert.Equal("image/png", attachment.ContentType);
             Assert.Equal(expectedContentId, attachment.ContentId);
-            Assert.Contains($"https://pub-test.r2.dev/qr/{ticket.Id}.png", captured.Html);
+            Assert.Contains($"https://api.example.com/api/tickets/{ticket.Id}/qr.png", captured.Html);
             Assert.Contains(FakePngBase64(ticket.QRCodeData), attachment.Content);
         }
 
         // HTML embeds the QR via public R2 URL (universal rendering)
-        Assert.Contains("https://pub-test.r2.dev/qr/", captured.Html);
+        Assert.Contains("https://api.example.com/api/tickets/", captured.Html);
         Assert.DoesNotContain("cid:", captured.Html);
     }
 
@@ -187,7 +178,7 @@ public class EmailPropertyTests
         var attachment = captured.Attachments![0];
         Assert.Equal("image/png", attachment.ContentType);
         Assert.Equal($"qr-ticket-{tickets[0].Id}", attachment.ContentId);
-        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[0].Id}.png", captured.Html);
+        Assert.Contains($"https://api.example.com/api/tickets/{tickets[0].Id}/qr.png", captured.Html);
         Assert.Contains(FakePngBase64("single-qr-data"), attachment.Content);
     }
 
@@ -223,8 +214,8 @@ public class EmailPropertyTests
         Assert.Contains(FakePngBase64("qr-b"), captured.Attachments[1].Content);
 
         // HTML embeds the QR via public R2 URLs
-        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[0].Id}.png", captured.Html);
-        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[1].Id}.png", captured.Html);
+        Assert.Contains($"https://api.example.com/api/tickets/{tickets[0].Id}/qr.png", captured.Html);
+        Assert.Contains($"https://api.example.com/api/tickets/{tickets[1].Id}/qr.png", captured.Html);
     }
 
     [Fact]

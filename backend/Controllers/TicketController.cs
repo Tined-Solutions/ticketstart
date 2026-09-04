@@ -86,6 +86,32 @@ public class TicketController : TicketeraControllerBase
     }
 
     /// <summary>
+    /// Serves a ticket's QR code as a PNG image, rendered on demand.
+    /// Public endpoint: email clients (Gmail/Outlook) load images without user
+    /// cookies, and the ticket id is a non-enumerable GUID. The QR payload is
+    /// immutable, so the image is identical across emails and cached forever.
+    /// </summary>
+    [HttpGet("{ticketId:guid}/qr.png")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTicketQrImage(Guid ticketId)
+    {
+        var qrCodeData = await _ticketService.GetTicketQrCodeDataAsync(ticketId);
+        if (string.IsNullOrEmpty(qrCodeData))
+        {
+            _logger.LogWarning("QR image requested for unknown ticket {TicketId}", ticketId);
+            return NotFound();
+        }
+
+        var base64Image = _ticketService.GenerateQRCodeImage(qrCodeData);
+        var bytes = Convert.FromBase64String(base64Image);
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        return File(bytes, "image/png", $"qr-{ticketId}.png");
+    }
+
+    /// <summary>
     /// Validates a QR code and marks the ticket as used.
     /// Staff/Admin only endpoint.
     /// Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7

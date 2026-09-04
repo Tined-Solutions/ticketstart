@@ -96,6 +96,13 @@ public interface ITicketService
     /// <param name="email">Purchaser email</param>
     /// <returns>True (always returns success to prevent info leak)</returns>
     Task<bool> ResendTicketsByEmailAsync(string email);
+
+    /// <summary>
+    /// Returns the QR payload for a ticket, or null when the ticket does not
+    /// exist. Used by the public QR image endpoint — the PNG is rendered on
+    /// demand from this immutable payload.
+    /// </summary>
+    Task<string?> GetTicketQrCodeDataAsync(Guid ticketId);
 }
 
 /// <summary>
