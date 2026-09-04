@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare Wrangler local state (cache from wrangler pages dev)
+.wrangler

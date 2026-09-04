@@ -266,6 +266,8 @@ describe('EventForm — create mode', () => {
       ticketTypes: [
         { name: 'General', price: 5000, quantity: 100 },
       ],
+      // No photo → imageUrl is the non-nullable empty string (EIM-004)
+      imageUrl: '',
     })
     expect(mockOnSuccess).toHaveBeenCalledWith('new-event-id')
   })
@@ -321,11 +323,11 @@ describe('EventForm — create mode', () => {
     expect(mockOnSuccess).not.toHaveBeenCalled()
   })
 
-  it('uploads image after creating event when a file is selected', async () => {
+  it('uploads the image first, then creates the event carrying the imageUrl', async () => {
     const createdEvent = { id: 'new-event-id' }
     mockPost
-      .mockResolvedValueOnce({ data: createdEvent }) // create event
-      .mockResolvedValueOnce({ data: { imageUrl: 'https://r2.example.com/img.jpg' } }) // upload image
+      .mockResolvedValueOnce({ data: { imageUrl: 'https://r2.example.com/img.jpg' } }) // upload
+      .mockResolvedValueOnce({ data: createdEvent }) // create
 
     render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
 
@@ -342,19 +344,25 @@ describe('EventForm — create mode', () => {
       await Promise.resolve()
     })
 
+    // EIM-004: upload-FIRST — the upload precedes the save and its URL flows into it
     expect(mockPost).toHaveBeenCalledTimes(2)
-    // Second call should be the image upload
-    const imageCall = mockPost.mock.calls[1]
-    expect(imageCall[0]).toBe('/events/new-event-id/image')
-    expect(imageCall[1]).toBeInstanceOf(FormData)
+    const uploadCall = mockPost.mock.calls[0]
+    expect(uploadCall[0]).toBe('/uploads/event-image')
+    expect(uploadCall[1]).toBeInstanceOf(FormData)
+    // The explicit multipart header is REQUIRED — without it axios's
+    // transformRequest JSON-serializes the FormData (client default is
+    // application/json) and the backend rejects the upload with 415.
+    expect(uploadCall[2]?.headers?.['Content-Type']).toBe('multipart/form-data')
+    const createCall = mockPost.mock.calls[1]
+    expect(createCall[0]).toBe('/events')
+    expect(createCall[1].imageUrl).toBe('https://r2.example.com/img.jpg')
     expect(mockOnSuccess).toHaveBeenCalledWith('new-event-id')
   })
 
-  it('shows warning when image upload fails after successful event creation', async () => {
-    const createdEvent = { id: 'new-event-id' }
-    mockPost
-      .mockResolvedValueOnce({ data: createdEvent }) // create event
-      .mockRejectedValueOnce(new Error('Upload failed')) // image upload fails
+  it('blocks the event save with a red error when the image upload fails', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { data: { error: { message: 'La imagen no pudo cargarse' } } },
+    })
 
     render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
 
@@ -370,10 +378,66 @@ describe('EventForm — create mode', () => {
       await Promise.resolve()
     })
 
+    // EIM-003/004: honest red alert, NO green false-success, save never called
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/la imagen no pudo cargarse/i)
     expect(
-      screen.getByText(/evento creado correctamente, pero la imagen no pudo cargarse/i)
-    ).toBeInTheDocument()
-    expect(mockOnSuccess).toHaveBeenCalledWith('new-event-id')
+      screen.queryByText(/evento creado correctamente/i)
+    ).not.toBeInTheDocument()
+    expect(mockPost).toHaveBeenCalledTimes(1) // only the upload call
+    expect(mockPost.mock.calls[0][0]).toBe('/uploads/event-image')
+    expect(mockOnSuccess).not.toHaveBeenCalled()
+    // phase reset — the submit button is re-enabled
+    expect(
+      screen.getByRole('button', { name: /crear evento/i })
+    ).not.toBeDisabled()
+  })
+
+  it('shows "Subiendo imagen…" and disables the submit while uploading', async () => {
+    // Upload never resolves so we can observe the uploading phase
+    mockPost.mockImplementation(() => new Promise(() => {}))
+
+    render(<EventForm mode="create" />)
+
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+      target: { files: [file] },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /subiendo imagen/i })
+      ).toBeDisabled()
+    })
+  })
+
+  it('shows "Guardando…" after the upload completes', async () => {
+    mockPost
+      .mockResolvedValueOnce({ data: { imageUrl: 'https://r2.example.com/img.jpg' } }) // upload resolves
+      .mockImplementation(() => new Promise(() => {})) // save hangs
+
+    render(<EventForm mode="create" />)
+
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+      target: { files: [file] },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /guardando/i })
+      ).toBeDisabled()
+    })
   })
 
   it('validates image file type', async () => {

@@ -15,14 +15,14 @@ public static class TicketConfirmationTemplate
     /// Renders the ticket confirmation email body.
     /// </summary>
     /// <param name="eventDetails">Event information</param>
-    /// <param name="tickets">Tickets with their Content-ID references for inline QR images</param>
+    /// <param name="tickets">Tickets with their QR image source (public R2 URL, or data URI fallback)</param>
     /// <param name="totalAmount">Total purchase amount</param>
     /// <param name="recipientEmail">Purchaser email address</param>
     /// <param name="recipientName">Optional recipient name for the greeting</param>
     /// <returns>HTML email body</returns>
     public static string Render(
         Event eventDetails,
-        IEnumerable<(Ticket Ticket, string ContentId)> tickets,
+        IEnumerable<(Ticket Ticket, string QrImageSrc)> tickets,
         decimal totalAmount,
         string recipientEmail,
         string? recipientName = null)
@@ -46,7 +46,7 @@ public static class TicketConfirmationTemplate
 
         for (var i = 0; i < ticketList.Count; i++)
         {
-            var (ticket, contentId) = ticketList[i];
+            var (ticket, qrImageSrc) = ticketList[i];
             var ticketTypeName = ticket.TicketType?.Name ?? "Entrada";
             var ticketPrice = ticket.TicketType?.Price.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00";
 
@@ -54,7 +54,9 @@ public static class TicketConfirmationTemplate
             html.AppendLine($"<h3>Entrada {i + 1}: {HtmlEncoder.Escape(ticketTypeName)}</h3>");
             html.AppendLine($"<p><strong>Precio:</strong> ${ticketPrice}</p>");
             html.AppendLine("<div class=\"qr-code\">");
-            html.AppendLine($"<img src=\"cid:{HtmlEncoder.Escape(contentId)}\" alt=\"Código QR de la entrada {i + 1}\" width=\"200\" height=\"200\" />");
+            // Public R2 URL (or data URI fallback): renders in every client — Gmail
+            // and Outlook block data URIs, and Brevo cannot render cid: inline.
+            html.AppendLine($"<img src=\"{qrImageSrc}\" alt=\"Código QR de la entrada {i + 1}\" width=\"200\" height=\"200\" />");
             html.AppendLine("</div>");
             html.AppendLine("</div>");
         }

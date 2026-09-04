@@ -40,7 +40,12 @@ export default function EventForm({
     return [emptyTicketType()]
   })
   const [errors, setErrors] = useState({})
-  const [submitting, setSubmitting] = useState(false)
+  // EIM-003/004: two-phase submit — '' | 'uploading' | 'saving'. The upload
+  // happens BEFORE the event save and blocks it: a failed upload never reaches
+  // POST /events / PUT /events/{id} and shows an honest red error instead of the
+  // old green false-success.
+  const [phase, setPhase] = useState('')
+  const submitting = phase !== ''
   const [feedback, setFeedback] = useState({ type: '', message: '' })
 
   const isCreate = mode === 'create'
@@ -119,32 +124,53 @@ export default function EventForm({
       return
     }
 
-    setSubmitting(true)
+    const payload = {
+      name: name.trim(),
+      date: new Date(date).toISOString(),
+      location: location.trim(),
+      description: description.trim(),
+      ticketTypes: ticketTypes.map((tt) => ({
+        name: tt.name.trim(),
+        price: Number(tt.price),
+        quantity: Number(tt.quantity),
+      })),
+    }
+
+    let eventId = initialData?.id
 
     try {
-      const payload = {
-        name: name.trim(),
-        date: new Date(date).toISOString(),
-        location: location.trim(),
-        description: description.trim(),
-        ticketTypes: ticketTypes.map((tt) => ({
-          name: tt.name.trim(),
-          price: Number(tt.price),
-          quantity: Number(tt.quantity),
-        })),
+      // EIM-004: upload FIRST — a failed upload blocks the save in both modes.
+      // No manual multipart Content-Type header: axios sets the boundary itself.
+      let uploadedUrl = null
+      if (imageFile) {
+        setPhase('uploading')
+        const formData = new FormData()
+        formData.append('image', imageFile)
+        // The explicit multipart header is REQUIRED: without it, axios's
+        // transformRequest JSON-serializes the FormData because the client
+        // default Content-Type is application/json — the adapter only strips
+        // that header for real FormData, too late. The browser still adds the
+        // boundary to the Content-Type it sends.
+        const uploadResponse = await apiClient.post('/uploads/event-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        uploadedUrl = uploadResponse.data.imageUrl
       }
 
-      let eventId = initialData?.id
+      setPhase('saving')
 
       if (isCreate) {
-        const response = await apiClient.post('/events', payload)
+        const response = await apiClient.post('/events', {
+          ...payload,
+          // CreateEventRequest.ImageUrl is non-nullable — no photo means ""
+          imageUrl: uploadedUrl || '',
+        })
         eventId = response.data.id
         // EA-009: new events start Pending — communicate the moderation gate
         setFeedback({ type: 'success', message: 'Evento creado correctamente. Queda pendiente de aprobacion.' })
       } else {
         if (!eventId) {
           setFeedback({ type: 'error', message: 'No se pudo identificar el evento para actualizar' })
-          setSubmitting(false)
           return
         }
         await apiClient.put(`/events/${eventId}`, {
@@ -152,30 +178,11 @@ export default function EventForm({
           date: payload.date,
           location: payload.location,
           description: payload.description,
-          // Send the current image so a plain text edit never wipes it; replacing
-          // the image is handled by POST /events/{id}/image below.
-          imageUrl: initialData?.imageUrl || '',
+          // EIM-004/005: a fresh upload wins; without one the CURRENT URL is
+          // re-sent so a text-only edit never wipes the image (old ≠ new guard).
+          imageUrl: uploadedUrl ?? (initialData?.imageUrl || ''),
         })
         setFeedback({ type: 'success', message: 'Evento actualizado correctamente' })
-      }
-
-      // Upload image if one was selected
-      if (eventId && imageFile) {
-        try {
-          const formData = new FormData()
-          formData.append('image', imageFile)
-          await apiClient.post(`/events/${eventId}/image`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          })
-        } catch {
-          // Image upload failure is non-blocking; event was already created/updated
-          setFeedback({
-            type: 'success',
-            message: isCreate
-              ? 'Evento creado correctamente, pero la imagen no pudo cargarse'
-              : 'Evento actualizado correctamente, pero la imagen no pudo cargarse',
-          })
-        }
       }
 
       if (onSuccess) {
@@ -184,7 +191,7 @@ export default function EventForm({
     } catch (error) {
       setFeedback({ type: 'error', message: getErrorMessage(error) })
     } finally {
-      setSubmitting(false)
+      setPhase('')
     }
   }
 
@@ -510,7 +517,9 @@ export default function EventForm({
             disabled={submitting}
           >
             {submitting
-              ? 'Guardando...'
+              ? phase === 'uploading'
+                ? 'Subiendo imagen…'
+                : 'Guardando…'
               : isCreate
                 ? 'Crear evento'
                 : 'Guardar cambios'}

@@ -23,7 +23,7 @@ namespace TicketeraOnline.Api.Tests;
 public class EventServiceImmutabilityTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
-    private readonly Mock<IAmazonS3> _s3ClientMock;
+    private readonly Mock<IR2StorageClient> _s3ClientMock;
     private readonly Mock<IEventNotificationQueue> _notificationQueueMock;
     private readonly FakeTimeProvider _clock;
     private readonly Guid _organizerId;
@@ -38,7 +38,7 @@ public class EventServiceImmutabilityTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
-        _s3ClientMock = new Mock<IAmazonS3>();
+        _s3ClientMock = new Mock<IR2StorageClient>();
         _notificationQueueMock = new Mock<IEventNotificationQueue>();
         _clock = new FakeTimeProvider(new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
         _organizerId = Guid.NewGuid();
@@ -210,22 +210,31 @@ public class EventServiceImmutabilityTests : IDisposable
 
     #endregion
 
-    #region PEM-002/003 — ReplaceEventImageAsync
+    #region PEM-002/003 — UpdateEventAsync image replacement (EIM-006)
 
     [Fact]
-    public async Task ReplaceEventImageAsync_PastEvent_ThrowsEventFinalized_S3NeverCalled()
+    public async Task UpdateEventAsync_PastEvent_WithNewImage_ThrowsEventFinalized_NoDelete()
     {
-        // GIVEN a past event owned by the caller
-        var evt = await SeedPastEvent();
+        // GIVEN a past event owned by the caller, pointing at an existing R2 object
+        var evt = await SeedPastEvent("Past With Image");
+        evt.ImageUrl = "https://test.r2.dev/events/old.jpg";
+        await _context.SaveChangesAsync();
         var service = CreateService();
 
-        // WHEN an image replacement is attempted
-        // THEN it throws EventFinalizedException BEFORE any R2 upload
-        using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
-        await Assert.ThrowsAsync<EventFinalizedException>(() =>
-            service.ReplaceEventImageAsync(evt.Id, _organizerId, UserRole.Organizador, stream, "img.jpg", "image/jpeg"));
+        // WHEN an update carrying a REPLACED imageUrl is attempted on the finalized event
+        // THEN it throws EventFinalizedException BEFORE any SaveChanges / R2 delete
+        // (the PEM-002 guard no longer runs at upload time — the new event-agnostic
+        // upload endpoint mutates no event; the guard stays at persist time here)
+        var request = ValidUpdateRequest();
+        request.ImageUrl = "https://test.r2.dev/events/new.jpg";
 
-        _s3ClientMock.Verify(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        await Assert.ThrowsAsync<EventFinalizedException>(() =>
+            service.UpdateEventAsync(evt.Id, request, _organizerId, UserRole.Organizador));
+
+        // PEM-003: no save and no cleanup side-effect
+        var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
+        Assert.Equal("https://test.r2.dev/events/old.jpg", persisted.ImageUrl);
+        _s3ClientMock.Verify(s => s.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     #endregion

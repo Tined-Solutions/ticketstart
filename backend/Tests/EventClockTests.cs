@@ -54,7 +54,7 @@ public class EventClockTests : IDisposable
         _context,
         new TestLogger<EventService>(),
         _configuration,
-        new Mock<IAmazonS3>().Object,
+        new Mock<IR2StorageClient>().Object,
         new Mock<IEventNotificationQueue>().Object,
         clock,
         Options.Create(new HideExpiredEventsOptions()));

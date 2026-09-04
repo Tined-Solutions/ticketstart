@@ -12,8 +12,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using System.Threading.RateLimiting;
-using Amazon.S3;
-using Amazon.Runtime;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -47,9 +45,12 @@ builder.Services.AddHttpClient<IMercadoPagoClient, MercadoPagoClient>(client =>
     client.BaseAddress = new Uri("https://api.mercadopago.com/");
 });
 
-// Configure Resend email
-builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
-builder.Services.AddHttpClient<IResendClient, ResendClient>();
+// Configure transactional email. Staging sends via Brevo (API v3): senders
+// are verified in the Brevo dashboard by code, so no domain is required.
+// ResendClient remains in the codebase as the alternative once a domain is
+// verified — swap the registration below and the "Brevo" config section.
+builder.Services.Configure<BrevoOptions>(builder.Configuration.GetSection(BrevoOptions.SectionName));
+builder.Services.AddHttpClient<IResendClient, BrevoClient>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IEventNotificationQueue, EventNotificationQueue>();
 builder.Services.AddScoped<IRetryableEmailSender, RetryableEmailSender>();
@@ -75,16 +76,12 @@ builder.Services.Configure<HideExpiredEventsOptions>(hideExpiredSection);
 builder.Services.AddSingleton(TimeProvider.System);
 
 
-var resendSettings = builder.Configuration.GetSection("Resend");
-var resendApiKey = GetRequiredValue(resendSettings, "ApiKey");
-var resendFromEmail = GetRequiredValue(resendSettings, "FromEmail");
-
-// PROD GATE: fail-fast if Production environment is configured with a Resend sandbox address.
-// resend.dev addresses cannot deliver in production — this prevents silent email loss.
-if (builder.Environment.IsProduction() &&
-    resendFromEmail.EndsWith("@resend.dev", StringComparison.OrdinalIgnoreCase))
-    throw new InvalidOperationException(
-        "Resend:FromEmail '@resend.dev' is not allowed in Production. Use a verified production email address.");
+// Validate the active provider (Brevo) fail-fast at startup.
+// Brevo has no sandbox gate like Resend's @resend.dev: an unverified sender
+// fails at send time with a clear API error instead.
+var brevoSettings = builder.Configuration.GetSection("Brevo");
+var brevoApiKey = GetRequiredValue(brevoSettings, "ApiKey");
+var brevoFromEmail = GetRequiredValue(brevoSettings, "FromEmail");
 
 // Register background services
 builder.Services.AddHostedService<ReservationExpirationService>();
@@ -178,22 +175,10 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Configure Cloudflare R2 (S3-compatible storage)
-var r2Settings = builder.Configuration.GetSection("CloudflareR2");
-var r2AccessKey = GetRequiredValue(r2Settings, "AccessKey");
-var r2SecretKey = GetRequiredValue(r2Settings, "SecretKey");
-var r2ServiceUrl = GetRequiredValue(r2Settings, "ServiceUrl");
-
-builder.Services.AddSingleton<IAmazonS3>(sp =>
-{
-    var credentials = new BasicAWSCredentials(r2AccessKey, r2SecretKey);
-    var config = new AmazonS3Config
-    {
-        ServiceURL = r2ServiceUrl,
-        ForcePathStyle = true
-    };
-    return new AmazonS3Client(credentials, config);
-});
+// Configure Cloudflare R2 storage. The AWS SDK cannot negotiate TLS with R2
+// from Linux containers ("sslv3 alert handshake failure"), so storage goes
+// through R2StorageClient — raw HttpClient + SigV4, the transport that works.
+builder.Services.AddSingleton<IR2StorageClient, R2StorageClient>();
 
 // Add controllers
 builder.Services.AddControllers();
@@ -257,6 +242,23 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+
+    // EIM-002/ADR-6: the upload endpoint accepts multipart bodies up to 5 MB —
+    // an abuse-prone surface that gets its own limiter. ⚠ Discovery: UseRateLimiter
+    // (Program.cs:313) runs BEFORE UseAuthentication (:321), so partitioner callbacks
+    // see an unauthenticated context.User — partitions are effectively per-client-IP
+    // at runtime (already true for Reservations today). Reordering the pipeline is a
+    // documented follow-up, out of scope for this change.
+    options.AddPolicy("EventImageUpload", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitioner.AuthenticatedOrIp(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -304,6 +306,11 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// Apply forwarded headers from reverse proxies (Render terminates TLS and forwards
+// X-Forwarded-Proto/X-Forwarded-For). Must run before any middleware that reads the
+// request scheme or RemoteIpAddress (UseHttpsRedirection, rate limiters, audit logs).
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

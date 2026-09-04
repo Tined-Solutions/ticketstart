@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -17,7 +18,7 @@ public class EventDateChangeEmailServiceTests
     private readonly Mock<IResendClient> _mockResendClient;
     private readonly Mock<ITicketService> _mockTicketService;
     private readonly Mock<ILogger<EmailService>> _mockLogger;
-    private readonly ResendOptions _resendOptions;
+    private readonly BrevoOptions _brevoOptions;
     private readonly EmailService _emailService;
 
     public EventDateChangeEmailServiceTests()
@@ -26,7 +27,7 @@ public class EventDateChangeEmailServiceTests
         _mockTicketService = new Mock<ITicketService>();
         _mockLogger = new Mock<ILogger<EmailService>>();
 
-        _resendOptions = new ResendOptions
+        _brevoOptions = new BrevoOptions
         {
             ApiKey = "test-api-key",
             FromEmail = "tickets@ticketera.com",
@@ -39,7 +40,8 @@ public class EventDateChangeEmailServiceTests
             _mockResendClient.Object,
             _mockTicketService.Object,
             _mockLogger.Object,
-            Options.Create(_resendOptions));
+            Options.Create(_brevoOptions),
+            new Mock<IConfiguration>().Object);
     }
 
     [Fact]

@@ -222,66 +222,6 @@ public class EventController : TicketeraControllerBase
         }
     }
 
-    [HttpPost("{id:guid}/image")]
-    [Authorize(Policy = "EventOwnership")]
-    public async Task<IActionResult> UploadEventImage(Guid id, IFormFile image)
-    {
-        if (image == null || image.Length == 0)
-        {
-            return BadRequest(new { error = "Image file is required" });
-        }
-
-        if (!TryGetUserId(out var userId) || !TryGetUserRole(out var userRole))
-        {
-            return Unauthorized();
-        }
-
-        // EHE-006 (CRITICAL): includeExpired — past-event image upload/replacement
-        // is an existing organizer workflow; the default filter would 404 the
-        // existence check below. EventOwnership already gated access.
-        var eventDetails = await _eventService.GetEventByIdAsync(id, includeExpired: true);
-        if (eventDetails == null)
-        {
-            return NotFound(new { error = "Event not found" });
-        }
-
-        try
-        {
-            using var stream = image.OpenReadStream();
-            var imageUrl = await _eventService.ReplaceEventImageAsync(id, userId, userRole, stream, image.FileName, image.ContentType);
-
-            return Ok(new { imageUrl });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (KeyNotFoundException)
-        {
-            return NotFound(new { error = "Event not found" });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807
-        // (fires BEFORE any R2 upload, so a 409 never leaves an orphan image).
-        catch (EventFinalizedException)
-        {
-            return Problem(
-                detail: "This event has already finished and can no longer be modified.",
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Event has already finished",
-                type: "event-finalized");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error uploading image for event {EventId}", id);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { error = "An error occurred while uploading the image" });
-        }
-    }
-
     private async Task TryLogAuditAsync(Guid adminId, AuditLogContext context)
     {
         try

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Models;
@@ -14,7 +15,8 @@ public class EmailService : IEmailService
     private readonly IResendClient _resendClient;
     private readonly ITicketService _ticketService;
     private readonly ILogger<EmailService> _logger;
-    private readonly ResendOptions _options;
+    private readonly BrevoOptions _options;
+    private readonly IConfiguration _configuration;
 
     private string ResolvedFrom =>
         string.IsNullOrEmpty(_options.FromName)
@@ -25,12 +27,14 @@ public class EmailService : IEmailService
         IResendClient resendClient,
         ITicketService ticketService,
         ILogger<EmailService> logger,
-        IOptions<ResendOptions> options)
+        IOptions<BrevoOptions> options,
+        IConfiguration configuration)
     {
         _resendClient = resendClient;
         _ticketService = ticketService;
         _logger = logger;
         _options = options.Value;
+        _configuration = configuration;
     }
 
     /// <inheritdoc />
@@ -42,7 +46,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrImageSrc)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -58,13 +62,13 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketContentIds.Add((ticket, contentId));
+            ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketContentIds,
+            ticketQrCodes,
             totalAmount,
             recipientEmail,
             recipientName);
@@ -105,7 +109,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrImageSrc)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -121,13 +125,13 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketContentIds.Add((ticket, contentId));
+            ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketContentIds,
+            ticketQrCodes,
             totalAmount,
             recipientEmail,
             recipientName);
@@ -244,6 +248,26 @@ public class EmailService : IEmailService
             Success = false,
             Error = lastException?.Message ?? "Email delivery failed after maximum retry attempts"
         };
+    }
+
+    /// <summary>
+    /// Builds the QR image src for the email body: the public QR endpoint URL
+    /// (the API renders the PNG on demand from the ticket's immutable payload),
+    /// with a data URI fallback. The QR is intentionally NOT uploaded to R2:
+    /// the AWS SDK cannot negotiate TLS with R2 from the Render Linux container
+    /// ("sslv3 alert handshake failure"), while the endpoint sidesteps storage
+    /// entirely and always renders in every email client.
+    /// </summary>
+    private string GetQrImageSrc(Ticket ticket, string imageBase64)
+    {
+        var publicBaseUrl = _configuration["MercadoPago:WebhookBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl))
+        {
+            return $"{publicBaseUrl.TrimEnd('/')}/api/tickets/{ticket.Id}/qr.png";
+        }
+
+        _logger.LogWarning("MercadoPago:WebhookBaseUrl not configured; QR image will be embedded as data URI");
+        return $"data:image/png;base64,{imageBase64}";
     }
 
     /// <inheritdoc />

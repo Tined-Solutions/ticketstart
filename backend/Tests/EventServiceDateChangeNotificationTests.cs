@@ -20,7 +20,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
     private readonly Mock<IEventNotificationQueue> _mockQueue;
-    private readonly Mock<IAmazonS3> _mockS3;
+    private readonly Mock<IR2StorageClient> _mockS3;
     private readonly TestLogger<EventService> _logger;
     private readonly IConfiguration _configuration;
     private readonly EventService _eventService;
@@ -33,7 +33,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
 
         _context = new ApplicationDbContext(options);
         _mockQueue = new Mock<IEventNotificationQueue>();
-        _mockS3 = new Mock<IAmazonS3>();
+        _mockS3 = new Mock<IR2StorageClient>();
         _logger = new TestLogger<EventService>();
 
         var configData = new Dictionary<string, string?>

@@ -2,7 +2,7 @@
 
 > **Contrato canónico de comportamiento:** `openspec/specs/role-access/spec.md`.
 > Este archivo es una instantánea de referencia rápida. Ante cualquier discrepancia con el código, gana el código y se corrige este documento.
-> **Última actualización:** 2026-08-31.
+> **Última actualización:** 2026-09-04.
 
 ## Modelo de autenticación
 
@@ -14,8 +14,8 @@
 
 | Política | Regla | Uso principal |
 |----------|-------|---------------|
-| `EventOwnership` | Handler custom: dueño del evento o Admin | Editar/eliminar evento, imagen, métricas por evento |
-| `RequireOrganizadorRole` | Rol `Organizador` o `Admin` | Crear eventos, métricas de organizador |
+| `EventOwnership` | Handler custom: dueño del evento o Admin | Editar/eliminar evento, métricas por evento |
+| `RequireOrganizadorRole` | Rol `Organizador` o `Admin` | Crear eventos, upload de imagen (event-agnostic), métricas de organizador |
 | `RequireScanAccessRole` | Rol `Staff`, `Organizador` o `Admin` | Validar QR, lista de eventos escaneables |
 | `RequireAdminRole` | Solo rol `Admin` | Todo `AdminController`, reintento de envío de emails |
 | `[Authorize]` (sin política) | Cualquier usuario autenticado | `GET /api/auth/me` |
@@ -33,8 +33,9 @@
 | Ver catálogo y detalle de evento aprobado | ✅ | ✅ | ✅ | ✅ |
 | Reservar entradas, pagar, consultar entradas | ✅ | ✅ | ✅ | ✅ |
 | Crear evento | ❌ | ✅ | ❌ | ✅ |
-| Editar / subir imagen de evento propio | ❌ | ✅ | ❌ | ✅ |
-| Editar / subir imagen de cualquier evento | ❌ | ❌ | ❌ | ✅ |
+| Editar evento propio | ❌ | ✅ | ❌ | ✅ |
+| Editar evento ajeno | ❌ | ❌ | ❌ | ✅ |
+| Subir imagen de evento (endpoint event-agnostic; adjuntar sigue por `POST /events` / `PUT /events/{id}`) | ❌ | ✅ | ❌ | ✅ |
 | **Eliminar evento** | ❌ | ❌ | ❌ | ✅ |
 | Ver métricas de evento propio | ❌ | ✅ | ❌ | ✅ |
 | Ver métricas de cualquier evento | ❌ | ❌ | ❌ | ✅ |
@@ -49,7 +50,8 @@
 | Controlador | Endpoints y autorización |
 |-------------|--------------------------|
 | `AuthController` | `POST /login` y `POST /logout` públicos; `GET /me` autenticado |
-| `EventController` | `GET /` y `GET /{id}` públicos; `GET /manage` Staff/Organizador/Admin; `GET /{id}/manage` EventOwnership; `POST` RequireOrganizadorRole; `PUT /{id}`, `DELETE /{id}`, `POST /{id}/image` EventOwnership |
+| `EventController` | `GET /` y `GET /{id}` públicos; `GET /manage` Staff/Organizador/Admin; `GET /{id}/manage` EventOwnership; `POST` RequireOrganizadorRole; `PUT /{id}`, `DELETE /{id}` EventOwnership |
+| `UploadsController` | `POST /event-image` RequireOrganizadorRole (Organizador/Admin) + rate limit `EventImageUpload` (10/min) |
 | `ReservationController` | `POST /` (crear) y `PATCH /{id}` (actualizar comprador vía token de reserva) públicos |
 | `PaymentController` | `POST /create-preference`, `POST /webhook`, `POST /confirm` públicos; `POST /emails/retry-pending` Admin |
 | `TicketController` | `GET /lookup` y `POST /resend` públicos; `POST /validate` Staff/Organizador/Admin |

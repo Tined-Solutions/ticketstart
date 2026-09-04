@@ -2,8 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services.Guards;
-using Amazon.S3;
-using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +16,7 @@ public class EventService : IEventService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly IAmazonS3 _s3Client;
+    private readonly IR2StorageClient _r2Client;
     private readonly IEventNotificationQueue _notificationQueue;
     private readonly TimeProvider _clock;
     private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
@@ -38,12 +36,12 @@ public class EventService : IEventService
     private const int MaxAdditionalStock = 1000;
     private const int MaxTicketQuantityPerOperation = 1000;
 
-    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider, IOptions<HideExpiredEventsOptions> hideExpiredOptions)
+    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IR2StorageClient r2Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider, IOptions<HideExpiredEventsOptions> hideExpiredOptions)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
-        _s3Client = s3Client;
+        _r2Client = r2Client;
         _notificationQueue = notificationQueue;
         _clock = timeProvider;
         _hideExpiredOptions = hideExpiredOptions;
@@ -511,6 +509,11 @@ public class EventService : IEventService
         // explicitly; a value replaces it.
         var oldDate = eventEntity.Date;
 
+        // EIM-005: capture the previous image BEFORE the mutation — cleanup must
+        // target the object the event pointed at before this update, never the
+        // new one.
+        var previousImageUrl = eventEntity.ImageUrl;
+
         eventEntity.Name = request.Name;
         eventEntity.Description = request.Description;
         eventEntity.Date = request.Date;
@@ -524,6 +527,23 @@ public class EventService : IEventService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Event {EventId} updated successfully by user {UserId}", eventId, userId);
+
+        // EIM-005/ADR-4: best-effort cleanup of the replaced/cleared image AFTER
+        // the save succeeded (pre-save delete would remove an object the DB still
+        // references if the save failed). The old ≠ new guard is critical: a
+        // text-only edit re-sends the CURRENT URL and must NOT delete the object
+        // the event still points at; null (omitted) preserves and triggers nothing.
+        // A deletion failure logs a warning and never fails the request.
+        if (request.ImageUrl != null
+            && !string.IsNullOrWhiteSpace(previousImageUrl)
+            && !string.Equals(previousImageUrl, request.ImageUrl, StringComparison.Ordinal))
+        {
+            var imageDeleted = await DeleteImageAsync(previousImageUrl);
+            if (!imageDeleted)
+            {
+                _logger.LogWarning("Failed to delete previous image for event {EventId}; new image already persisted", eventId);
+            }
+        }
 
         // EDC-001 / EDC-007: single extensible condition block for change detection.
         // Future location/time changes can be added as additional conditions here.
@@ -702,27 +722,9 @@ public class EventService : IEventService
             await imageStream.CopyToAsync(memoryStream);
             memoryStream.Position = 0;
 
-            // Upload to R2 using AWS S3 SDK.
-            // DisablePayloadSigning=true forces UNSIGNED-PAYLOAD signing, which
-            // Cloudflare R2 accepts. The AWSSDK.S3 v4 default of STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER
-            // is NOT implemented by R2 and returns 501 NotImplemented.
-            var putRequest = new PutObjectRequest
-            {
-                BucketName = bucketName,
-                Key = objectKey,
-                InputStream = memoryStream,
-                ContentType = contentType,
-                AutoCloseStream = false,
-                DisablePayloadSigning = true
-            };
-
-            var response = await _s3Client.PutObjectAsync(putRequest);
-
-            if (response.HttpStatusCode != System.Net.HttpStatusCode.OK)
-            {
-                _logger.LogError("Failed to upload image to R2. Status code: {StatusCode}", response.HttpStatusCode);
-                throw new InvalidOperationException($"Failed to upload image to R2. Status code: {response.HttpStatusCode}");
-            }
+            // Upload to R2 using the raw SigV4 client (the AWS SDK cannot
+            // negotiate TLS with R2 from Linux containers — see R2StorageClient).
+            await _r2Client.PutObjectAsync(bucketName, objectKey, memoryStream, contentType);
 
             // Construct the public URL
             var imageUrl = $"{publicUrl.TrimEnd('/')}/{objectKey}";
@@ -731,69 +733,11 @@ public class EventService : IEventService
 
             return imageUrl;
         }
-        catch (AmazonS3Exception ex)
-        {
-            _logger.LogError(ex, "AWS S3 error while uploading image to R2: {ErrorCode} - {Message}", ex.ErrorCode, ex.Message);
-            throw new InvalidOperationException($"Failed to upload image to R2: {ex.Message}", ex);
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error while uploading image to R2");
             throw new InvalidOperationException("Failed to upload image to R2", ex);
         }
-    }
-
-    /// <summary>
-    /// Replaces an event's image: uploads the new image to R2, updates the event's
-    /// ImageUrl, then best-effort deletes the previous image object from R2 so it
-    /// does not stay orphaned. Ownership validation mirrors <see cref="UpdateEventAsync"/>.
-    /// </summary>
-    /// <exception cref="KeyNotFoundException">Event not found.</exception>
-    /// <exception cref="UnauthorizedAccessException">User is not the owner and not an Admin.</exception>
-    /// <exception cref="ArgumentException">Image validation fails (invalid type or size).</exception>
-    public async Task<string> ReplaceEventImageAsync(Guid eventId, Guid userId, UserRole userRole, Stream imageStream, string fileName, string contentType)
-    {
-        _logger.LogInformation("User {UserId} replacing image for event {EventId}", userId, eventId);
-
-        var eventEntity = await _context.Events.FindAsync(eventId);
-
-        if (eventEntity == null)
-        {
-            _logger.LogWarning("Event {EventId} not found for image replacement", eventId);
-            throw new KeyNotFoundException($"Event with ID {eventId} not found");
-        }
-
-        if (eventEntity.OrganizerId != userId && userRole != UserRole.Admin)
-        {
-            _logger.LogWarning("User {UserId} unauthorized to replace image for event {EventId} owned by {OrganizerId}",
-                userId, eventId, eventEntity.OrganizerId);
-            throw new UnauthorizedAccessException("You do not have permission to update this event");
-        }
-
-        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
-        // the R2 upload, the ImageUrl swap, and the SaveChanges below.
-        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
-
-        var previousImageUrl = eventEntity.ImageUrl;
-
-        var newImageUrl = await UploadEventImageAsync(imageStream, fileName, contentType);
-
-        eventEntity.ImageUrl = newImageUrl;
-        eventEntity.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
-        await _context.SaveChangesAsync();
-
-        // Best-effort cleanup: the old object is orphaned once the event points at
-        // the new URL. Failure must not fail the request (mirrors DeleteEventAsync).
-        if (!string.IsNullOrWhiteSpace(previousImageUrl))
-        {
-            var imageDeleted = await DeleteImageAsync(previousImageUrl);
-            if (!imageDeleted)
-            {
-                _logger.LogWarning("Failed to delete previous image for event {EventId}; new image is already in place", eventId);
-            }
-        }
-
-        return newImageUrl;
     }
 
     /// <summary>
@@ -843,32 +787,11 @@ public class EventService : IEventService
                 return false;
             }
 
-            // Delete from R2 using AWS S3 SDK
-            var deleteRequest = new DeleteObjectRequest
-            {
-                BucketName = bucketName,
-                Key = objectKey
-            };
+            // Delete from R2 using the raw SigV4 client (throws on failure).
+            await _r2Client.DeleteObjectAsync(bucketName, objectKey);
 
-            var response = await _s3Client.DeleteObjectAsync(deleteRequest);
-
-            if (response.HttpStatusCode == System.Net.HttpStatusCode.NoContent || 
-                response.HttpStatusCode == System.Net.HttpStatusCode.OK)
-            {
-                _logger.LogInformation("Image deleted successfully from R2: {ObjectKey}", objectKey);
-                return true;
-            }
-            else
-            {
-                _logger.LogWarning("Unexpected status code when deleting image from R2: {StatusCode}", response.HttpStatusCode);
-                return false;
-            }
-        }
-        catch (AmazonS3Exception ex)
-        {
-            // Log but don't throw - we want event deletion to succeed even if image deletion fails
-            _logger.LogError(ex, "AWS S3 error while deleting image from R2: {ErrorCode} - {Message}", ex.ErrorCode, ex.Message);
-            return false;
+            _logger.LogInformation("Image deleted successfully from R2: {ObjectKey}", objectKey);
+            return true;
         }
         catch (Exception ex)
         {
