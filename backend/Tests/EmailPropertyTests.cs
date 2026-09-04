@@ -1,4 +1,7 @@
 using System.Globalization;
+using Amazon.S3;
+using Amazon.S3.Model;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -17,6 +20,7 @@ public class EmailPropertyTests
     private readonly Mock<IResendClient> _mockResendClient;
     private readonly Mock<ITicketService> _mockTicketService;
     private readonly Mock<ILogger<EmailService>> _mockLogger;
+    private readonly Mock<IAmazonS3> _mockS3;
     private readonly IOptions<BrevoOptions> _options;
     private readonly EmailService _emailService;
 
@@ -25,6 +29,15 @@ public class EmailPropertyTests
         _mockResendClient = new Mock<IResendClient>();
         _mockTicketService = new Mock<ITicketService>();
         _mockLogger = new Mock<ILogger<EmailService>>();
+        _mockS3 = new Mock<IAmazonS3>();
+        _mockS3
+            .Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = System.Net.HttpStatusCode.OK });
+
+        var configuration = new Mock<IConfiguration>();
+        configuration.Setup(c => c["CloudflareR2:BucketName"]).Returns("test-bucket");
+        configuration.Setup(c => c["CloudflareR2:PublicUrl"]).Returns("https://pub-test.r2.dev");
+
         _options = Options.Create(new BrevoOptions
         {
             ApiKey = "test-resend-api-key",
@@ -37,7 +50,9 @@ public class EmailPropertyTests
             _mockResendClient.Object,
             _mockTicketService.Object,
             _mockLogger.Object,
-            _options);
+            _options,
+            configuration.Object,
+            _mockS3.Object);
     }
 
     private static Event CreateEvent(string name = "Test Event")
@@ -88,6 +103,14 @@ public class EmailPropertyTests
         };
     }
 
+    /// <summary>
+    /// Produces a deterministic, VALID base64 string from a seed. The real
+    /// GenerateQRCodeImage returns proper base64 PNG data; the upload path
+    /// decodes it (Convert.FromBase64String), so tests must feed valid base64.
+    /// </summary>
+    private static string FakePngBase64(string seed) =>
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(seed));
+
     #region Property 22: Email Contains All Ticket QR Codes
 
     [Fact]
@@ -104,7 +127,7 @@ public class EmailPropertyTests
 
         _mockTicketService
             .Setup(t => t.GenerateQRCodeImage(It.IsAny<string>()))
-            .Returns<string>(qr => $"base64-{qr}");
+            .Returns<string>(qr => FakePngBase64(qr));
 
         ResendEmailRequest? captured = null;
         _mockResendClient
@@ -128,12 +151,12 @@ public class EmailPropertyTests
 
             Assert.Equal("image/png", attachment.ContentType);
             Assert.Equal(expectedContentId, attachment.ContentId);
-            Assert.Contains($"data:image/png;base64,base64-qr-data-{i + 1}", captured.Html);
-            Assert.Contains($"base64-qr-data-{i + 1}", attachment.Content);
+            Assert.Contains($"https://pub-test.r2.dev/qr/{ticket.Id}.png", captured.Html);
+            Assert.Contains(FakePngBase64(ticket.QRCodeData), attachment.Content);
         }
 
-        // HTML embeds the QR as a data URI (universal rendering, Brevo-safe)
-        Assert.Contains("data:image/png;base64,", captured.Html);
+        // HTML embeds the QR via public R2 URL (universal rendering)
+        Assert.Contains("https://pub-test.r2.dev/qr/", captured.Html);
         Assert.DoesNotContain("cid:", captured.Html);
     }
 
@@ -146,7 +169,7 @@ public class EmailPropertyTests
 
         _mockTicketService
             .Setup(t => t.GenerateQRCodeImage("single-qr-data"))
-            .Returns("base64-single-qr");
+            .Returns(FakePngBase64("single-qr-data"));
 
         ResendEmailRequest? captured = null;
         _mockResendClient
@@ -164,8 +187,8 @@ public class EmailPropertyTests
         var attachment = captured.Attachments![0];
         Assert.Equal("image/png", attachment.ContentType);
         Assert.Equal($"qr-ticket-{tickets[0].Id}", attachment.ContentId);
-        Assert.Contains("data:image/png;base64,base64-single-qr", captured.Html);
-        Assert.Contains("base64-single-qr", attachment.Content);
+        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[0].Id}.png", captured.Html);
+        Assert.Contains(FakePngBase64("single-qr-data"), attachment.Content);
     }
 
     [Fact]
@@ -181,7 +204,7 @@ public class EmailPropertyTests
 
         _mockTicketService
             .Setup(t => t.GenerateQRCodeImage(It.IsAny<string>()))
-            .Returns<string>(qr => $"img-{qr}");
+            .Returns<string>(qr => FakePngBase64(qr));
 
         ResendEmailRequest? captured = null;
         _mockResendClient
@@ -196,12 +219,12 @@ public class EmailPropertyTests
 
         Assert.NotNull(captured!.Attachments);
         Assert.Equal(2, captured.Attachments!.Count);
-        Assert.Contains("img-qr-a", captured.Attachments[0].Content);
-        Assert.Contains("img-qr-b", captured.Attachments[1].Content);
+        Assert.Contains(FakePngBase64("qr-a"), captured.Attachments[0].Content);
+        Assert.Contains(FakePngBase64("qr-b"), captured.Attachments[1].Content);
 
-        // HTML embeds the QR as data URIs
-        Assert.Contains("data:image/png;base64,img-qr-a", captured.Html);
-        Assert.Contains("data:image/png;base64,img-qr-b", captured.Html);
+        // HTML embeds the QR via public R2 URLs
+        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[0].Id}.png", captured.Html);
+        Assert.Contains($"https://pub-test.r2.dev/qr/{tickets[1].Id}.png", captured.Html);
     }
 
     [Fact]

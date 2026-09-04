@@ -1,3 +1,5 @@
+using Amazon.S3;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -39,7 +41,9 @@ public class EventDateChangeEmailServiceTests
             _mockResendClient.Object,
             _mockTicketService.Object,
             _mockLogger.Object,
-            Options.Create(_brevoOptions));
+            Options.Create(_brevoOptions),
+            new Mock<IConfiguration>().Object,
+            new Mock<IAmazonS3>().Object);
     }
 
     [Fact]

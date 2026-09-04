@@ -1,3 +1,6 @@
+using Amazon.S3;
+using Amazon.S3.Model;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TicketeraOnline.Api.Models;
@@ -15,6 +18,8 @@ public class EmailService : IEmailService
     private readonly ITicketService _ticketService;
     private readonly ILogger<EmailService> _logger;
     private readonly BrevoOptions _options;
+    private readonly IConfiguration _configuration;
+    private readonly IAmazonS3 _s3Client;
 
     private string ResolvedFrom =>
         string.IsNullOrEmpty(_options.FromName)
@@ -25,12 +30,16 @@ public class EmailService : IEmailService
         IResendClient resendClient,
         ITicketService ticketService,
         ILogger<EmailService> logger,
-        IOptions<BrevoOptions> options)
+        IOptions<BrevoOptions> options,
+        IConfiguration configuration,
+        IAmazonS3 s3Client)
     {
         _resendClient = resendClient;
         _ticketService = ticketService;
         _logger = logger;
         _options = options.Value;
+        _configuration = configuration;
+        _s3Client = s3Client;
     }
 
     /// <inheritdoc />
@@ -42,7 +51,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketQrCodes = new List<(Ticket Ticket, string QrBase64)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrImageSrc)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -58,7 +67,7 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketQrCodes.Add((ticket, imageBase64));
+            ticketQrCodes.Add((ticket, await UploadQrCodeImageAsync(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
@@ -105,7 +114,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketQrCodes = new List<(Ticket Ticket, string QrBase64)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrImageSrc)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -121,7 +130,7 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketQrCodes.Add((ticket, imageBase64));
+            ticketQrCodes.Add((ticket, await UploadQrCodeImageAsync(ticket, imageBase64)));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
@@ -244,6 +253,61 @@ public class EmailService : IEmailService
             Success = false,
             Error = lastException?.Message ?? "Email delivery failed after maximum retry attempts"
         };
+    }
+
+    /// <summary>
+    /// Uploads a ticket's QR PNG to Cloudflare R2 and returns its public URL so
+    /// the QR renders in every email client (Gmail/Outlook block data URIs and
+    /// Brevo cannot render inline Content-ID images). Falls back to a data URI
+    /// if the upload fails so the email can still be sent — the QR always
+    /// remains available as a downloadable attachment.
+    /// </summary>
+    private async Task<string> UploadQrCodeImageAsync(Ticket ticket, string imageBase64)
+    {
+        var bucketName = _configuration["CloudflareR2:BucketName"];
+        var publicUrl = _configuration["CloudflareR2:PublicUrl"];
+
+        if (string.IsNullOrWhiteSpace(bucketName) || string.IsNullOrWhiteSpace(publicUrl))
+        {
+            _logger.LogWarning("R2 configuration missing; QR image will be embedded as data URI");
+            return $"data:image/png;base64,{imageBase64}";
+        }
+
+        try
+        {
+            var objectKey = $"qr/{ticket.Id}.png";
+            using var memoryStream = new MemoryStream(Convert.FromBase64String(imageBase64));
+
+            // DisablePayloadSigning=true forces UNSIGNED-PAYLOAD signing, which
+            // Cloudflare R2 accepts (same pattern as EventService uploads).
+            var putRequest = new PutObjectRequest
+            {
+                BucketName = bucketName,
+                Key = objectKey,
+                InputStream = memoryStream,
+                ContentType = "image/png",
+                AutoCloseStream = false,
+                DisablePayloadSigning = true
+            };
+
+            var response = await _s3Client.PutObjectAsync(putRequest);
+
+            if (response.HttpStatusCode != System.Net.HttpStatusCode.OK)
+            {
+                _logger.LogWarning(
+                    "Failed to upload QR image to R2 (status {StatusCode}); falling back to data URI",
+                    response.HttpStatusCode);
+                return $"data:image/png;base64,{imageBase64}";
+            }
+
+            _logger.LogInformation("Uploaded QR image for ticket {TicketId} to R2", ticket.Id);
+            return $"{publicUrl.TrimEnd('/')}/{objectKey}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "QR image upload to R2 failed; falling back to data URI");
+            return $"data:image/png;base64,{imageBase64}";
+        }
     }
 
     /// <inheritdoc />
