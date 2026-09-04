@@ -24,7 +24,7 @@ public class EventServiceTests : IDisposable
     private readonly EventService _eventService;
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Mock<IAmazonS3> _s3ClientMock;
+    private readonly Mock<IR2StorageClient> _s3ClientMock;
     private readonly Mock<IEventNotificationQueue> _mockNotificationQueue;
 
     public EventServiceTests()
@@ -49,7 +49,7 @@ public class EventServiceTests : IDisposable
         
         // Mock S3 client
         _mockNotificationQueue = new Mock<IEventNotificationQueue>();
-        _s3ClientMock = new Mock<IAmazonS3>();
+        _s3ClientMock = new Mock<IR2StorageClient>();
         
         _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System,
             Options.Create(new HideExpiredEventsOptions()));
@@ -737,7 +737,7 @@ public class EventServiceTests : IDisposable
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _eventService.DeleteEventAsync(eventEntity.Id, organizerId, UserRole.Organizador));
 
-        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -857,11 +857,16 @@ public class EventServiceTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        DeleteObjectRequest? capturedRequest = null;
+        string? capturedBucket = null;
+        string? capturedKey = null;
         _s3ClientMock
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
-            .Callback<DeleteObjectRequest, CancellationToken>((req, ct) => capturedRequest = req)
-            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((bucket, key, ct) =>
+            {
+                capturedBucket = bucket;
+                capturedKey = key;
+            })
+            .Returns(Task.CompletedTask);
 
         // Act (ED-001: delete authority is Admin-only — role switched from organizer)
         await _eventService.DeleteEventAsync(eventEntity.Id, Guid.NewGuid(), UserRole.Admin);
@@ -869,10 +874,10 @@ public class EventServiceTests : IDisposable
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.Null(deletedEvent);
-        Assert.NotNull(capturedRequest);
-        Assert.Equal("test-bucket", capturedRequest.BucketName);
-        Assert.Equal("events/test-image.jpg", capturedRequest.Key);
-        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+        Assert.NotNull(capturedKey);
+        Assert.Equal("test-bucket", capturedBucket);
+        Assert.Equal("events/test-image.jpg", capturedKey);
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -897,7 +902,7 @@ public class EventServiceTests : IDisposable
         await _context.SaveChangesAsync();
 
         _s3ClientMock
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new AmazonS3Exception("Delete failed"));
 
         // Act (ED-001: delete authority is Admin-only — role switched from organizer)
@@ -906,7 +911,7 @@ public class EventServiceTests : IDisposable
         // Assert
         var deletedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.Null(deletedEvent);
-        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+        _s3ClientMock.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

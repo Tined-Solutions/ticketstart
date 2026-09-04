@@ -70,15 +70,15 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange - Mock S3 client to capture uploaded object keys
         var uploadedKeys = new List<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .Callback<PutObjectRequest, CancellationToken>((request, ct) =>
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) =>
             {
-                uploadedKeys.Add(request.Key);
+                uploadedKeys.Add(key);
             })
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -127,15 +127,15 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange - Mock S3 client to capture uploaded object keys
         var uploadedKeys = new System.Collections.Concurrent.ConcurrentBag<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .Callback<PutObjectRequest, CancellationToken>((request, ct) =>
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) =>
             {
-                uploadedKeys.Add(request.Key);
+                uploadedKeys.Add(key);
             })
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -180,15 +180,15 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange - Mock S3 client
         var uploadedKeys = new List<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .Callback<PutObjectRequest, CancellationToken>((request, ct) =>
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) =>
             {
-                uploadedKeys.Add(request.Key);
+                uploadedKeys.Add(key);
             })
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -242,7 +242,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ImageUpload_RejectsInvalidFileTypes(string contentType, string fileName)
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var fileContent = "fake-file-content";
@@ -258,7 +258,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 was never called
         mockS3Client.Verify(
-            x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default),
+            x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
     }
@@ -275,10 +275,10 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ImageUpload_AcceptsValidFileTypes(string contentType, string fileName)
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -294,7 +294,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 was called once
         mockS3Client.Verify(
-            x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default),
+            x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
     }
@@ -306,7 +306,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ImageUpload_RejectsFilesExceedingSizeLimit()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create a stream larger than 5MB
@@ -323,7 +323,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 was never called
         mockS3Client.Verify(
-            x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default),
+            x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
     }
@@ -339,10 +339,10 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ImageUpload_AcceptsFilesWithinSizeLimit(int fileSize)
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -358,7 +358,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 was called once
         mockS3Client.Verify(
-            x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default),
+            x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
     }
@@ -373,7 +373,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ImageUpload_RejectsEmptyOrNullContentType(string? contentType)
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var imageContent = "some-content";
@@ -388,7 +388,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 was never called
         mockS3Client.Verify(
-            x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default),
+            x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
     }
@@ -408,15 +408,15 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange - Track S3 delete operations
         var deletedKeys = new List<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         
         mockS3Client
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
-            .Callback<DeleteObjectRequest, CancellationToken>((request, ct) =>
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((bucket, key, ct) =>
             {
-                deletedKeys.Add(request.Key);
+                deletedKeys.Add(key);
             })
-            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -462,7 +462,7 @@ public class ImageStoragePropertyTests : IDisposable
         Assert.Equal("events/12345678-1234-1234-1234-123456789abc.jpg", deletedKeys[0]);
 
         mockS3Client.Verify(
-            x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default),
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
     }
@@ -475,15 +475,15 @@ public class ImageStoragePropertyTests : IDisposable
     {
         // Arrange
         var deletedKeys = new List<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         
         mockS3Client
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
-            .Callback<DeleteObjectRequest, CancellationToken>((request, ct) =>
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((bucket, key, ct) =>
             {
-                deletedKeys.Add(request.Key);
+                deletedKeys.Add(key);
             })
-            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -551,7 +551,7 @@ public class ImageStoragePropertyTests : IDisposable
         }
 
         mockS3Client.Verify(
-            x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default),
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Exactly(eventCount)
         );
     }
@@ -563,7 +563,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task EventDeletion_WithoutImage_CompletesSuccessfully()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         // Create organizer and event WITHOUT image
@@ -604,7 +604,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Assert - S3 delete should NOT be called since there's no image
         mockS3Client.Verify(
-            x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default),
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
     }
@@ -616,7 +616,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task EventDeletion_WithEmptyImageUrl_CompletesSuccessfully()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
@@ -655,7 +655,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Assert - S3 delete should NOT be called for empty URL
         mockS3Client.Verify(
-            x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default),
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
     }
@@ -667,9 +667,9 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task EventDeletion_SucceedsEvenWhenImageDeletionFails()
     {
         // Arrange - Mock S3 to fail on delete
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         mockS3Client
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new AmazonS3Exception("Simulated S3 failure"));
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
@@ -711,7 +711,7 @@ public class ImageStoragePropertyTests : IDisposable
 
         // Verify S3 delete was attempted
         mockS3Client.Verify(
-            x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default),
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
     }
@@ -730,17 +730,17 @@ public class ImageStoragePropertyTests : IDisposable
         // Arrange
         var uploadedKeys = new List<string>();
         var deletedKeys = new List<string>();
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
 
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .Callback<PutObjectRequest, CancellationToken>((request, ct) => uploadedKeys.Add(request.Key))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) => uploadedKeys.Add(key))
+            .Returns(Task.CompletedTask);
 
         mockS3Client
-            .Setup(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default))
-            .Callback<DeleteObjectRequest, CancellationToken>((request, ct) => deletedKeys.Add(request.Key))
-            .ReturnsAsync(new DeleteObjectResponse { HttpStatusCode = HttpStatusCode.NoContent });
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((bucket, key, ct) => deletedKeys.Add(key))
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -790,8 +790,8 @@ public class ImageStoragePropertyTests : IDisposable
         Assert.Single(deletedKeys);
         Assert.Equal("events/old-guid.jpg", deletedKeys[0]);
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
-        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Once);
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
@@ -801,10 +801,10 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ReplaceEventImage_WithoutExistingImage_DoesNotDeleteFromR2()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
@@ -848,8 +848,8 @@ public class ImageStoragePropertyTests : IDisposable
         Assert.NotNull(updatedEvent);
         Assert.Equal(newImageUrl, updatedEvent.ImageUrl);
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
-        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
@@ -859,7 +859,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ReplaceEventImage_ByNonOwner_ThrowsUnauthorizedAccessException()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
@@ -885,8 +885,8 @@ public class ImageStoragePropertyTests : IDisposable
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             eventService.ReplaceEventImageAsync(eventEntity.Id, otherUserId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
-        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
@@ -896,7 +896,7 @@ public class ImageStoragePropertyTests : IDisposable
     public async Task ReplaceEventImage_OnMissingEvent_ThrowsKeyNotFoundException()
     {
         // Arrange
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
         var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
 
@@ -904,8 +904,8 @@ public class ImageStoragePropertyTests : IDisposable
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             eventService.ReplaceEventImageAsync(Guid.NewGuid(), Guid.NewGuid(), UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
-        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<DeleteObjectRequest>(), default), Times.Never);
+        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     #endregion

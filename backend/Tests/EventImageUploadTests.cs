@@ -21,7 +21,7 @@ public class EventImageUploadTests : IDisposable
     private readonly EventService _eventService;
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Mock<IAmazonS3> _s3ClientMock;
+    private readonly Mock<IR2StorageClient> _s3ClientMock;
     private readonly Mock<IEventNotificationQueue> _mockNotificationQueue;
 
     public EventImageUploadTests()
@@ -46,7 +46,7 @@ public class EventImageUploadTests : IDisposable
         
         // Mock S3 client
         _mockNotificationQueue = new Mock<IEventNotificationQueue>();
-        _s3ClientMock = new Mock<IAmazonS3>();
+        _s3ClientMock = new Mock<IR2StorageClient>();
         
         _eventService = new EventService(_context, _logger, _configuration, _s3ClientMock.Object, _mockNotificationQueue.Object, TimeProvider.System,
             Microsoft.Extensions.Options.Options.Create(new HideExpiredEventsOptions()));
@@ -70,8 +70,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/jpeg";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
@@ -80,7 +80,7 @@ public class EventImageUploadTests : IDisposable
         Assert.NotNull(result);
         Assert.StartsWith("https://test.r2.dev/events/", result);
         Assert.EndsWith(".jpg", result);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -93,8 +93,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/png";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
@@ -103,7 +103,7 @@ public class EventImageUploadTests : IDisposable
         Assert.NotNull(result);
         Assert.StartsWith("https://test.r2.dev/events/", result);
         Assert.EndsWith(".png", result);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -116,8 +116,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/webp";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
@@ -126,7 +126,7 @@ public class EventImageUploadTests : IDisposable
         Assert.NotNull(result);
         Assert.StartsWith("https://test.r2.dev/events/", result);
         Assert.EndsWith(".webp", result);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class EventImageUploadTests : IDisposable
         
         Assert.Contains("Invalid image type", exception.Message);
         Assert.Contains("JPEG, PNG, WebP", exception.Message);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class EventImageUploadTests : IDisposable
             _eventService.UploadEventImageAsync(imageStream, fileName, contentType));
         
         Assert.Contains("exceeds maximum allowed size of 5MB", exception.Message);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -174,8 +174,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/jpeg";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
@@ -183,7 +183,7 @@ public class EventImageUploadTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.StartsWith("https://test.r2.dev/events/", result);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class EventImageUploadTests : IDisposable
             _eventService.UploadEventImageAsync(imageStream, fileName, contentType));
         
         Assert.Contains("Invalid image type", exception.Message);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -212,8 +212,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/jpeg";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act - Upload two images
         var imageStream1 = new MemoryStream(imageData);
@@ -224,7 +224,7 @@ public class EventImageUploadTests : IDisposable
 
         // Assert - URLs should be different (unique GUIDs)
         Assert.NotEqual(result1, result2);
-        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Exactly(2));
+        _s3ClientMock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -237,8 +237,8 @@ public class EventImageUploadTests : IDisposable
         var contentType = "image/jpeg";
 
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
@@ -257,21 +257,32 @@ public class EventImageUploadTests : IDisposable
         var fileName = "test-image.jpg";
         var contentType = "image/jpeg";
 
-        PutObjectRequest? capturedRequest = null;
+string? capturedBucket = null;
+        string? capturedKey = null;
+        string? capturedContentType = null;
+        string? capturedContent = null;
         _s3ClientMock
-            .Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-            .Callback<PutObjectRequest, CancellationToken>((req, ct) => capturedRequest = req)
-            .ReturnsAsync(new PutObjectResponse { HttpStatusCode = HttpStatusCode.OK });
+            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) =>
+            {
+                capturedBucket = bucket;
+                capturedKey = key;
+                capturedContentType = contentType;
+                stream.Position = 0;
+                using var reader = new StreamReader(stream);
+                capturedContent = reader.ReadToEnd();
+            })
+            .Returns(Task.CompletedTask);
 
         // Act
         await _eventService.UploadEventImageAsync(imageStream, fileName, contentType);
 
         // Assert
-        Assert.NotNull(capturedRequest);
-        Assert.Equal("test-bucket", capturedRequest.BucketName);
-        Assert.StartsWith("events/", capturedRequest.Key);
-        Assert.Equal(contentType, capturedRequest.ContentType);
-        Assert.Equal(imageStream, capturedRequest.InputStream);
+        Assert.NotNull(capturedKey);
+        Assert.Equal("test-bucket", capturedBucket);
+        Assert.StartsWith("events/", capturedKey);
+        Assert.Equal(contentType, capturedContentType);
+        Assert.Equal(imageData.Length, capturedContent?.Length);
     }
 
     #endregion

@@ -49,7 +49,7 @@ public class EventManagementPropertyTests : IDisposable
             .CreateLogger<EventService>();
 
         // Mock S3 client for image operations
-        var mockS3Client = new Mock<IAmazonS3>();
+        var mockS3Client = new Mock<IR2StorageClient>();
 
 
         _eventService = new EventService(_context, logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,

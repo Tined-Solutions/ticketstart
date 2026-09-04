@@ -2,8 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services.Guards;
-using Amazon.S3;
-using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +16,7 @@ public class EventService : IEventService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<EventService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly IAmazonS3 _s3Client;
+    private readonly IR2StorageClient _r2Client;
     private readonly IEventNotificationQueue _notificationQueue;
     private readonly TimeProvider _clock;
     private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
@@ -38,12 +36,12 @@ public class EventService : IEventService
     private const int MaxAdditionalStock = 1000;
     private const int MaxTicketQuantityPerOperation = 1000;
 
-    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IAmazonS3 s3Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider, IOptions<HideExpiredEventsOptions> hideExpiredOptions)
+    public EventService(ApplicationDbContext context, ILogger<EventService> logger, IConfiguration configuration, IR2StorageClient r2Client, IEventNotificationQueue notificationQueue, TimeProvider timeProvider, IOptions<HideExpiredEventsOptions> hideExpiredOptions)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
-        _s3Client = s3Client;
+        _r2Client = r2Client;
         _notificationQueue = notificationQueue;
         _clock = timeProvider;
         _hideExpiredOptions = hideExpiredOptions;
@@ -702,27 +700,9 @@ public class EventService : IEventService
             await imageStream.CopyToAsync(memoryStream);
             memoryStream.Position = 0;
 
-            // Upload to R2 using AWS S3 SDK.
-            // DisablePayloadSigning=true forces UNSIGNED-PAYLOAD signing, which
-            // Cloudflare R2 accepts. The AWSSDK.S3 v4 default of STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER
-            // is NOT implemented by R2 and returns 501 NotImplemented.
-            var putRequest = new PutObjectRequest
-            {
-                BucketName = bucketName,
-                Key = objectKey,
-                InputStream = memoryStream,
-                ContentType = contentType,
-                AutoCloseStream = false,
-                DisablePayloadSigning = true
-            };
-
-            var response = await _s3Client.PutObjectAsync(putRequest);
-
-            if (response.HttpStatusCode != System.Net.HttpStatusCode.OK)
-            {
-                _logger.LogError("Failed to upload image to R2. Status code: {StatusCode}", response.HttpStatusCode);
-                throw new InvalidOperationException($"Failed to upload image to R2. Status code: {response.HttpStatusCode}");
-            }
+            // Upload to R2 using the raw SigV4 client (the AWS SDK cannot
+            // negotiate TLS with R2 from Linux containers — see R2StorageClient).
+            await _r2Client.PutObjectAsync(bucketName, objectKey, memoryStream, contentType);
 
             // Construct the public URL
             var imageUrl = $"{publicUrl.TrimEnd('/')}/{objectKey}";
@@ -730,11 +710,6 @@ public class EventService : IEventService
             _logger.LogInformation("Image uploaded successfully to R2: {ImageUrl}", imageUrl);
 
             return imageUrl;
-        }
-        catch (AmazonS3Exception ex)
-        {
-            _logger.LogError(ex, "AWS S3 error while uploading image to R2: {ErrorCode} - {Message}", ex.ErrorCode, ex.Message);
-            throw new InvalidOperationException($"Failed to upload image to R2: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
@@ -843,32 +818,11 @@ public class EventService : IEventService
                 return false;
             }
 
-            // Delete from R2 using AWS S3 SDK
-            var deleteRequest = new DeleteObjectRequest
-            {
-                BucketName = bucketName,
-                Key = objectKey
-            };
+            // Delete from R2 using the raw SigV4 client (throws on failure).
+            await _r2Client.DeleteObjectAsync(bucketName, objectKey);
 
-            var response = await _s3Client.DeleteObjectAsync(deleteRequest);
-
-            if (response.HttpStatusCode == System.Net.HttpStatusCode.NoContent || 
-                response.HttpStatusCode == System.Net.HttpStatusCode.OK)
-            {
-                _logger.LogInformation("Image deleted successfully from R2: {ObjectKey}", objectKey);
-                return true;
-            }
-            else
-            {
-                _logger.LogWarning("Unexpected status code when deleting image from R2: {StatusCode}", response.HttpStatusCode);
-                return false;
-            }
-        }
-        catch (AmazonS3Exception ex)
-        {
-            // Log but don't throw - we want event deletion to succeed even if image deletion fails
-            _logger.LogError(ex, "AWS S3 error while deleting image from R2: {ErrorCode} - {Message}", ex.ErrorCode, ex.Message);
-            return false;
+            _logger.LogInformation("Image deleted successfully from R2: {ObjectKey}", objectKey);
+            return true;
         }
         catch (Exception ex)
         {

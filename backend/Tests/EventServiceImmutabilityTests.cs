@@ -23,7 +23,7 @@ namespace TicketeraOnline.Api.Tests;
 public class EventServiceImmutabilityTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
-    private readonly Mock<IAmazonS3> _s3ClientMock;
+    private readonly Mock<IR2StorageClient> _s3ClientMock;
     private readonly Mock<IEventNotificationQueue> _notificationQueueMock;
     private readonly FakeTimeProvider _clock;
     private readonly Guid _organizerId;
@@ -38,7 +38,7 @@ public class EventServiceImmutabilityTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
-        _s3ClientMock = new Mock<IAmazonS3>();
+        _s3ClientMock = new Mock<IR2StorageClient>();
         _notificationQueueMock = new Mock<IEventNotificationQueue>();
         _clock = new FakeTimeProvider(new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
         _organizerId = Guid.NewGuid();
@@ -225,7 +225,7 @@ public class EventServiceImmutabilityTests : IDisposable
         await Assert.ThrowsAsync<EventFinalizedException>(() =>
             service.ReplaceEventImageAsync(evt.Id, _organizerId, UserRole.Organizador, stream, "img.jpg", "image/jpeg"));
 
-        _s3ClientMock.Verify(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        _s3ClientMock.Verify(s => s.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     #endregion

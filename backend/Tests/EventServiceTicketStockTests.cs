@@ -57,7 +57,7 @@ public class EventServiceTicketStockTests : IDisposable
             _context,
             new TestLogger<EventService>(),
             configuration,
-            new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,
+            new Mock<IR2StorageClient>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,
             Options.Create(new HideExpiredEventsOptions()));
     }
 
@@ -301,7 +301,7 @@ public class EventServiceTicketStockTests : IDisposable
                 concurrentContext,
                 new TestLogger<EventService>(),
                 configuration,
-                new Mock<IAmazonS3>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,
+                new Mock<IR2StorageClient>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,
                 Options.Create(new HideExpiredEventsOptions()));
             await service.AddTicketStockAsync(eventId, ticketTypeId, 5);
         });
