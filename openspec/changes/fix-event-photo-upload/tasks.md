@@ -48,8 +48,8 @@ Chain strategy: pending
 
 ## Phase 4: Integration + Docs + Verification
 
-- [ ] 4.1 Swap `AdminUserManagementIntegrationTests:446-453` — revoked-owner probe → `POST /api/uploads/event-image` (Forbidden); assert old route 404.
-- [ ] 4.2 Sync `AUTHORIZATION_MATRIX.md`: drop `POST /{id}/image`, add `UploadsController` row. (PEM-002 spec already synced — no task.)
-- [ ] 4.3 Full suites green: `dotnet test` (backend) + `npm test` (frontend).
+- [x] 4.1 Swap `AdminUserManagementIntegrationTests:446-453` — revoked-owner probe → `POST /api/uploads/event-image` (Forbidden); assert old route 404.
+- [x] 4.2 Sync `AUTHORIZATION_MATRIX.md`: drop `POST /{id}/image`, add `UploadsController` row. (PEM-002 spec already synced — no task.)
+- [x] 4.3 Full suites green: `dotnet test` (backend) + `npm test` (frontend). (Backend: 749 ✅ + 4 pre-existentes ❌ confirmados en base; Frontend: 505/505 ✅.)
 
 Threat matrix: N/A per design (no shell/process/routing-CLI boundary; new HTTP route gated by existing auth/CSRF/rate-limit stack) — no RED-security tasks.

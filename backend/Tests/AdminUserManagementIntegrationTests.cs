@@ -443,14 +443,26 @@ public class AdminUserManagementIntegrationTests : IClassFixture<AdminUserManage
         var updateResponse = await _client.SendAsync(update);
         Assert.Equal(HttpStatusCode.Forbidden, updateResponse.StatusCode);
 
-        // POST /api/events/{id}/image — owner image upload
-        var image = new HttpRequestMessage(HttpMethod.Post, $"/api/events/{eventId}/image")
+        // POST /api/uploads/event-image — revoked owner: SinAcceso matches NO
+        // role in RequireOrganizadorRole (Organizador/Admin) → 403 (EIM-002).
+        // Also proves the new event-agnostic endpoint stays gated for revoked users.
+        var upload = new HttpRequestMessage(HttpMethod.Post, "/api/uploads/event-image")
+        {
+            Content = new MultipartFormDataContent()
+        };
+        upload.Headers.Add("Cookie", ownerCookie);
+        var uploadResponse = await _client.SendAsync(upload);
+        Assert.Equal(HttpStatusCode.Forbidden, uploadResponse.StatusCode);
+
+        // EIM-006: the removed POST /api/events/{id}/image route no longer
+        // resolves — 404, not the old Forbidden/Conflict.
+        var oldImage = new HttpRequestMessage(HttpMethod.Post, $"/api/events/{eventId}/image")
         {
             Content = new ByteArrayContent(Array.Empty<byte>())
         };
-        image.Headers.Add("Cookie", ownerCookie);
-        var imageResponse = await _client.SendAsync(image);
-        Assert.Equal(HttpStatusCode.Forbidden, imageResponse.StatusCode);
+        oldImage.Headers.Add("Cookie", ownerCookie);
+        var oldImageResponse = await _client.SendAsync(oldImage);
+        Assert.Equal(HttpStatusCode.NotFound, oldImageResponse.StatusCode);
 
         // GET /api/metrics/events/{id} — owner metrics
         var metrics = new HttpRequestMessage(HttpMethod.Get, $"/api/metrics/events/{eventId}");
