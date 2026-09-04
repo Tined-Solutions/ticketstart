@@ -86,7 +86,7 @@ public class BrevoClientTests
         var attachment = Assert.Single(payload.Attachments!);
         Assert.Equal("qr-ticket-1.png", attachment.Name);
         Assert.Equal("aGVsbG8=", attachment.Content);
-        Assert.Equal("qr-ticket-1", attachment.ContentId);
+        Assert.Null(attachment.ContentId); // Brevo does not use inline CID
     }
 
     [Fact]

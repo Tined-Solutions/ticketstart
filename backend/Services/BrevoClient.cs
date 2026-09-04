@@ -51,7 +51,9 @@ public class BrevoClient : IResendClient
             {
                 Name = a.Filename,
                 Content = a.Content,
-                ContentId = a.ContentId,
+                // ContentId intentionally omitted: Brevo does not render inline
+                // CID images, so QR PNGs travel as plain downloadable attachments
+                // (the HTML body embeds the QR via data URI instead).
             }).ToList(),
         };
 

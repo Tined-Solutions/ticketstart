@@ -128,13 +128,13 @@ public class EmailPropertyTests
 
             Assert.Equal("image/png", attachment.ContentType);
             Assert.Equal(expectedContentId, attachment.ContentId);
-            Assert.Contains(expectedContentId, captured.Html);
+            Assert.Contains($"data:image/png;base64,base64-qr-data-{i + 1}", captured.Html);
             Assert.Contains($"base64-qr-data-{i + 1}", attachment.Content);
         }
 
-        // HTML uses CID references, not data URIs (which email clients strip)
-        Assert.Contains("cid:", captured.Html);
-        Assert.DoesNotContain("data:image/png;base64,", captured.Html);
+        // HTML embeds the QR as a data URI (universal rendering, Brevo-safe)
+        Assert.Contains("data:image/png;base64,", captured.Html);
+        Assert.DoesNotContain("cid:", captured.Html);
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class EmailPropertyTests
         var attachment = captured.Attachments![0];
         Assert.Equal("image/png", attachment.ContentType);
         Assert.Equal($"qr-ticket-{tickets[0].Id}", attachment.ContentId);
-        Assert.Contains($"qr-ticket-{tickets[0].Id}", captured.Html);
+        Assert.Contains("data:image/png;base64,base64-single-qr", captured.Html);
         Assert.Contains("base64-single-qr", attachment.Content);
     }
 
@@ -199,9 +199,9 @@ public class EmailPropertyTests
         Assert.Contains("img-qr-a", captured.Attachments[0].Content);
         Assert.Contains("img-qr-b", captured.Attachments[1].Content);
 
-        // HTML uses CID references
-        Assert.Contains($"cid:qr-ticket-{tickets[0].Id}", captured.Html);
-        Assert.Contains($"cid:qr-ticket-{tickets[1].Id}", captured.Html);
+        // HTML embeds the QR as data URIs
+        Assert.Contains("data:image/png;base64,img-qr-a", captured.Html);
+        Assert.Contains("data:image/png;base64,img-qr-b", captured.Html);
     }
 
     [Fact]

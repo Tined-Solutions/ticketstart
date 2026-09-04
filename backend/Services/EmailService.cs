@@ -42,7 +42,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrBase64)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -58,13 +58,13 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketContentIds.Add((ticket, contentId));
+            ticketQrCodes.Add((ticket, imageBase64));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketContentIds,
+            ticketQrCodes,
             totalAmount,
             recipientEmail,
             recipientName);
@@ -105,7 +105,7 @@ public class EmailService : IEmailService
 
         var ticketList = tickets.ToList();
         var attachments = new List<ResendAttachment>();
-        var ticketContentIds = new List<(Ticket Ticket, string ContentId)>();
+        var ticketQrCodes = new List<(Ticket Ticket, string QrBase64)>();
 
         for (int i = 0; i < ticketList.Count; i++)
         {
@@ -121,13 +121,13 @@ public class EmailService : IEmailService
                 ContentId = contentId
             });
 
-            ticketContentIds.Add((ticket, contentId));
+            ticketQrCodes.Add((ticket, imageBase64));
         }
 
         var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
-            ticketContentIds,
+            ticketQrCodes,
             totalAmount,
             recipientEmail,
             recipientName);
