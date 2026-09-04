@@ -12,10 +12,13 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using System.Threading.RateLimiting;
+using Amazon;
 using Amazon.S3;
 using Amazon.Runtime;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using System.Net.Security;
+using System.Security.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -182,6 +185,12 @@ var r2Settings = builder.Configuration.GetSection("CloudflareR2");
 var r2AccessKey = GetRequiredValue(r2Settings, "AccessKey");
 var r2SecretKey = GetRequiredValue(r2Settings, "SecretKey");
 var r2ServiceUrl = GetRequiredValue(r2Settings, "ServiceUrl");
+
+// AWS SDK on Linux (Render) fails the TLS handshake with R2 using its default
+// HttpWebRequest transport ("sslv3 alert handshake failure" via OpenSSL). Route
+// the SDK through a modern HttpClient with explicit TLS 1.2+ instead — the same
+// transport that already works for Turnstile/Brevo from the container.
+AWSConfigs.HttpClientFactory = new SdkTlsHttpClientFactory();
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
@@ -351,3 +360,21 @@ static string GetRequiredValue(IConfigurationSection section, string key)
 
 // Make Program class accessible for integration tests
 public partial class Program { }
+
+/// <summary>
+/// AWS SDK HttpClient factory that forces TLS 1.2+ through a modern
+/// SocketsHttpHandler. The SDK's default HttpWebRequest transport fails the
+/// TLS handshake with Cloudflare R2 from Linux containers (Render) with
+/// "sslv3 alert handshake failure".
+/// </summary>
+internal sealed class SdkTlsHttpClientFactory : Amazon.Runtime.HttpClientFactory
+{
+    public override HttpClient CreateHttpClient(IClientConfig clientConfig) =>
+        new HttpClient(new SocketsHttpHandler
+        {
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            },
+        });
+}
