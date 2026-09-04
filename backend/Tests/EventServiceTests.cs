@@ -516,6 +516,11 @@ public class EventServiceTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.Equal("https://test.r2.dev/events/original.jpg", result.ImageUrl);
+
+        // EIM-005: a null ImageUrl (text-only edit) preserves AND never deletes
+        _s3ClientMock.Verify(
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -641,6 +646,175 @@ public class EventServiceTests : IDisposable
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador));
+    }
+
+    #endregion
+
+    #region EIM-005 — UpdateEventAsync old-image cleanup
+
+    [Fact]
+    public async Task UpdateEventAsync_ReplacedImage_DeletesPreviousImage()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/old-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Updated Location",
+            ImageUrl = "https://test.r2.dev/events/new-image.jpg"
+        };
+
+        // Act
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert — the replaced object is best-effort deleted AFTER the save (EIM-005)
+        Assert.Equal("https://test.r2.dev/events/new-image.jpg", result.ImageUrl);
+        _s3ClientMock.Verify(
+            x => x.DeleteObjectAsync("test-bucket", "events/old-image.jpg", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_SameImageUrl_DoesNotDelete()
+    {
+        // Arrange — a text-only edit re-sends the CURRENT URL; the old ≠ new guard
+        // must NOT delete the object the event still points at.
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/current.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Updated Location",
+            ImageUrl = "https://test.r2.dev/events/current.jpg"
+        };
+
+        // Act
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert — same value in, same object kept
+        Assert.Equal("https://test.r2.dev/events/current.jpg", result.ImageUrl);
+        _s3ClientMock.Verify(
+            x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_ClearedImage_DeletesPreviousImage()
+    {
+        // Arrange — "" is the explicit "remove image" signal (EIM-005: cleared deletes old)
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/to-clear.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Updated Location",
+            ImageUrl = string.Empty
+        };
+
+        // Act
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert — URL cleared and the previous object best-effort deleted
+        Assert.Equal(string.Empty, result.ImageUrl);
+        _s3ClientMock.Verify(
+            x => x.DeleteObjectAsync("test-bucket", "events/to-clear.jpg", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateEventAsync_ImageDeleteFails_RequestStillSucceeds()
+    {
+        // Arrange — deletion failure must NOT fail the PUT (best-effort, warning only)
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Original Name",
+            Description = "Original Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Original Location",
+            ImageUrl = "https://test.r2.dev/events/old-image.jpg",
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        _s3ClientMock
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Simulated R2 delete failure"));
+
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Updated Name",
+            Description = "Updated Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Updated Location",
+            ImageUrl = "https://test.r2.dev/events/new-image.jpg"
+        };
+
+        // Act — must NOT throw
+        var result = await _eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+
+        // Assert — the update persisted and the delete was attempted exactly once
+        Assert.Equal("https://test.r2.dev/events/new-image.jpg", result.ImageUrl);
+        _s3ClientMock.Verify(
+            x => x.DeleteObjectAsync("test-bucket", "events/old-image.jpg", It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     #endregion

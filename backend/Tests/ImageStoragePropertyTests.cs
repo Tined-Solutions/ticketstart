@@ -12,6 +12,7 @@ using Moq;
 using Amazon.S3;
 using Amazon.S3.Model;
 using System.Net;
+using GenStatic = FsCheck.Fluent.Gen;
 
 namespace TicketeraOnline.Api.Tests;
 
@@ -718,25 +719,83 @@ public class ImageStoragePropertyTests : IDisposable
 
     #endregion
 
-    #region Event Image Replacement
+    #region Property 10: EIM-005 — UpdateEventAsync cleanup invariant
 
     /// <summary>
-    /// Replacing an event image uploads the new object and deletes the previous
-    /// one from R2 so it does not stay orphaned.
+    /// Property 10 (EIM-005): for ANY previous/next image-url pair, the R2 delete
+    /// is invoked by UpdateEventAsync iff the previous URL is non-empty ∧ the next
+    /// URL is non-null ∧ they differ. The generated values are constrained to the
+    /// configured PublicUrl base (or "" / null) so the invariant isolates the
+    /// cleanup GUARD — DeleteImageAsync itself refuses URLs outside our base.
     /// </summary>
-    [Fact]
-    public async Task ReplaceEventImage_WithExistingImage_UploadsNewAndDeletesPrevious()
+    [Property(Arbitrary = new[] { typeof(R2ImageUrlArb) })]
+    public async Task UpdateEvent_CleanupInvariant_DeleteCalledIffOldNonEmptyNewNonNullAndDifferent(string? previousImageUrl, string? newImageUrl)
     {
-        // Arrange
-        var uploadedKeys = new List<string>();
+        // Arrange — a recording R2 client and an event owning the previous image
         var deletedKeys = new List<string>();
         var mockS3Client = new Mock<IR2StorageClient>();
-
         mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<string, string, Stream, string, CancellationToken>((bucket, key, stream, contentType, ct) => uploadedKeys.Add(key))
+            .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((bucket, key, ct) => deletedKeys.Add(key))
             .Returns(Task.CompletedTask);
 
+        var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
+
+        var organizerId = Guid.NewGuid();
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Event",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = previousImageUrl ?? string.Empty,
+            OrganizerId = organizerId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
+        var request = new UpdateEventRequest
+        {
+            Name = "Event",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = newImageUrl
+        };
+
+        // Act
+        await eventService.UpdateEventAsync(eventEntity.Id, request, organizerId, UserRole.Organizador);
+
+        // Assert — the invariant: delete called exactly when the guard fires
+        var oldIsNonEmpty = !string.IsNullOrWhiteSpace(previousImageUrl);
+        var newIsNonNull = newImageUrl != null;
+        var different = !string.Equals(previousImageUrl ?? string.Empty, newImageUrl ?? string.Empty, StringComparison.Ordinal);
+        var shouldDelete = oldIsNonEmpty && newIsNonNull && different;
+
+        Assert.Equal(shouldDelete ? 1 : 0, deletedKeys.Count);
+        if (shouldDelete)
+        {
+            Assert.Equal(previousImageUrl!, $"https://pub-test.r2.dev/{deletedKeys.Single()}");
+        }
+    }
+
+    #endregion
+
+    #region Event Image Replacement (EIM-005 via UpdateEventAsync)
+
+    /// <summary>
+    /// EIM-005: replacing an event's image (PUT carrying a NEW imageUrl) persists
+    /// the new URL and best-effort deletes the previous R2 object after the save.
+    /// </summary>
+    [Fact]
+    public async Task UpdateEvent_ReplacedImage_DeletesPreviousObject()
+    {
+        // Arrange
+        var deletedKeys = new List<string>();
+        var mockS3Client = new Mock<IR2StorageClient>();
         mockS3Client
             .Setup(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<string, string, CancellationToken>((bucket, key, ct) => deletedKeys.Add(key))
@@ -772,40 +831,38 @@ public class ImageStoragePropertyTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Event with Image",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = "https://pub-test.r2.dev/events/new-guid.jpg"
+        };
 
-        // Act
-        var newImageUrl = await eventService.ReplaceEventImageAsync(
-            eventEntity.Id, organizerId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg");
+        // Act — the new URL is attached via PUT; no upload happens in UpdateEventAsync
+        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
 
-        // Assert - event points at the new image
-        Assert.NotNull(newImageUrl);
-        Assert.Contains("https://pub-test.r2.dev/events/", newImageUrl);
-
+        // Assert — event points at the new image and the previous object is gone
         var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.NotNull(updatedEvent);
-        Assert.Equal(newImageUrl, updatedEvent.ImageUrl);
+        Assert.Equal("https://pub-test.r2.dev/events/new-guid.jpg", updatedEvent.ImageUrl);
 
-        // Assert - the previous object was removed from R2 (no orphans)
         Assert.Single(deletedKeys);
         Assert.Equal("events/old-guid.jpg", deletedKeys[0]);
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
-    /// Replacing an image on an event without a previous image never calls R2 delete.
+    /// EIM-005: attaching a new image to an event WITHOUT a previous image never
+    /// calls R2 delete.
     /// </summary>
     [Fact]
-    public async Task ReplaceEventImage_WithoutExistingImage_DoesNotDeleteFromR2()
+    public async Task UpdateEvent_NewImage_NoPreviousImage_DoesNotDelete()
     {
         // Arrange
         var mockS3Client = new Mock<IR2StorageClient>();
-        mockS3Client
-            .Setup(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
 
         var organizerId = Guid.NewGuid();
@@ -835,28 +892,31 @@ public class ImageStoragePropertyTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Event without Image",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = "https://pub-test.r2.dev/events/new-guid.jpg"
+        };
 
         // Act
-        var newImageUrl = await eventService.ReplaceEventImageAsync(
-            eventEntity.Id, organizerId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg");
+        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
 
-        // Assert
-        Assert.NotNull(newImageUrl);
-
+        // Assert — nothing to clean up
         var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);
         Assert.NotNull(updatedEvent);
-        Assert.Equal(newImageUrl, updatedEvent.ImageUrl);
-
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("https://pub-test.r2.dev/events/new-guid.jpg", updatedEvent.ImageUrl);
         mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
-    /// A non-owner (non-admin) cannot replace an event image.
+    /// EIM-007: a non-owner (non-admin) cannot persist a new imageUrl — the
+    /// UpdateEventAsync ownership guard rejects before any R2 call.
     /// </summary>
     [Fact]
-    public async Task ReplaceEventImage_ByNonOwner_ThrowsUnauthorizedAccessException()
+    public async Task UpdateEvent_ByNonOwnerWithNewImage_ThrowsUnauthorizedAccessException()
     {
         // Arrange
         var mockS3Client = new Mock<IR2StorageClient>();
@@ -879,34 +939,76 @@ public class ImageStoragePropertyTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Event",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = "https://pub-test.r2.dev/events/other.jpg"
+        };
 
         // Act & Assert
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            eventService.ReplaceEventImageAsync(eventEntity.Id, otherUserId, UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
+            eventService.UpdateEventAsync(eventEntity.Id, updateRequest, otherUserId, UserRole.Organizador));
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
-    /// Replacing an image on a missing event throws and never touches R2.
+    /// EIM-005: persisting an imageUrl on a missing event throws and never
+    /// touches R2.
     /// </summary>
     [Fact]
-    public async Task ReplaceEventImage_OnMissingEvent_ThrowsKeyNotFoundException()
+    public async Task UpdateEvent_OnMissingEventWithImage_ThrowsKeyNotFoundException()
     {
         // Arrange
         var mockS3Client = new Mock<IR2StorageClient>();
         var eventService = new EventService(_context, _logger, _configuration, mockS3Client.Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System, Options.Create(new HideExpiredEventsOptions()));
-        var imageStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("new-image-content"));
+
+        var updateRequest = new UpdateEventRequest
+        {
+            Name = "Event",
+            Description = "Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Location",
+            ImageUrl = "https://pub-test.r2.dev/events/new-guid.jpg"
+        };
 
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            eventService.ReplaceEventImageAsync(Guid.NewGuid(), Guid.NewGuid(), UserRole.Organizador, imageStream, "new.jpg", "image/jpeg"));
+            eventService.UpdateEventAsync(Guid.NewGuid(), updateRequest, Guid.NewGuid(), UserRole.Organizador));
 
-        mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         mockS3Client.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     #endregion
+}
+
+/// <summary>
+/// FsCheck generator for the EIM-005 cleanup invariant (Property 10): valid R2
+/// URLs under the configured test PublicUrl base, plus the "" / null boundary
+/// values the cleanup guard treats specially.
+/// </summary>
+public static class R2ImageUrlArb
+{
+    public static Arbitrary<string?> R2ImageUrl() =>
+        new R2ImageUrlArbitrary();
+
+    private class R2ImageUrlArbitrary : Arbitrary<string?>
+    {
+        public R2ImageUrlArbitrary()
+        {
+            Generator = GenStatic.Elements(
+                "https://pub-test.r2.dev/events/old-one.jpg",
+                "https://pub-test.r2.dev/events/old-two.png",
+                "https://pub-test.r2.dev/events/old-three.webp",
+                "",
+                null);
+        }
+
+        public override Gen<string?> Generator { get; }
+
+        public override IEnumerable<string?> Shrinker(string? value) => Enumerable.Empty<string?>();
+    }
 }

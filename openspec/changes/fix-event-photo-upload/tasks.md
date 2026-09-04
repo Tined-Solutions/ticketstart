@@ -36,10 +36,10 @@ Chain strategy: pending
 
 ## Phase 2: Backend Cleanup + Removal
 
-- [ ] 2.1 RED: `EventServiceTests` region — replaced deletes old; same-URL re-send no delete; `""` clears+deletes; null preserves; delete-failure → 200 + warning logged. GREEN: capture `previousImageUrl` before mutation (EventService.cs:516); best-effort delete after `SaveChanges` (:522) with `old ≠ new` guard.
-- [ ] 2.2 RED: `ImageStoragePropertyTests` — R2 delete invoked iff old non-empty ∧ new non-null ∧ old ≠ new. GREEN: refactor cleanup into property-proven shape.
-- [ ] 2.3 RED: rewrite `EventServiceImmutabilityTests` PEM region + `ImageStoragePropertyTests` 4 sites against `UpdateEventAsync`; delete `EventControllerTests:619` — compile breaks force removal. GREEN: remove `ReplaceEventImageAsync` (IEventService.cs:88-103, EventService.cs:721-772); remove `EventController.UploadEventImage` (:225-283).
-- [ ] 2.4 RED: `UploadsControllerTests` — old route `POST /api/events/{id}/image` → 404 (EIM-006). GREEN: already satisfied by 2.3 removal; keep green.
+- [x] 2.1 RED: `EventServiceTests` region — replaced deletes old; same-URL re-send no delete; `""` clears+deletes; null preserves; delete-failure → 200 + warning logged. GREEN: capture `previousImageUrl` before mutation (EventService.cs:516); best-effort delete after `SaveChanges` (:522) with `old ≠ new` guard.
+- [x] 2.2 RED: `ImageStoragePropertyTests` — R2 delete invoked iff old non-empty ∧ new non-null ∧ old ≠ new. GREEN: refactor cleanup into property-proven shape.
+- [x] 2.3 RED: rewrite `EventServiceImmutabilityTests` PEM region + `ImageStoragePropertyTests` 4 sites against `UpdateEventAsync`; delete `EventControllerTests:619` — compile breaks force removal. GREEN: remove `ReplaceEventImageAsync` (IEventService.cs:88-103, EventService.cs:721-772); remove `EventController.UploadEventImage` (:225-283).
+- [x] 2.4 RED: `UploadsControllerTests` — old route `POST /api/events/{id}/image` → 404 (EIM-006). GREEN: already satisfied by 2.3 removal; keep green.
 
 ## Phase 3: Frontend Upload-First
 

@@ -603,27 +603,6 @@ public class EventControllerTests
     }
 
     [Fact]
-    public async Task UploadEventImage_PastEvent_409_EventFinalized()
-    {
-        // PEM-002: POST image on a past event → 409 (before any R2 upload).
-        using var factory = new EventCatalogApiFactory();
-        var organizerId = factory.SeedOrganizer();
-        var pastId = factory.SeedEvent("Past With Image", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
-        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
-        using var client = factory.CreateClientWithCookie(cookie);
-        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
-
-        using var content = new MultipartFormDataContent();
-        content.Add(new ByteArrayContent(new byte[] { 1, 2, 3 }), "image", "img.jpg");
-
-        var response = await client.PostAsync($"/api/events/{pastId}/image", content);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        var problem = await ReadProblemDetailsAsync(response);
-        Assert.Equal("event-finalized", problem!.Type);
-    }
-
-    [Fact]
     public async Task AddTicketStock_PastEvent_409_EventFinalized()
     {
         // PEM-002: POST stock on a past event → 409.

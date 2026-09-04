@@ -208,6 +208,25 @@ public class UploadsControllerTests
         var rejected = await client.PostAsync("/api/uploads/event-image", eleventh);
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
     }
+
+    [Fact]
+    public async Task OldEventImageRoute_Returns404()
+    {
+        // EIM-006: POST /api/events/{id}/image is REMOVED — the SPA is the sole
+        // consumer and deploys with the API, so the old route must 404, not 409.
+        using var factory = new UploadsApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Owned Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(3), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        using var content = ValidJpegPart();
+        var response = await client.PostAsync($"/api/events/{eventId}/image", content);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        factory.R2Mock.Verify(x => x.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
 
 /// <summary>Shape of the 200 response: { "imageUrl": "…" }.</summary>
