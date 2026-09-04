@@ -242,6 +242,23 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+
+    // EIM-002/ADR-6: the upload endpoint accepts multipart bodies up to 5 MB —
+    // an abuse-prone surface that gets its own limiter. ⚠ Discovery: UseRateLimiter
+    // (Program.cs:313) runs BEFORE UseAuthentication (:321), so partitioner callbacks
+    // see an unauthenticated context.User — partitions are effectively per-client-IP
+    // at runtime (already true for Reservations today). Reordering the pipeline is a
+    // documented follow-up, out of scope for this change.
+    options.AddPolicy("EventImageUpload", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitioner.AuthenticatedOrIp(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

@@ -37,16 +37,13 @@ public class R2StorageClient : IR2StorageClient
 
     public R2StorageClient(IConfiguration configuration)
     {
-        // Cloudflare R2 rejects the TLS handshake from Render's datacenter IP
-        // when the client offers TLS 1.3 ("sslv3 alert handshake failure").
-        // Forcing TLS 1.2 only changes the ClientHello enough to pass.
-        _httpClient = new HttpClient(new SocketsHttpHandler
-        {
-            SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-            {
-                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12,
-            },
-        });
+        // EIM-001: do NOT force any EnabledSslProtocols here. Production evidence
+        // (Render/Linux, OpenSSL 3.x): forcing Tls12 alone breaks the handshake
+        // against Cloudflare R2 — "sslv3 alert handshake failure", OpenSSL error
+        // 0A000410 — while the OS defaults (TLS 1.3 preferred) negotiate fine and
+        // the PUT succeeds. The SocketsHttpHandler below therefore keeps SslOptions
+        // untouched. Never reintroduce a protocol list.
+        _httpClient = new HttpClient(new SocketsHttpHandler());
         _accessKey = configuration["CloudflareR2:AccessKey"]
             ?? throw new InvalidOperationException("CloudflareR2:AccessKey is not configured");
         _secretKey = configuration["CloudflareR2:SecretKey"]
