@@ -43,8 +43,8 @@ Chain strategy: pending
 
 ## Phase 3: Frontend Upload-First
 
-- [ ] 3.1 RED: `EventForm.test.jsx` — upload-fail blocks `POST /events` (not called), red `role="alert"`, no green; upload-success precedes save carrying `imageUrl`; labels "Subiendo imagen…"/"Guardando…" + disabled; no-photo flow unchanged. GREEN: `EventForm.jsx` — `phase` state, upload step via `/uploads/event-image`, remove manual multipart header + false-success catch (:170-178), payload `imageUrl`.
-- [ ] 3.2 RED: `EventForm.edit.test.jsx` — edit+photo PUT carries new URL; upload-fail blocks PUT; no-photo preserves `initialData.imageUrl`. GREEN: edit branch payload `uploadedUrl ?? initialData?.imageUrl || ''`.
+- [x] 3.1 RED: `EventForm.test.jsx` — upload-fail blocks `POST /events` (not called), red `role="alert"`, no green; upload-success precedes save carrying `imageUrl`; labels "Subiendo imagen…"/"Guardando…" + disabled; no-photo flow unchanged. GREEN: `EventForm.jsx` — `phase` state, upload step via `/uploads/event-image`, remove manual multipart header + false-success catch (:170-178), payload `imageUrl`.
+- [x] 3.2 RED: `EventForm.edit.test.jsx` — edit+photo PUT carries new URL; upload-fail blocks PUT; no-photo preserves `initialData.imageUrl`. GREEN: edit branch payload `uploadedUrl ?? initialData?.imageUrl || ''`.
 
 ## Phase 4: Integration + Docs + Verification
 
