@@ -90,6 +90,8 @@ export default function AdminPanel() {
 
   const [events, setEvents] = useState([])
   const [users, setUsers] = useState([])
+  const [eventsTotal, setEventsTotal] = useState(0)
+  const [usersTotal, setUsersTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -138,26 +140,34 @@ export default function AdminPanel() {
     setError('')
 
     const eventsPromise = apiClient
-      .get('/admin/events', { signal: controller.signal, params: { page: 1, pageSize: 200 } })
-      .then((response) => (response.data?.items || response.data || []))
+      .get('/admin/events', { signal: controller.signal, params: { page: 1, pageSize: 2500 } })
+      .then((response) => {
+        const items = response.data?.items || response.data || []
+        return { items, total: response.data?.total ?? items.length }
+      })
       .catch((err) => {
-        if (controller.signal.aborted) return []
+        if (controller.signal.aborted) return { items: [], total: 0 }
         throw err
       })
 
     const usersPromise = apiClient
-      .get('/admin/users', { signal: controller.signal, params: { page: 1, pageSize: 200 } })
-      .then((response) => (response.data?.items || response.data || []))
+      .get('/admin/users', { signal: controller.signal, params: { page: 1, pageSize: 2500 } })
+      .then((response) => {
+        const items = response.data?.items || response.data || []
+        return { items, total: response.data?.total ?? items.length }
+      })
       .catch((err) => {
-        if (controller.signal.aborted) return []
+        if (controller.signal.aborted) return { items: [], total: 0 }
         throw err
       })
 
     Promise.all([eventsPromise, usersPromise])
       .then(([eventsData, usersData]) => {
         if (controller.signal.aborted) return
-        setEvents(eventsData)
-        setUsers(usersData)
+        setEvents(eventsData.items)
+        setEventsTotal(eventsData.total)
+        setUsers(usersData.items)
+        setUsersTotal(usersData.total)
         setLoading(false)
       })
       .catch((err) => {
@@ -220,12 +230,6 @@ export default function AdminPanel() {
     } finally {
       setBusyApprovalId(null)
     }
-  }
-
-  const getOrganizerEmail = (organizerId) => {
-    if (!users.length || !organizerId) return '—'
-    const user = users.find((u) => u.id === organizerId)
-    return user ? user.email : '—'
   }
 
   const handleDeleteClick = (event) => {
@@ -332,8 +336,8 @@ export default function AdminPanel() {
   }
 
   // Events section: filter the fetched `events` array client-side — free text
-  // matches name, location, or the organizer's resolved email, plus the
-  // approval status dropdown.
+  // matches name, location, or the organizer's email (resolved server-side),
+  // plus the approval status dropdown.
   const filteredEvents = events.filter((e) => {
     const matchesStatus = eventStatus === '' || e.status === eventStatus
     const q = eventSearch.trim().toLowerCase()
@@ -341,7 +345,7 @@ export default function AdminPanel() {
       q === '' ||
       (e.name || '').toLowerCase().includes(q) ||
       (e.location || '').toLowerCase().includes(q) ||
-      getOrganizerEmail(e.organizerId).toLowerCase().includes(q)
+      (e.organizerEmail || '').toLowerCase().includes(q)
     return matchesStatus && matchesSearch
   })
 
@@ -525,6 +529,13 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
+                {eventsTotal > events.length && (
+                  <p className="mb-3 rounded-lg bg-amarillo/15 px-3 py-2 text-xs text-text-2">
+                    Mostrando {events.length} de {eventsTotal} eventos. Refiná la búsqueda si no
+                    encontrás el que buscás.
+                  </p>
+                )}
+
                 {events.length === 0 ? (
                   <p className="text-text-2 text-center py-4">No hay eventos en el sistema.</p>
                 ) : filteredEvents.length === 0 ? (
@@ -630,7 +641,7 @@ export default function AdminPanel() {
                             <p className="mt-1 text-sm text-text-2">
                               <span aria-hidden="true">📅</span> <span>{formatDate(event.date)}</span>
                               <span aria-hidden="true"> • </span> <span>{event.location || '\u2014'}</span>
-                              <span aria-hidden="true"> • </span> <span>{getOrganizerEmail(event.organizerId)}</span>
+                              <span aria-hidden="true"> • </span> <span>{event.organizerEmail || '\u2014'}</span>
                             </p>
                           </div>
                           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
@@ -846,6 +857,12 @@ export default function AdminPanel() {
                       <h2 className="font-display text-base font-semibold text-text-1">
                         Usuarios ({filteredUsers.length})
                       </h2>
+                      {usersTotal > users.length && (
+                        <p className="mb-3 w-full rounded-lg bg-amarillo/15 px-3 py-2 text-xs text-text-2">
+                          Mostrando {users.length} de {usersTotal} usuarios. Refiná la búsqueda si
+                          no encontrás el que buscás.
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center gap-2">
                         <label htmlFor="user-search" className="sr-only">
                           Buscar usuarios
