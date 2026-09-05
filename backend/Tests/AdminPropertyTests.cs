@@ -96,7 +96,8 @@ public class AdminPropertyTests : IDisposable
     }
 
     /// <summary>
-    /// Property 42 (Ownership): Events returned include organizer information.
+    /// Property 42 (Ownership): Events returned include organizer information,
+    /// including the organizer email resolved server-side via the Users join.
     /// </summary>
     [Fact]
     public async Task GetAllEvents_ReturnsEventsWithOrganizerId()
@@ -126,19 +127,43 @@ public class AdminPropertyTests : IDisposable
         Assert.Equal(eventEntity.Id, eventList[0].Id);
         Assert.Equal(eventEntity.Name, eventList[0].Name);
         Assert.Equal(organizerId, eventList[0].OrganizerId);
+        Assert.Equal("organizer@example.com", eventList[0].OrganizerEmail);
     }
 
     /// <summary>
-    /// Property 42 (Pagination cap): A requested page size above the 200-row hard cap is clamped to 200.
+    /// Property 42 (Edge Case): An event whose organizer no longer exists in the
+    /// Users table resolves to a null organizer email instead of failing.
     /// </summary>
     [Fact]
-    public async Task GetAllEvents_PageSizeOver200_IsCappedTo200()
+    public async Task GetAllEvents_OrphanOrganizer_ReturnsNullOrganizerEmail()
     {
+        // Arrange
+        var orphanOrganizerId = Guid.NewGuid(); // no matching User row
+        var eventEntity = CreateEvent(orphanOrganizerId, "Orphan Event");
+        _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
+
         // Act
-        var result = await _adminService.GetAllEventsAsync(1, 500);
+        var result = await _adminService.GetAllEventsAsync(1, 50);
 
         // Assert
-        Assert.Equal(200, result.PageSize);
+        var eventList = result.Items.ToList();
+        Assert.Single(eventList);
+        Assert.Equal(orphanOrganizerId, eventList[0].OrganizerId);
+        Assert.Null(eventList[0].OrganizerEmail);
+    }
+
+    /// <summary>
+    /// Property 42 (Pagination cap): A requested page size above the 2500-row hard cap is clamped to 2500.
+    /// </summary>
+    [Fact]
+    public async Task GetAllEvents_PageSizeOver2500_IsCappedTo2500()
+    {
+        // Act
+        var result = await _adminService.GetAllEventsAsync(1, 3000);
+
+        // Assert
+        Assert.Equal(2500, result.PageSize);
     }
 
     #endregion
@@ -377,16 +402,16 @@ public class AdminPropertyTests : IDisposable
     }
 
     /// <summary>
-    /// Admin user access (Pagination cap): A requested page size above the 200-row hard cap is clamped to 200.
+    /// Admin user access (Pagination cap): A requested page size above the 2500-row hard cap is clamped to 2500.
     /// </summary>
     [Fact]
-    public async Task GetAllUsers_PageSizeOver200_IsCappedTo200()
+    public async Task GetAllUsers_PageSizeOver2500_IsCappedTo2500()
     {
         // Act
-        var result = await _adminService.GetAllUsersAsync(1, 500);
+        var result = await _adminService.GetAllUsersAsync(1, 3000);
 
         // Assert
-        Assert.Equal(200, result.PageSize);
+        Assert.Equal(2500, result.PageSize);
     }
 
     /// <summary>
