@@ -40,6 +40,7 @@ const mockEvents = [
     date: futureDate(400),
     location: 'Estadio Luna Park, Buenos Aires',
     organizerId: 'user-2',
+    organizerEmail: 'organizador@ticketera.com',
     createdAt: '2026-06-01T10:00:00Z',
     status: 'Approved',
   },
@@ -49,6 +50,7 @@ const mockEvents = [
     date: futureDate(300),
     location: 'La Rural, Buenos Aires',
     organizerId: 'user-3',
+    organizerEmail: 'staff@ticketera.com',
     createdAt: '2026-06-15T10:00:00Z',
     status: 'Pending',
   },
@@ -58,6 +60,7 @@ const mockEvents = [
     date: futureDate(365),
     location: null,
     organizerId: 'user-2',
+    organizerEmail: 'organizador@ticketera.com',
     createdAt: '2026-07-01T10:00:00Z',
     status: 'Rejected',
   },
@@ -103,12 +106,12 @@ describe('AdminPanel', () => {
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
         return Promise.resolve({
-          data: { items: mockEvents, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 },
         })
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: mockUsers, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -128,19 +131,51 @@ describe('AdminPanel', () => {
     expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
   })
 
-  it('resolves organizer email from users list', async () => {
+  it('resolves organizer email from event payload even when organizer is not in users list', async () => {
+    // Regression: the organizer email is resolved server-side and carried on the
+    // event. A user outside the fetched users list (beyond the 2500 cap) must
+    // still render as the creator on the event row.
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({
+          data: {
+            items: [
+              {
+                id: 'event-1',
+                name: 'Recital de Rock Nacional',
+                date: futureDate(400),
+                location: 'Estadio Luna Park, Buenos Aires',
+                organizerId: 'user-999', // NOT present in the users list
+                organizerEmail: 'organizador@ticketera.com',
+                createdAt: '2026-06-01T10:00:00Z',
+                status: 'Approved',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 2500,
+          },
+        })
+      }
+      if (url === '/admin/users') {
+        // users list does NOT include user-999
+        return Promise.resolve({
+          data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 },
+        })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
     render(<AdminPanel />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    // Recital de Rock: organizerId = user-2 -> organizador@ticketera.com
-    const orgEmails = screen.getAllByText('organizador@ticketera.com')
-    expect(orgEmails.length).toBeGreaterThanOrEqual(1) // resolved on the events rows
-    // Feria: organizerId = user-3 -> staff@ticketera.com
-    const staffEmails = screen.getAllByText('staff@ticketera.com')
-    expect(staffEmails.length).toBeGreaterThanOrEqual(1)
+    // organizerEmail comes from the event row, not from a users lookup
+    const eventRowEl = eventRow('recital de rock nacional')
+    expect(within(eventRowEl).getByText('organizador@ticketera.com')).toBeInTheDocument()
+    expect(within(eventRowEl).queryByText('—')).not.toBeInTheDocument()
   })
 
   it('shows "—" for events with no location or unknown organizer', async () => {
@@ -375,7 +410,7 @@ describe('AdminPanel', () => {
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: mockUsers, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -392,7 +427,7 @@ describe('AdminPanel', () => {
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
         return Promise.resolve({
-          data: { items: mockEvents, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 },
         })
       }
       if (url === '/admin/users') {
@@ -425,12 +460,12 @@ describe('AdminPanel', () => {
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
         return Promise.resolve({
-          data: { items: mockEvents, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 },
         })
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: mockUsers, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -455,12 +490,12 @@ describe('AdminPanel', () => {
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
         return Promise.resolve({
-          data: { items: [], total: 0, page: 1, pageSize: 200 },
+          data: { items: [], total: 0, page: 1, pageSize: 2500 },
         })
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: mockUsers, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -485,12 +520,12 @@ describe('AdminPanel', () => {
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
         return Promise.resolve({
-          data: { items: mockEvents, total: 3, page: 1, pageSize: 200 },
+          data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 },
         })
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: [], total: 0, page: 1, pageSize: 200 },
+          data: { items: [], total: 0, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -571,13 +606,13 @@ describe('AdminPanel', () => {
             ],
             total: 1,
             page: 1,
-            pageSize: 200,
+            pageSize: 2500,
           },
         })
       }
       if (url === '/admin/users') {
         return Promise.resolve({
-          data: { items: [], total: 0, page: 1, pageSize: 200 },
+          data: { items: [], total: 0, page: 1, pageSize: 2500 },
         })
       }
       return Promise.reject(new Error('Unknown endpoint'))
@@ -883,10 +918,10 @@ describe('AdminPanel', () => {
     let eventsData = mockEvents.map((e) => ({ ...e }))
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: eventsData, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: eventsData, total: 3, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -967,12 +1002,12 @@ describe('AdminPanel', () => {
             ],
             total: 1,
             page: 1,
-            pageSize: 200,
+            pageSize: 2500,
           },
         })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1020,12 +1055,12 @@ describe('AdminPanel', () => {
             ],
             total: 1,
             page: 1,
-            pageSize: 200,
+            pageSize: 2500,
           },
         })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1080,12 +1115,12 @@ describe('AdminPanel', () => {
             ],
             total: 4,
             page: 1,
-            pageSize: 200,
+            pageSize: 2500,
           },
         })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1138,10 +1173,10 @@ describe('AdminPanel — Users filter & pagination', () => {
 
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1223,10 +1258,10 @@ describe('AdminPanel — Users filter & pagination', () => {
     }))
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: manyUsers, total: 12, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: manyUsers, total: 12, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1255,6 +1290,75 @@ describe('AdminPanel — Users filter & pagination', () => {
     expect(screen.getByRole('button', { name: /página siguiente/i })).toBeDisabled()
   })
 
+  it('shows truncation valve when users total exceeds the fetched list', async () => {
+    const manyUsers = Array.from({ length: 12 }, (_, i) => ({
+      id: `u-${i}`,
+      email: `user${i}@example.com`,
+      name: `User ${i}`,
+      role: 'Staff',
+      createdAt: '2026-01-01T10:00:00Z',
+    }))
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/admin/users') {
+        // backend says there are 14 users but only 12 fit the fetched page
+        return Promise.resolve({ data: { items: manyUsers, total: 14, page: 1, pageSize: 2500 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await openUsersTab()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Mostrando 12 de 14 usuarios/i)).toBeInTheDocument()
+    })
+  })
+
+  it('does not show truncation valve when users total matches the fetched list', async () => {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await openUsersTab()
+
+    await waitFor(() => {
+      expect(screen.getByText('Usuarios (3)')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText(/Mostrando .* de .* usuarios/i)).not.toBeInTheDocument()
+  })
+
+  it('shows truncation valve when events total exceeds the fetched list', async () => {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        // backend says 4 events but only 3 fit the fetched page
+        return Promise.resolve({ data: { items: mockEvents, total: 4, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Mostrando 3 de 4 eventos/i)).toBeInTheDocument()
+    })
+  })
+
   it('resets to page 1 when filtering from a later page', async () => {
     // 24 users: even index = Admin (12), odd index = Staff (12) → 3 pages unfiltered
     const manyUsers = Array.from({ length: 24 }, (_, i) => ({
@@ -1266,10 +1370,10 @@ describe('AdminPanel — Users filter & pagination', () => {
     }))
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: manyUsers, total: 24, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: manyUsers, total: 24, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1317,10 +1421,10 @@ describe('AdminPanel — User management (AUM-005)', () => {
 
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: usersWithSinAcceso, total: 4, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: usersWithSinAcceso, total: 4, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })
@@ -1422,10 +1526,10 @@ describe('AdminPanel — Visual Regression', () => {
 
     mockGet.mockImplementation((url) => {
       if (url === '/admin/events') {
-        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 } })
       }
       if (url === '/admin/users') {
-        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 200 } })
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
       }
       return Promise.reject(new Error('Unknown endpoint'))
     })

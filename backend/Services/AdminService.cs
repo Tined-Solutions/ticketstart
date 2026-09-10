@@ -11,6 +11,12 @@ namespace TicketeraOnline.Api.Services;
 /// </summary>
 public class AdminService : IAdminService
 {
+    /// <summary>
+    /// Hard cap for admin list page sizes. Keeps list payloads bounded
+    /// regardless of what the client requests.
+    /// </summary>
+    private const int MaxPageSize = 2500;
+
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AdminService> _logger;
     private readonly TimeProvider _clock;
@@ -29,7 +35,7 @@ public class AdminService : IAdminService
     public async Task<PagedResult<UserSummary>> GetAllUsersAsync(int page, int pageSize)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+        pageSize = Math.Max(1, Math.Min(pageSize, MaxPageSize));
 
         _logger.LogInformation("Retrieving user accounts for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
 
@@ -67,7 +73,7 @@ public class AdminService : IAdminService
     public async Task<PagedResult<EventSummary>> GetAllEventsAsync(int page, int pageSize)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+        pageSize = Math.Max(1, Math.Min(pageSize, MaxPageSize));
 
         _logger.LogInformation("Retrieving events for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
 
@@ -88,6 +94,20 @@ public class AdminService : IAdminService
                 Status = e.Status
             })
             .ToListAsync();
+
+        // Resolve organizer emails in one bounded lookup instead of projecting
+        // the required Organizer navigation inside the Select: the InMemory
+        // test provider evaluates that projection with inner-join semantics and
+        // would silently drop events whose organizer no longer exists.
+        var organizerIds = events.Select(e => e.OrganizerId).Distinct().ToList();
+        var organizerEmails = await _context.Users.AsNoTracking()
+            .Where(u => organizerIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Email);
+
+        foreach (var eventSummary in events)
+        {
+            eventSummary.OrganizerEmail = organizerEmails.GetValueOrDefault(eventSummary.OrganizerId);
+        }
 
         _logger.LogInformation("Retrieved {EventCount} events for admin view", events.Count);
 
@@ -174,7 +194,7 @@ public class AdminService : IAdminService
     public async Task<PagedResult<EventSummary>> GetPendingEventsAsync(int page, int pageSize)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+        pageSize = Math.Max(1, Math.Min(pageSize, MaxPageSize));
 
         _logger.LogInformation("Retrieving pending events for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
 
@@ -224,7 +244,7 @@ public class AdminService : IAdminService
     public async Task<PagedResult<AuditLogEntry>> GetAllLogsAsync(int page, int pageSize)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Max(1, Math.Min(pageSize, 200));
+        pageSize = Math.Max(1, Math.Min(pageSize, MaxPageSize));
 
         _logger.LogInformation("Retrieving audit logs for admin view (page {Page}, pageSize {PageSize})", page, pageSize);
 
