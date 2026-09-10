@@ -83,7 +83,7 @@ function getLookupEmailInput() {
 }
 
 function getLookupDniInput() {
-  return screen.getByLabelText(/^dni$/i)
+  return screen.getByLabelText(/^(dni|c[eé]dula)$/i)
 }
 
 function getResendEmailInput() {
@@ -151,6 +151,39 @@ describe('TicketLookup', () => {
     ).toBeInTheDocument()
   })
 
+  it('labels the document field "Cédula" when Uruguay is selected', async () => {
+    const user = userEvent.setup()
+    render(<TicketLookup />)
+
+    expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
+
+    await user.selectOptions(
+      screen.getByLabelText('País del documento'),
+      'UY'
+    )
+
+    expect(screen.getByLabelText('Cédula')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^dni$/i)).not.toBeInTheDocument()
+  })
+
+  it('updates the header hint to "cédula" when Uruguay is selected', async () => {
+    const user = userEvent.setup()
+    render(<TicketLookup />)
+
+    expect(
+      screen.getByText(/ingresa tu email y tu dni para recuperar tus entradas/i)
+    ).toBeInTheDocument()
+
+    await user.selectOptions(
+      screen.getByLabelText('País del documento'),
+      'UY'
+    )
+
+    expect(
+      screen.getByText(/ingresa tu email y tu c[eé]dula para recuperar tus entradas/i)
+    ).toBeInTheDocument()
+  })
+
   // -- Validation (lookup) ----------------------------------------------
 
   it('shows validation error for empty email', async () => {
@@ -207,7 +240,7 @@ describe('TicketLookup', () => {
     const form = fillLookupForm(userEvent.setup(), { dni: '123' })
     await form.submit()
 
-    expect(screen.getAllByText(/formato de dni inv[aá]lido/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/formato de documento inv[aá]lido/i).length).toBeGreaterThan(0)
     expect(mockGet).not.toHaveBeenCalled()
   })
 
@@ -410,7 +443,7 @@ describe('TicketLookup', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/no se encontraron entradas con ese email y dni/i)
+        screen.getByText(/no se encontraron entradas con ese email y documento/i)
       ).toBeInTheDocument()
     })
 

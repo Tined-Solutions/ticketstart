@@ -249,7 +249,7 @@ export default function TicketLookup() {
               Buscar mis entradas
             </h2>
             <p className="text-text-2 text-sm">
-              Ingresa tu email y tu DNI para recuperar tus entradas
+              Ingresa tu email y tu {documentCountry === 'AR' ? 'DNI' : 'cédula'} para recuperar tus entradas
             </p>
           </header>
           <form onSubmit={handleLookupSubmit} noValidate className="space-y-4">
@@ -288,7 +288,6 @@ export default function TicketLookup() {
             <div>
               <IdentityDocumentInput
                 id="lookup-dni"
-                label="DNI"
                 value={dni}
                 onChange={(raw) => {
                   setDni(raw)
@@ -355,7 +354,7 @@ export default function TicketLookup() {
             <EmptyState
               icon="🎫"
               title="No se encontraron entradas"
-              description="No se encontraron entradas con ese email y DNI. Verifica que los datos sean correctos."
+              description="No se encontraron entradas con ese email y documento. Verifica que los datos sean correctos."
               action={
                 <Link to="/events">
                   <Button variant="glass">

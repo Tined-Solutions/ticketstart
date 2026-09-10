@@ -7,13 +7,17 @@ const COUNTRY_OPTIONS = [
   { value: 'UY', label: 'Uruguay', flag: '🇺🇾' },
 ]
 
+// Document type names follow the selected country: Argentina calls it DNI,
+// Uruguay calls it cédula. Display-only — the submitted value stays clean digits.
+const DOCUMENT_LABELS = { AR: 'DNI', UY: 'Cédula' }
+
 export default function IdentityDocumentInput({
   value = '',
   onChange,
   onBlur: onBlurProp,
   country = 'AR',
   onCountryChange,
-  label = 'Documento de identidad',
+  label,
   id,
   disabled = false,
   className = '',
@@ -56,6 +60,9 @@ export default function IdentityDocumentInput({
   }
 
   const inputId = id || 'identity-document'
+  // Country-aware document label (DNI for AR, Cédula for UY) unless the caller
+  // overrides it explicitly.
+  const resolvedLabel = label || DOCUMENT_LABELS[country] || 'Documento de identidad'
   const hasValue = value.trim().length > 0
   const hasExternalError = Boolean(error)
   const hasInternalError = hasValue && !result.valid && result.error
@@ -70,12 +77,12 @@ export default function IdentityDocumentInput({
 
   return (
     <div>
-      {label && (
+      {resolvedLabel && (
         <label
           htmlFor={inputId}
           className="block text-sm font-medium text-text-2 mb-1"
         >
-          {label}
+          {resolvedLabel}
         </label>
       )}
 
