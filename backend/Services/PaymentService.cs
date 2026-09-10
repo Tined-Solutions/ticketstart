@@ -155,7 +155,11 @@ public class PaymentService : IPaymentService
                 Success = $"{_options.FrontendUrl}/checkout/success?preference_id={{preference_id}}",
                 Failure = $"{_options.FrontendUrl}/checkout/return?status=failure",
                 Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
-            }
+            },
+            // Auto-return the buyer to /checkout/success a few seconds after an
+            // approved payment instead of leaving them on the MP screen. Only
+            // effective with publicly-accessible back_urls (production/staging).
+            AutoReturn = "approved"
         };
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);
