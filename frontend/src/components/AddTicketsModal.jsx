@@ -198,7 +198,7 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
                     <option value="">Seleccionar tipo</option>
                     {ticketTypes.map((tt) => (
                       <option key={tt.id} value={tt.id}>
-                        {tt.name} — {tt.available ?? tt.quantity} disponibles de {tt.quantity}
+                        {tt.name} — {tt.available ?? tt.quantity} disponibles
                       </option>
                     ))}
                   </select>

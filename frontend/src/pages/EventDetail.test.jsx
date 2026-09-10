@@ -66,10 +66,10 @@ describe('EventDetail', () => {
     })
 
     expect(screen.getByText(/\$\s*15\.000/)).toBeInTheDocument()
-    expect(screen.getByText(/80 disponibles de 100/i)).toBeInTheDocument()
+    expect(screen.getByText('80 disponibles')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /campo/i })).toBeInTheDocument()
     expect(screen.getByText(/\$\s*25\.000/)).toBeInTheDocument()
-    expect(screen.getByText(/150 disponibles de 200/i)).toBeInTheDocument()
+    expect(screen.getByText('150 disponibles')).toBeInTheDocument()
   })
 
   it('shows loading state while fetching', () => {
