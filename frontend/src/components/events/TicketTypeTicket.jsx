@@ -12,8 +12,13 @@ import Badge from '../ui/Badge.jsx'
 export default function TicketTypeTicket({ ticketType, isSelected, quantity, onSelect, onChange }) {
   const reduced = useReducedMotion()
   const available = ticketType.available ?? ticketType.quantity ?? 0
-  const total = ticketType.quantity || available
   const isSoldOut = available <= 0
+  const priceText = formatCurrency(ticketType.price)
+  // Long prices (5+ digits, e.g. "$ 25.000") get a slightly smaller size so
+  // the amount stays on ONE line. formatCurrency emits "$ 25.000" with a
+  // space, which is a natural line-break point — without nowrap + shrink the
+  // "$" would wrap alone on top of the value.
+  const isLongPrice = priceText.length >= 8
 
   return (
     <>
@@ -46,8 +51,10 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
             <h3 className="line-clamp-2 font-display text-base font-semibold leading-snug text-gris-oscuro">
               {ticketType.name}
             </h3>
-            <p className="mt-1 font-display text-2xl font-bold leading-tight text-purpura-dark">
-              {formatCurrency(ticketType.price)}
+            <p className={`mt-1 whitespace-nowrap font-display font-bold leading-tight text-purpura-dark ${
+                isLongPrice ? 'text-xl' : 'text-2xl'
+              }`}>
+              {priceText}
               <span className="block text-[10px] font-medium leading-none text-text-2">
                 por persona
               </span>
@@ -61,12 +68,8 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
           />
 
           {/* Availability text */}
-          <p className="w-full px-2 pb-1.5 pt-1 text-center text-sm text-text-2">
-            {isSoldOut
-              ? 'Sin stock'
-              : available === total
-                ? `${available} disponibles`
-                : `${available} disponibles de ${total}`}
+          <p className="w-full whitespace-nowrap px-2 pb-1.5 pt-1 text-center text-sm text-text-2">
+            {isSoldOut ? 'Sin stock' : `${available} disponibles`}
           </p>
 
           {/* Ticket foot: quantity controls / choose CTA / sold out.

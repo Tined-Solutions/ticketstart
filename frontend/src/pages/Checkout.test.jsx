@@ -71,14 +71,14 @@ async function fillPurchaserForm(
     await user.type(screen.getByLabelText('Confirmar email'), confirmEmail)
   }
 
-  await user.clear(screen.getByLabelText(/^dni$/i))
+  await user.clear(screen.getByLabelText(/^(dni|c[eé]dula)$/i))
   if (dni) {
-    await user.type(screen.getByLabelText(/^dni$/i), dni)
+    await user.type(screen.getByLabelText(/^(dni|c[eé]dula)$/i), dni)
   }
 
-  await user.clear(screen.getByLabelText('Confirmar DNI'))
+  await user.clear(screen.getByLabelText(/^confirmar (dni|c[eé]dula)$/i))
   if (confirmDNI) {
-    await user.type(screen.getByLabelText('Confirmar DNI'), confirmDNI)
+    await user.type(screen.getByLabelText(/^confirmar (dni|c[eé]dula)$/i), confirmDNI)
   }
 }
 
@@ -94,10 +94,10 @@ function fillPurchaserFormFire(
   fireEvent.change(screen.getByLabelText('Confirmar email'), {
     target: { value: confirmEmail },
   })
-  fireEvent.change(screen.getByLabelText(/^dni$/i), {
+  fireEvent.change(screen.getByLabelText(/^(dni|c[eé]dula)$/i), {
     target: { value: dni },
   })
-  fireEvent.change(screen.getByLabelText('Confirmar DNI'), {
+  fireEvent.change(screen.getByLabelText(/^confirmar (dni|c[eé]dula)$/i), {
     target: { value: confirmDNI },
   })
 }
@@ -152,7 +152,7 @@ describe('Checkout', () => {
     await fillPurchaserForm(userEvent.setup(), { dni: ' ' })
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
 
-    expect(screen.getByText(/el dni es obligatorio/i)).toBeInTheDocument()
+    expect(screen.getByText(/el documento es obligatorio/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
   })
 
@@ -224,6 +224,31 @@ describe('Checkout', () => {
     })
 
     expect(screen.getByRole('timer')).toHaveTextContent('08:55')
+  })
+
+  it('starts the countdown at reservation creation, not at page mount', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    renderWithQueryClient(<Checkout />)
+
+    // Time passes while the user fills the form (1 minute): the page was
+    // mounted BEFORE the reservation existed.
+    vi.advanceTimersByTime(60_000)
+
+    // Reservation is created NOW (server-side 10-minute expiry from this moment).
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    // Must read ~10:00 (600s), NOT 11:00 (660s — the bug: countdown from page mount).
+    expect(screen.getByRole('timer')).toHaveTextContent('10:00')
   })
 
   it('shows the expiration view when the reservation expires', async () => {
@@ -461,6 +486,17 @@ describe('Checkout', () => {
     expect(prevented).toBe(true)
   })
 
+  it('strips non-digit characters while typing in the confirm DNI field', async () => {
+    const user = userEvent.setup()
+    renderWithQueryClient(<Checkout />)
+
+    const confirmInput = screen.getByLabelText('Confirmar DNI')
+    await user.type(confirmInput, '12abc34def')
+
+    // Behaves like the primary DNI field: only digits are kept as you type.
+    expect(confirmInput).toHaveValue('1234')
+  })
+
   it('shows validation error when DNIs do not match', async () => {
     renderWithQueryClient(<Checkout />)
 
@@ -470,7 +506,7 @@ describe('Checkout', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
 
-    expect(screen.getByText(/los dnis no coinciden/i)).toBeInTheDocument()
+    expect(screen.getByText(/los documentos no coinciden/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
   })
 
@@ -479,6 +515,68 @@ describe('Checkout', () => {
 
     expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
+  })
+
+  it('switches the document field label to "Cédula" when Uruguay is selected', async () => {
+    const user = userEvent.setup()
+    renderWithQueryClient(<Checkout />)
+
+    // Default country is Argentina → label reads DNI
+    expect(screen.getByLabelText(/^dni$/i)).toBeInTheDocument()
+
+    await user.selectOptions(
+      screen.getByLabelText('País del documento'),
+      'UY'
+    )
+
+    // Uruguay calls it "cédula", not DNI — the label is display-only, the
+    // submitted value (clean digits) does not change.
+    expect(screen.getByLabelText('Cédula')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^dni$/i)).not.toBeInTheDocument()
+  })
+
+  it('switches the confirm field label to "Confirmar Cédula" when Uruguay is selected', async () => {
+    const user = userEvent.setup()
+    renderWithQueryClient(<Checkout />)
+
+    expect(screen.getByLabelText('Confirmar DNI')).toBeInTheDocument()
+
+    await user.selectOptions(
+      screen.getByLabelText('País del documento'),
+      'UY'
+    )
+
+    expect(screen.getByLabelText('Confirmar Cédula')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Confirmar DNI')).not.toBeInTheDocument()
+  })
+
+  it('shows "Cédula" as the document label in the confirmation review when Uruguay is selected', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fireEvent.change(screen.getByLabelText('País del documento'), {
+      target: { value: 'UY' },
+    })
+
+    fillPurchaserFormFire({
+      name: 'Maria Gomez',
+      email: 'maria@test.com',
+      dni: '51234561',
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(/datos del comprador/i)).toBeInTheDocument()
+    expect(screen.getByText('Cédula')).toBeInTheDocument()
+    expect(screen.queryByText('DNI')).not.toBeInTheDocument()
   })
 
   it('clears error when user types in either DNI field after a mismatch', async () => {
@@ -491,12 +589,12 @@ describe('Checkout', () => {
     })
     await user.click(screen.getByRole('button', { name: /reservar entradas/i }))
 
-    expect(screen.getByText(/los dnis no coinciden/i)).toBeInTheDocument()
+    expect(screen.getByText(/los documentos no coinciden/i)).toBeInTheDocument()
 
     await user.clear(screen.getByLabelText(/^dni$/i))
     await user.type(screen.getByLabelText(/^dni$/i), '12345678')
 
-    expect(screen.queryByText(/los dnis no coinciden/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/los documentos no coinciden/i)).not.toBeInTheDocument()
   })
 
   it('displays purchaser data in the confirmation review section', async () => {
@@ -689,7 +787,7 @@ describe('Checkout', () => {
     })
 
     // Should NOT show "DNIs no coinciden" — they're the same after cleaning
-    expect(screen.queryByText(/los dnis no coinciden/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/los documentos no coinciden/i)).not.toBeInTheDocument()
     expect(mockPost).toHaveBeenCalled()
   })
 
