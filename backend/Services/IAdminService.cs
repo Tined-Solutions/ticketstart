@@ -85,6 +85,15 @@ public class EventSummary
     public DateTime Date { get; set; }
     public string Location { get; set; } = string.Empty;
     public Guid OrganizerId { get; set; }
+
+    /// <summary>
+    /// Email of the event organizer, resolved server-side via a join to the
+    /// Users table so the admin panel renders it without needing the whole
+    /// user list client-side. Null when the organizer no longer exists or
+    /// when the summary is produced by an endpoint that does not join users.
+    /// </summary>
+    public string? OrganizerEmail { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     /// <summary>
