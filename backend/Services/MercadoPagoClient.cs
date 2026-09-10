@@ -54,8 +54,11 @@ public class MercadoPagoClient : IMercadoPagoClient
                 failure = request.BackUrls.Failure,
                 pending = request.BackUrls.Pending
             } : null,
-            notification_url = request.NotificationUrl
-            // auto_return omitted: requires publicly-accessible back_urls (localhost → rejected by MP)
+            notification_url = request.NotificationUrl,
+            // auto_return ("approved") redirects the buyer back to the success
+            // back_url after payment. It requires publicly-accessible back_urls,
+            // so it is only effective in production/staging, not localhost.
+            auto_return = string.IsNullOrEmpty(request.AutoReturn) ? null : request.AutoReturn
         };
 
         var json = JsonSerializer.Serialize(body, _preferenceJsonOptions);

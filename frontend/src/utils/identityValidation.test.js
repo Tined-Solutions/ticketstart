@@ -98,13 +98,13 @@ describe('validateDocument', () => {
     it('rejects DNI with fewer than 7 digits', () => {
       const result = validateDocument('123456', 'AR')
       expect(result.valid).toBe(false)
-      expect(result.error).toBe('Formato de DNI inválido')
+      expect(result.error).toBe('Formato de documento inválido')
     })
 
     it('rejects DNI with more than 8 digits', () => {
       const result = validateDocument('123456789', 'AR')
       expect(result.valid).toBe(false)
-      expect(result.error).toBe('Formato de DNI inválido')
+      expect(result.error).toBe('Formato de documento inválido')
     })
 
     it('rejects DNI with letters', () => {

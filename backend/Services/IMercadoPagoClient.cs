@@ -74,6 +74,14 @@ public class MercadoPagoPreferenceRequest
     public List<MercadoPagoItemRequest> Items { get; set; } = new();
     public string? NotificationUrl { get; set; }
     public MercadoPagoBackUrls? BackUrls { get; set; }
+
+    /// <summary>
+    /// When "approved", Mercado Pago automatically redirects the buyer back to
+    /// BackUrls.Success a few seconds after an approved payment instead of
+    /// leaving them on the MP screen. Only effective with publicly-accessible
+    /// back_urls (production/staging), not localhost.
+    /// </summary>
+    public string? AutoReturn { get; set; }
 }
 
 public class MercadoPagoBackUrls

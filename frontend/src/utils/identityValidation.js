@@ -79,7 +79,7 @@ function validateCedulaUruguaya(clean) {
  */
 function validateDNIArgentino(clean) {
   if (!/^\d{7,8}$/.test(clean)) {
-    return { valid: false, error: 'Formato de DNI inválido' }
+    return { valid: false, error: 'Formato de documento inválido' }
   }
   return { valid: true, error: null }
 }
