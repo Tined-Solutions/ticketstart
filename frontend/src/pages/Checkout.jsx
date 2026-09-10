@@ -65,6 +65,10 @@ export default function Checkout() {
 
   useEffect(() => {
     if (!reservation) return undefined
+    // Sync the clock the moment the reservation starts. `now` was frozen at
+    // page mount; the countdown must measure from reservation creation, not
+    // from how long the page has been open (otherwise it starts at 11:00+).
+    setNow(Date.now())
     timerRef.current = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timerRef.current)
   }, [reservation])
@@ -119,7 +123,7 @@ export default function Checkout() {
     }
 
     if (!dni) {
-      errors.purchaserDNI = 'El DNI es obligatorio'
+      errors.purchaserDNI = 'El documento es obligatorio'
     } else {
       const docValidation = validateDocument(dni, documentCountry)
       if (!docValidation.valid) {
@@ -128,7 +132,7 @@ export default function Checkout() {
     }
 
     if (dni && cleanDocument(dni) !== cleanDocument(confirmDNI)) {
-      errors.confirmDNI = 'Los DNIs no coinciden'
+      errors.confirmDNI = 'Los documentos no coinciden'
     }
 
     return errors
@@ -412,7 +416,6 @@ export default function Checkout() {
                 <IdentityDocumentInput
                   id="purchaserDNI"
                   name="purchaserDNI"
-                  label="DNI"
                   value={purchaserDNI}
                   onChange={(raw) => {
                     setPurchaserDNI(raw)
@@ -434,7 +437,7 @@ export default function Checkout() {
                     htmlFor="confirmDNI"
                     className="block text-sm font-medium text-text-2 mb-1"
                   >
-                    Confirmar DNI
+                    {documentCountry === 'AR' ? 'Confirmar DNI' : 'Confirmar Cédula'}
                   </label>
                   <input
                     id="confirmDNI"
@@ -449,7 +452,7 @@ export default function Checkout() {
                           : confirmDNI
                     }
                     onChange={(e) => {
-                      setConfirmDNI(e.target.value)
+                      setConfirmDNI(cleanDocument(e.target.value))
                       setError('')
                       clearFieldErrors('confirmDNI', 'purchaserDNI')
                     }}
@@ -593,7 +596,9 @@ export default function Checkout() {
                   <span className="truncate font-semibold text-text-1">{purchaserEmail}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-text-2">DNI</span>
+                  <span className="text-text-2">
+                    {documentCountry === 'AR' ? 'DNI' : 'Cédula'}
+                  </span>
                   <span className="truncate font-semibold text-text-1">{purchaserDNI}</span>
                 </div>
               </div>
