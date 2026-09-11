@@ -338,6 +338,79 @@ public class EventServiceTests : IDisposable
         Assert.Null(result);
     }
 
+    [Fact]
+    public async Task GetEventByIdAsync_OrdersTicketTypes_ByPriceDescending_ThenNameAscending()
+    {
+        // Arrange — inserted in scrambled order; three types share a price to
+        // pin the name tie-break.
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.AddRange(
+            new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "VIP", Price = 250m, Quantity = 10, CreatedAt = DateTime.UtcNow },
+            new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "General", Price = 100m, Quantity = 10, CreatedAt = DateTime.UtcNow },
+            new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "Zeta", Price = 100m, Quantity = 10, CreatedAt = DateTime.UtcNow },
+            new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "Alfa", Price = 100m, Quantity = 10, CreatedAt = DateTime.UtcNow });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
+
+        // Assert — most expensive first; equal prices ordered by name.
+        Assert.NotNull(result);
+        Assert.Equal(
+            new[] { "VIP", "Alfa", "General", "Zeta" },
+            result.TicketTypes.Select(tt => tt.Name));
+    }
+
+    [Fact]
+    public async Task GetEventByIdAsync_WithSingleTicketType_ReturnsThatType()
+    {
+        // Arrange
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General",
+            Price = 100m,
+            Quantity = 50,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _eventService.GetEventByIdAsync(eventEntity.Id);
+
+        // Assert — a single-type event is unaffected by the ordering.
+        Assert.NotNull(result);
+        var onlyType = Assert.Single(result.TicketTypes);
+        Assert.Equal("General", onlyType.Name);
+        Assert.Equal(100m, onlyType.Price);
+    }
+
     #endregion
 
     #region GetAllPublishedEventsAsync Tests
