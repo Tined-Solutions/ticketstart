@@ -62,6 +62,6 @@ Dependency order: 1 → 2 → 3 → 4.
 
 ## Phase 6: Verification
 
-- [ ] 6.1 `cd backend && dotnet test` — full suite green.
-- [ ] 6.2 `cd frontend && npm test` — full suite green.
-- [ ] 6.3 Confirm ATE/ATS/PEM scenarios covered; do NOT edit canonical `openspec/specs/` (archive-time work).
+- [x] 6.1 `cd backend && dotnet test` — full suite green.
+- [x] 6.2 `cd frontend && npm test` — full suite green.
+- [x] 6.3 Confirm ATE/ATS/PEM scenarios covered; do NOT edit canonical `openspec/specs/` (archive-time work).
