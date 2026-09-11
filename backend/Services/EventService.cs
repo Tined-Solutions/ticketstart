@@ -825,21 +825,27 @@ public class EventService : IEventService
         IReadOnlyDictionary<Guid, int> soldCounts,
         IReadOnlyDictionary<Guid, int> reservedCounts)
     {
-        var ticketTypesWithAvailability = eventEntity.TicketTypes.Select(tt =>
-        {
-            soldCounts.TryGetValue(tt.Id, out var sold);
-            reservedCounts.TryGetValue(tt.Id, out var reserved);
-            var available = Math.Max(0, tt.Quantity - sold - reserved);
-
-            return new TicketTypeWithAvailability
+        // Buyer-visible order for every caller of this mapper: most expensive
+        // first, ties by name. The organizer create-form preview mirrors this rule.
+        var ticketTypesWithAvailability = eventEntity.TicketTypes
+            .OrderByDescending(tt => tt.Price)
+            .ThenBy(tt => tt.Name)
+            .Select(tt =>
             {
-                Id = tt.Id,
-                Name = tt.Name,
-                Price = tt.Price,
-                Quantity = tt.Quantity,
-                Available = available
-            };
-        }).ToList();
+                soldCounts.TryGetValue(tt.Id, out var sold);
+                reservedCounts.TryGetValue(tt.Id, out var reserved);
+                var available = Math.Max(0, tt.Quantity - sold - reserved);
+
+                return new TicketTypeWithAvailability
+                {
+                    Id = tt.Id,
+                    Name = tt.Name,
+                    Price = tt.Price,
+                    Quantity = tt.Quantity,
+                    Available = available
+                };
+            })
+            .ToList();
 
         return await Task.FromResult(new EventWithAvailability
         {
