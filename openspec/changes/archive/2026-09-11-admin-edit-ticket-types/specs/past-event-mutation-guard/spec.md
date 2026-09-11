@@ -1,5 +1,12 @@
 # Delta for past-event-mutation-guard
 
+## RENAMED Requirements
+
+### Requirement: PEM-002: All six mutation endpoints reject past events → PEM-002: All seven mutation endpoints reject past events
+
+(Reason: the guarded endpoint list grows from six to seven with the new atomic replacement endpoint.)
+(Migration: canonical heading and scenario references update the count six -> seven; requirement ID PEM-002 is unchanged.)
+
 ## MODIFIED Requirements
 
 ### Requirement: PEM-002: All seven mutation endpoints reject past events
@@ -37,3 +44,4 @@ Each of the following MUST return 409 `event-finalized` when the target event is
 - WHEN an admin calls `PUT /admin/events/{id}/ticket-types`
 - THEN the response is 409 with `type: "event-finalized"` (not `ticket-types-not-editable`)
 - AND no ticket type row is mutated and no audit entry is written
+
