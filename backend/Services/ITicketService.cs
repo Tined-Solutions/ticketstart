@@ -89,8 +89,10 @@ public interface ITicketService
     Task<IEnumerable<TicketLookupInfoResponse>> LookupActiveTicketsByEmailAndDniAsync(string email, string dni);
 
     /// <summary>
-    /// Resends tickets by email grouped by event. Returns generic success
-    /// regardless of whether tickets exist for the given email (no info leak).
+    /// Resends only ACTIVE (still scannable) tickets by email grouped by event:
+    /// unused, non-refunded, from Approved events inside the QR validation window.
+    /// The email is matched case-insensitively after trimming. Returns generic
+    /// success regardless of whether tickets exist for the given email (no info leak).
     /// Validates: Batch 5 — B5.2
     /// </summary>
     /// <param name="email">Purchaser email</param>

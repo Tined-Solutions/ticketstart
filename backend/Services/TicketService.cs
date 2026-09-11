@@ -565,30 +565,48 @@ public class TicketService : ITicketService
     }
 
     /// <summary>
-    /// Resends tickets by email. Always returns success to prevent info leak.
+    /// Resends ACTIVE tickets by email, grouped by event. A ticket is resendable
+    /// only when it can still be scanned: unused, non-refunded, and its event is
+    /// Approved and still inside the QR validation window — the same criteria the
+    /// scanner chooser applies (see EventService.GetScannableEventsAsync), so an
+    /// ongoing event (started less than ValidationWindowHours ago) still resends.
+    /// Email is matched case-insensitively after trimming, mirroring the lookup.
+    /// Always returns success to prevent info leak.
     /// Validates: Batch 5 — B5.2
     /// </summary>
     public async Task<bool> ResendTicketsByEmailAsync(string email)
     {
-        _logger.LogInformation("Resend tickets requested for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+        var trimmedEmail = email?.Trim() ?? "";
+        var emailKey = trimmedEmail.ToLowerInvariant();
+
+        _logger.LogInformation("Resend tickets requested for email hash {EmailHash}", LogRedactor.HashIdentifier(trimmedEmail));
 
         try
         {
+            var scanCutoff = DateTime.UtcNow.AddHours(-ValidationWindowHours);
+
             var tickets = await _context.Tickets
                 .Include(t => t.Event)
                 .Include(t => t.TicketType)
                 .Include(t => t.Reservation)
-                .Where(t => t.PurchaserEmail == email && !t.IsRefunded) // APR-005: refunded tickets are not re-sent
+                // Only scannable tickets: refunded (APR-005) and already-used ones
+                // are pointless to resend, and the event must still be scannable
+                // (Approved + inside the validation window, matching the chooser).
+                .Where(t => t.PurchaserEmail.ToLower() == emailKey
+                    && !t.IsRefunded
+                    && !t.IsUsed
+                    && t.Event.Status == EventStatus.Approved
+                    && t.Event.Date > scanCutoff)
                 .ToListAsync();
 
             if (tickets.Count == 0)
             {
-                _logger.LogInformation("No tickets found for email hash {EmailHash} — still returning success", LogRedactor.HashIdentifier(email));
+                _logger.LogInformation("No active tickets found for email hash {EmailHash} — still returning success", LogRedactor.HashIdentifier(trimmedEmail));
                 return true;
             }
 
             _logger.LogInformation("Found {Count} tickets to resend for email hash {EmailHash}",
-                tickets.Count, LogRedactor.HashIdentifier(email));
+                tickets.Count, LogRedactor.HashIdentifier(trimmedEmail));
 
             var eventGroups = tickets.GroupBy(t => t.EventId);
 
@@ -603,20 +621,20 @@ public class TicketService : ITicketService
                     var recipientName = eventTickets
                         .Select(t => t.Reservation?.PurchaserName)
                         .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
-                    var result = await emailService.SendResendEmailAsync(email, eventTickets, eventDetails, recipientName);
+                    var result = await emailService.SendResendEmailAsync(trimmedEmail, eventTickets, eventDetails, recipientName);
 
                     if (!result.Success)
                     {
                         _logger.LogError(
                             "Failed to resend tickets for event {EventId} to {EmailHash}: {Error}",
-                            eventDetails.Id, LogRedactor.HashIdentifier(email), result.Error);
+                            eventDetails.Id, LogRedactor.HashIdentifier(trimmedEmail), result.Error);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,
-                        "Error resending tickets for event {EventId} to {EmailHash}",
-                        eventDetails.Id, LogRedactor.HashIdentifier(email));
+                        _logger.LogError(ex,
+                            "Error resending tickets for event {EventId} to {EmailHash}",
+                            eventDetails.Id, LogRedactor.HashIdentifier(trimmedEmail));
                 }
             }
 
@@ -624,7 +642,7 @@ public class TicketService : ITicketService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ticket resend for email hash {EmailHash}", LogRedactor.HashIdentifier(email));
+            _logger.LogError(ex, "Error during ticket resend for email hash {EmailHash}", LogRedactor.HashIdentifier(trimmedEmail));
             return true;
         }
     }
