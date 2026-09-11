@@ -50,8 +50,8 @@ Dependency order: 1 → 2 → 3 → 4.
 
 ## Phase 4: EditTicketsModal (strict TDD)
 
-- [ ] 4.1 RED: create `frontend/src/components/__tests__/EditTicketsModal.test.jsx` — `managementEvent` load, CRUD rows, `$0` price, validation/focus/`role="alert"`, PUT payload, three-key invalidation, blocked-Rejected copy.
-- [ ] 4.2 GREEN: create `frontend/src/components/EditTicketsModal.jsx` — `useManagementEvent`, `useDialog` a11y, complete-list PUT, invalidate `managementEvent(id)`/`event(id)`/`events`, 409 copy.
+- [x] 4.1 RED: create `frontend/src/components/__tests__/EditTicketsModal.test.jsx` — `managementEvent` load, CRUD rows, `$0` price, validation/focus/`role="alert"`, PUT payload, three-key invalidation, blocked-Rejected copy.
+- [x] 4.2 GREEN: create `frontend/src/components/EditTicketsModal.jsx` — `useManagementEvent`, `useDialog` a11y, complete-list PUT, invalidate `managementEvent(id)`/`event(id)`/`events`, 409 copy.
 
 ## Phase 5: AdminPanel + AddTicketsModal (strict TDD)
 
