@@ -284,22 +284,27 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
                     )}
                   </div>
 
-                  <div className="form-group justify-self-end sm:mb-0 sm:self-center">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => removeRow(index)}
-                      disabled={busy}
-                      aria-label={`Eliminar ${row.name || `entrada ${index + 1}`}`}
-                    >
+                  <div className="form-group justify-self-end sm:mb-0">
+                    <span aria-hidden="true" className="hidden sm:block sm:invisible font-medium">
                       Eliminar
-                    </Button>
+                    </span>
+                    <div className="flex items-center justify-end sm:h-10">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => removeRow(index)}
+                        disabled={busy}
+                        aria-label={`Eliminar ${row.name || `entrada ${index + 1}`}`}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <Button variant="secondary" size="sm" onClick={addRow} disabled={busy} className="mt-4 sm:mt-3">
+            <Button variant="glass" size="sm" onClick={addRow} disabled={busy} className="mt-4 sm:mt-3">
               Agregar tipo de entrada
             </Button>
 
@@ -310,10 +315,10 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
             )}
 
             <div className="flex gap-3 justify-end mt-6 sm:mt-4">
-              <Button variant="secondary" onClick={onClose} disabled={busy}>
+              <Button variant="glass" onClick={onClose} disabled={busy}>
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary" disabled={busy} className="min-h-[44px]">
+              <Button type="submit" variant="accent" disabled={busy} className="min-h-[44px]">
                 {busy ? 'Guardando…' : 'Guardar'}
               </Button>
             </div>
