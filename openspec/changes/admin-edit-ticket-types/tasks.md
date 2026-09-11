@@ -44,9 +44,9 @@ Dependency order: 1 → 2 → 3 → 4.
 
 ## Phase 3: Backend controller (strict TDD)
 
-- [ ] 3.1 RED: extend `backend/Tests/AdminControllerTicketStockTests.cs` (Moq) — 404/400/three 409s/500, exact ProblemDetails fields, audit once on success, never on failure.
-- [ ] 3.2 GREEN: add `[HttpPut("events/{eventId:guid}/ticket-types")]` to `backend/Controllers/AdminController.cs` — `TryGetUserId`, exception→RFC 7807 mapping, `TryLogAuditAsync` on success only.
-- [ ] 3.3 RED/GREEN: prove 403 non-admin via `WebApplicationFactory<Program>` authorization harness (ATS-001).
+- [x] 3.1 RED: extend `backend/Tests/AdminControllerTicketStockTests.cs` (Moq) — 404/400/three 409s/500, exact ProblemDetails fields, audit once on success, never on failure.
+- [x] 3.2 GREEN: add `[HttpPut("events/{eventId:guid}/ticket-types")]` to `backend/Controllers/AdminController.cs` — `TryGetUserId`, exception→RFC 7807 mapping, `TryLogAuditAsync` on success only.
+- [x] 3.3 RED/GREEN: prove 403 non-admin via `WebApplicationFactory<Program>` authorization harness (ATS-001).
 
 ## Phase 4: EditTicketsModal (strict TDD)
 

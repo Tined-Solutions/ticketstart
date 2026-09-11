@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using TicketeraOnline.Api.Controllers;
 using TicketeraOnline.Api.Models;
@@ -14,6 +16,7 @@ namespace TicketeraOnline.Api.Tests;
 /// Controller-level RED tests for the admin add-ticket-stock endpoints.
 /// Validates ATS-002 (increment), ATS-004 (new type), ATS-005 (audit) and D-5 error mapping.
 /// </summary>
+[Collection("EnvConfigTests")]
 public class AdminControllerTicketStockTests
 {
     private readonly Mock<IEventService> _mockEventService;
@@ -273,6 +276,215 @@ public class AdminControllerTicketStockTests
 
         // Assert
         Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    #endregion
+
+    #region PUT /api/admin/events/{eventId}/ticket-types (ATE-001…ATE-008)
+
+    private static IReadOnlyList<TicketTypeWithAvailability> ReplacedTypes()
+        => new List<TicketTypeWithAvailability>
+        {
+            new() { Id = Guid.NewGuid(), Name = "A", Price = 50m, Quantity = 100, Available = 100 },
+            new() { Id = Guid.NewGuid(), Name = "C", Price = 200m, Quantity = 10, Available = 10 },
+        };
+
+    private static ReplaceTicketTypesRequest ReplacementRequest()
+        => new()
+        {
+            TicketTypes =
+            {
+                new ReplaceTicketTypeRequest(null, "A", 50m, 100),
+                new ReplaceTicketTypeRequest(null, "C", 200m, 10),
+            }
+        };
+
+    [Fact]
+    public async Task ReplaceTicketTypes_ValidRequest_ReturnsOkAndAuditsExactlyOnce()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(eventId, It.IsAny<ReplaceTicketTypesRequest>()))
+            .ReturnsAsync(ReplacedTypes());
+
+        // Act
+        var result = await _controller.ReplaceTicketTypes(eventId, ReplacementRequest());
+
+        // Assert — 200 with the recomputed list (ATE-006)
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var value = Assert.IsAssignableFrom<IReadOnlyList<TicketTypeWithAvailability>>(okResult.Value);
+        Assert.Equal(2, value.Count);
+
+        // ATE-008: exactly one audit entry with the new action type
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.UserId == adminId &&
+            c.Action == AuditActionType.EditTicketTypes &&
+            c.Resource == AuditResourceType.Event &&
+            c.ResourceId == eventId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_AuditDetailsTruncatedToColumnLimit()
+    {
+        // Arrange — force a long event id representation by mocking many results is
+        // unnecessary; the detail is a fixed summary. Assert the 1000-char cap holds.
+        var adminId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(eventId, It.IsAny<ReplaceTicketTypesRequest>()))
+            .ReturnsAsync(ReplacedTypes());
+
+        // Act
+        await _controller.ReplaceTicketTypes(eventId, ReplacementRequest());
+
+        // Assert — ATS-005/ATE-008: Details stays within the varchar(1000) cap
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.Is<AuditLogContext>(c =>
+            c.Details != null && c.Details.Length <= 1000)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_UnknownEvent_ReturnsNotFound_NoAudit()
+    {
+        // ATE-007: unknown event → 404 with no audit
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(It.IsAny<Guid>(), It.IsAny<ReplaceTicketTypesRequest>()))
+            .ThrowsAsync(new KeyNotFoundException("Event not found"));
+
+        var result = await _controller.ReplaceTicketTypes(Guid.NewGuid(), ReplacementRequest());
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(404, notFoundResult.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_InvalidPayload_ReturnsBadRequest_NoAudit()
+    {
+        // ATE-004 → 400, no audit
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(It.IsAny<Guid>(), It.IsAny<ReplaceTicketTypesRequest>()))
+            .ThrowsAsync(new ArgumentException("At least one ticket type is required", "request"));
+
+        var result = await _controller.ReplaceTicketTypes(Guid.NewGuid(), ReplacementRequest());
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequest.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("not-editable", "ticket-types-not-editable")]
+    [InlineData("referenced", "ticket-types-referenced")]
+    [InlineData("finalized", "event-finalized")]
+    public async Task ReplaceTicketTypes_ConflictOutcomes_ReturnProblemDetails409_NoAudit(string kind, string expectedType)
+    {
+        // ATE-007: all 409 bodies are RFC 7807 application/problem+json
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        var setup = _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(It.IsAny<Guid>(), It.IsAny<ReplaceTicketTypesRequest>()));
+        switch (kind)
+        {
+            case "not-editable":
+                setup.ThrowsAsync(new TicketTypesNotEditableException());
+                break;
+            case "referenced":
+                setup.ThrowsAsync(new TicketTypesReferencedException());
+                break;
+            default:
+                setup.ThrowsAsync(new EventFinalizedException());
+                break;
+        }
+
+        var result = await _controller.ReplaceTicketTypes(Guid.NewGuid(), ReplacementRequest());
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal(expectedType, problem.Type);
+        Assert.False(string.IsNullOrWhiteSpace(problem.Title));
+        Assert.False(string.IsNullOrWhiteSpace(problem.Detail));
+
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_ServiceThrowsUnexpected_ReturnsInternalServerError_NoAudit()
+    {
+        // ATE-007: unexpected failure → 500 with rollback semantics upstream
+        var adminId = Guid.NewGuid();
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockEventService
+            .Setup(s => s.ReplaceTicketTypesAsync(It.IsAny<Guid>(), It.IsAny<ReplaceTicketTypesRequest>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        var result = await _controller.ReplaceTicketTypes(Guid.NewGuid(), ReplacementRequest());
+
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, statusCodeResult.StatusCode);
+        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_NoAuthenticatedUser_ReturnsUnauthorized()
+    {
+        var result = await _controller.ReplaceTicketTypes(Guid.NewGuid(), ReplacementRequest());
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    #endregion
+
+    #region ATS-001 — non-admin rejected (WAF)
+
+    [Fact]
+    public async Task ReplaceTicketTypes_OrganizerRole_Returns403()
+    {
+        // ATS-001: the RequireAdminRole policy rejects a non-admin before the action.
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/events/{Guid.NewGuid()}/ticket-types",
+            new { ticketTypes = new[] { new { name = "A", price = 10, quantity = 5 } } });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypes_ApprovedEvent_Returns409ProblemDetails()
+    {
+        // ATE-002/ATE-007: Approved event → 409 ticket-types-not-editable, problem+json
+        using var factory = new EventCatalogApiFactory();
+        var adminId = factory.SeedAdmin();
+        var eventId = factory.SeedEvent("Approved Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(5),
+            adminId, EventStatus.Approved);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/events/{eventId}/ticket-types",
+            new { ticketTypes = new[] { new { name = "A", price = 10, quantity = 5 } } });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("ticket-types-not-editable", body);
+        // ATE-007: RFC 7807 bodies carry the request-path instance
+        Assert.Contains("\"instance\"", body);
     }
 
     #endregion
