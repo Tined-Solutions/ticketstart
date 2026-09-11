@@ -184,11 +184,11 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
       aria-modal="true"
       aria-labelledby="edit-tickets-title"
     >
-      <div className="glass-surface p-8 max-w-2xl w-full shadow-xl text-left rounded-[--radius-glass] max-h-[90vh] overflow-y-auto">
-        <h2 id="edit-tickets-title" className="text-xl font-display font-semibold text-text-1 mb-1">
+      <div className="glass-surface p-8 sm:p-6 max-w-2xl sm:max-w-3xl w-full shadow-xl text-left rounded-[--radius-glass] max-h-[90vh] overflow-y-auto">
+        <h2 id="edit-tickets-title" className="text-xl sm:text-lg font-display font-semibold text-text-1 mb-1">
           Editar entradas
         </h2>
-        <p className="text-text-2 mb-6 leading-relaxed">{eventName}</p>
+        <p className="text-text-2 sm:text-sm mb-6 sm:mb-4 leading-relaxed">{eventName}</p>
 
         {isLoading ? (
           <p className="text-text-2 text-sm" role="status">
@@ -202,17 +202,18 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
               </span>
             )}
 
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 sm:gap-3">
               {rows.map((row, index) => (
                 <div
                   key={row.key}
-                  className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 items-start border-b border-border pb-4"
+                  className="grid grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-start border-b border-border pb-4 sm:pb-3"
                 >
-                  <div className="form-group">
+                  <div className="form-group min-w-0 sm:mb-0">
                     <label htmlFor={fieldId('name', index)}>Nombre</label>
                     <input
                       id={fieldId('name', index)}
                       type="text"
+                      className="w-full"
                       value={row.name}
                       aria-label={`Nombre de la entrada ${index + 1}`}
                       onChange={(e) => updateRow(index, 'name', e.target.value)}
@@ -229,11 +230,12 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
                     )}
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group min-w-0 sm:mb-0">
                     <label htmlFor={fieldId('price', index)}>Precio ($)</label>
                     <input
                       id={fieldId('price', index)}
                       type="number"
+                      className="w-full"
                       min="0"
                       step="0.01"
                       value={row.price}
@@ -252,11 +254,12 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
                     )}
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group min-w-0 sm:mb-0">
                     <label htmlFor={fieldId('quantity', index)}>Cantidad</label>
                     <input
                       id={fieldId('quantity', index)}
                       type="number"
+                      className="w-full"
                       min="1"
                       step="1"
                       value={row.quantity}
@@ -281,7 +284,7 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
                     )}
                   </div>
 
-                  <div className="form-group justify-self-end">
+                  <div className="form-group justify-self-end sm:mb-0 sm:self-center">
                     <Button
                       variant="danger"
                       size="sm"
@@ -296,7 +299,7 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
               ))}
             </div>
 
-            <Button variant="secondary" size="sm" onClick={addRow} disabled={busy} className="mt-4">
+            <Button variant="secondary" size="sm" onClick={addRow} disabled={busy} className="mt-4 sm:mt-3">
               Agregar tipo de entrada
             </Button>
 
@@ -306,7 +309,7 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
               </div>
             )}
 
-            <div className="flex gap-3 justify-end mt-6">
+            <div className="flex gap-3 justify-end mt-6 sm:mt-4">
               <Button variant="secondary" onClick={onClose} disabled={busy}>
                 Cancelar
               </Button>
