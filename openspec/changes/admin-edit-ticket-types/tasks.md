@@ -55,10 +55,10 @@ Dependency order: 1 → 2 → 3 → 4.
 
 ## Phase 5: AdminPanel + AddTicketsModal (strict TDD)
 
-- [ ] 5.1 RED: create `frontend/src/components/__tests__/AddTicketsModal.test.jsx` — add-only behavior + `managementEvent(id)` invalidation (ATS-007).
-- [ ] 5.2 GREEN: update `frontend/src/components/AddTicketsModal.jsx` invalidation to the three keys.
-- [ ] 5.3 RED: extend `frontend/src/pages/AdminPanel.test.jsx` — Pending/Rejected show a distinct "Editar entradas" + edit icon, Approved keeps "Agregar entradas", past disabled.
-- [ ] 5.4 GREEN: update `frontend/src/pages/AdminPanel.jsx` — `editTicketsTarget`, status-aware label/icon, mount `EditTicketsModal`, keep organizer "Editar".
+- [x] 5.1 RED: create `frontend/src/components/__tests__/AddTicketsModal.test.jsx` — add-only behavior + `managementEvent(id)` invalidation (ATS-007).
+- [x] 5.2 GREEN: update `frontend/src/components/AddTicketsModal.jsx` invalidation to the three keys.
+- [x] 5.3 RED: extend `frontend/src/pages/AdminPanel.test.jsx` — Pending/Rejected show a distinct "Editar entradas" + edit icon, Approved keeps "Agregar entradas", past disabled.
+- [x] 5.4 GREEN: update `frontend/src/pages/AdminPanel.jsx` — `editTicketsTarget`, status-aware label/icon, mount `EditTicketsModal`, keep organizer "Editar".
 
 ## Phase 6: Verification
 
