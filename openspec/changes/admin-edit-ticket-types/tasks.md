@@ -31,16 +31,16 @@ Dependency order: 1 → 2 → 3 → 4.
 
 ## Phase 1: Backend contracts
 
-- [ ] 1.1 Add `ReplaceTicketTypesRequest`/`ReplaceTicketTypeRequest` DTOs and `ReplaceTicketTypesAsync` to `backend/Services/IEventService.cs`.
-- [ ] 1.2 Add `TicketTypesNotEditableException` (`ticket-types-not-editable`) and `TicketTypesReferencedException` (`ticket-types-referenced`) to `backend/Models/Exceptions.cs`.
-- [ ] 1.3 Add `AuditActionType.EditTicketTypes` to `backend/Models/AuditLog.cs` (varchar-backed, no migration).
+- [x] 1.1 Add `ReplaceTicketTypesRequest`/`ReplaceTicketTypeRequest` DTOs and `ReplaceTicketTypesAsync` to `backend/Services/IEventService.cs`.
+- [x] 1.2 Add `TicketTypesNotEditableException` (`ticket-types-not-editable`) and `TicketTypesReferencedException` (`ticket-types-referenced`) to `backend/Models/Exceptions.cs`.
+- [x] 1.3 Add `AuditActionType.EditTicketTypes` to `backend/Models/AuditLog.cs` (varchar-backed, no migration).
 
 ## Phase 2: Backend service (strict TDD)
 
-- [ ] 2.1 RED: extend `backend/Tests/EventServiceTicketStockTests.cs` — mixed add/edit/delete, empty list, name/price/qty validation, per-type total ≤1000, foreign id, all-state history, Pending-with-history, finalized-before-status, recomputed availability, no-mutation.
-- [ ] 2.2 RED: fault-injection context throws after `SaveChangesAsync`; a fresh context sees the original list (ATE-001 atomicity).
-- [ ] 2.3 GREEN: implement `ReplaceTicketTypesAsync` in `backend/Services/EventService.cs` — tracked `Include`, guard order finalized→eligibility/history→payload→IDs, update/add/remove, transaction rollback, availability mapping.
-- [ ] 2.4 REFACTOR: extract history/validation helpers; keep green.
+- [x] 2.1 RED: extend `backend/Tests/EventServiceTicketStockTests.cs` — mixed add/edit/delete, empty list, name/price/qty validation, per-type total ≤1000, foreign id, all-state history, Pending-with-history, finalized-before-status, recomputed availability, no-mutation.
+- [x] 2.2 RED: fault-injection context throws after `SaveChangesAsync`; a fresh context sees the original list (ATE-001 atomicity).
+- [x] 2.3 GREEN: implement `ReplaceTicketTypesAsync` in `backend/Services/EventService.cs` — tracked `Include`, guard order finalized→eligibility/history→payload→IDs, update/add/remove, transaction rollback, availability mapping.
+- [x] 2.4 REFACTOR: extract history/validation helpers; keep green.
 
 ## Phase 3: Backend controller (strict TDD)
 

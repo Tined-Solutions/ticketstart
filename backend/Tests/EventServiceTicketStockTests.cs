@@ -22,6 +22,21 @@ internal class EventServiceTicketStockTestDbContext : ApplicationDbContext
 }
 
 /// <summary>
+/// ATE-001 fault-injection context: persists within the ambient transaction, then
+/// throws BEFORE the service can commit, exercising the replacement rollback path.
+/// </summary>
+internal class FaultingReplaceTicketTypesDbContext : EventServiceTicketStockTestDbContext
+{
+    public FaultingReplaceTicketTypesDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        await base.SaveChangesAsync(cancellationToken);
+        throw new InvalidOperationException("Injected failure after SaveChangesAsync");
+    }
+}
+
+/// <summary>
 /// Service-level RED tests for AddTicketStockAsync / AddTicketTypeAsync.
 /// Validates ATS-002 (increment + validation), ATS-003 (concurrent serialization),
 /// ATS-004 (new type + validation), ATS-006 (availability recompute).
@@ -125,6 +140,99 @@ public class EventServiceTicketStockTests : IDisposable
         }
         await _context.SaveChangesAsync();
         return count;
+    }
+
+    private async Task<Reservation> AddReservationAsync(Guid eventId, Guid ticketTypeId, int quantity,
+        ReservationStatus status = ReservationStatus.Active, DateTime? expiresAt = null)
+    {
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventId,
+            TicketTypeId = ticketTypeId,
+            Quantity = quantity,
+            PurchaserDNI = "12345678",
+            PurchaserEmail = "reservation@test.com",
+            ExpiresAt = expiresAt ?? DateTime.UtcNow.AddDays(1),
+            Status = status,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Reservations.Add(reservation);
+        await _context.SaveChangesAsync();
+        return reservation;
+    }
+
+    private async Task<(Event Event, TicketType TypeA, TicketType TypeB)> CreateEventWithTwoTicketTypes(
+        EventStatus status = EventStatus.Pending)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = $"organizer-{Guid.NewGuid():N}@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(user);
+
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = "Replace Event",
+            Description = "Test Description",
+            Date = DateTime.UtcNow.AddDays(30),
+            Location = "Test Location",
+            OrganizerId = user.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = status
+        };
+        _context.Events.Add(eventEntity);
+
+        var typeA = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "A",
+            Price = 50.00m,
+            Quantity = 100,
+            CreatedAt = DateTime.UtcNow
+        };
+        var typeB = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "B",
+            Price = 80.00m,
+            Quantity = 50,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.TicketTypes.AddRange(typeA, typeB);
+
+        await _context.SaveChangesAsync();
+        return (eventEntity, typeA, typeB);
+    }
+
+    private static ReplaceTicketTypesRequest ReplaceRequest(params ReplaceTicketTypeRequest[] items)
+        => new() { TicketTypes = items.ToList() };
+
+    private static EventService BuildService(ApplicationDbContext context)
+    {
+        var configurationData = new Dictionary<string, string?>
+        {
+            { "CloudflareR2:BucketName", "test-bucket" },
+            { "CloudflareR2:PublicUrl", "https://test.r2.dev" }
+        };
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationData)
+            .Build();
+
+        return new EventService(
+            context,
+            new TestLogger<EventService>(),
+            configuration,
+            new Mock<IR2StorageClient>().Object, new Mock<IEventNotificationQueue>().Object, TimeProvider.System,
+            Options.Create(new HideExpiredEventsOptions()));
     }
 
     #region ATS-002: Increment existing ticket type stock
@@ -478,6 +586,252 @@ public class EventServiceTicketStockTests : IDisposable
         // Assert — sold = 2 (refunded excluded) → available = 10 - 2 = 8
         var tt = Assert.Single(result!.TicketTypes);
         Assert.Equal(8, tt.Available);
+    }
+
+    #endregion
+
+    #region ATE-001…ATE-006: ReplaceTicketTypesAsync (atomic full replacement)
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_MixedAddEditDelete_ReplacesCompleteListAndRecomputesAvailability()
+    {
+        // Arrange — Pending event with types A and B (ATE-001 mixed add/edit/delete)
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+
+        // Act — rename/re-price A, insert C, omit B
+        var result = await _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+            new ReplaceTicketTypeRequest(typeA.Id, "A Prime", 75m, 120),
+            new ReplaceTicketTypeRequest(null, "C", 200m, 10)));
+
+        // Assert — A updated, C created, B deleted
+        Assert.Equal(2, result.Count);
+        var updatedA = result.Single(tt => tt.Id == typeA.Id);
+        Assert.Equal("A Prime", updatedA.Name);
+        Assert.Equal(75m, updatedA.Price);
+        Assert.Equal(120, updatedA.Quantity);
+        Assert.Equal(120, updatedA.Available);
+
+        var createdC = result.Single(tt => tt.Name == "C");
+        Assert.NotEqual(Guid.Empty, createdC.Id);
+        Assert.Equal(10, createdC.Available);
+
+        var persistedTypes = await _context.TicketTypes.AsNoTracking()
+            .Where(tt => tt.EventId == eventEntity.Id).ToListAsync();
+        Assert.Equal(2, persistedTypes.Count);
+        Assert.DoesNotContain(persistedTypes, tt => tt.Id == typeB.Id);
+        Assert.Equal("A Prime", persistedTypes.Single(tt => tt.Id == typeA.Id).Name);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_RejectedWithoutHistory_Succeeds()
+    {
+        // ATE-003 non-approved without history is editable (Rejected variant)
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes(EventStatus.Rejected);
+
+        var result = await _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+            new ReplaceTicketTypeRequest(typeA.Id, "A2", 60m, 30)));
+
+        Assert.Equal(30, result.Single().Quantity);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_EmptyList_ThrowsArgumentException_NoMutation()
+    {
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, new ReplaceTicketTypesRequest()));
+
+        Assert.True(await _context.TicketTypes.AsNoTracking().AnyAsync(tt => tt.Id == typeA.Id));
+        Assert.True(await _context.TicketTypes.AsNoTracking().AnyAsync(tt => tt.Id == typeB.Id));
+    }
+
+    [Theory]
+    [InlineData("", 50, 10)]
+    [InlineData("   ", 50, 10)]
+    [InlineData("A", -1, 10)]
+    [InlineData("A", 50, 0)]
+    [InlineData("A", 50, -1)]
+    [InlineData("A", 50, 1001)]
+    public async Task ReplaceTicketTypesAsync_InvalidPayload_ThrowsArgumentException_NoMutation(
+        string name, decimal price, int quantity)
+    {
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, name, price, quantity))));
+
+        var persisted = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal("A", persisted.Name);
+        Assert.Equal(100, persisted.Quantity);
+        Assert.True(await _context.TicketTypes.AsNoTracking().AnyAsync(tt => tt.Id == typeB.Id));
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_NameTooLong_ThrowsArgumentException_NoMutation()
+    {
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
+        var longName = new string('N', 101);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, longName, 50m, 10))));
+
+        var persisted = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal("A", persisted.Name);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_LegacyTotalAboveCap_ThrowsArgumentException()
+    {
+        // ATE-004: an existing total accumulated above 1000 by add-stock is explicitly rejected
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
+        typeA.Quantity = 1500;
+        await _context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A", 50m, 1500))));
+
+        var persisted = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal(1500, persisted.Quantity);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_PriceZero_IsAccepted()
+    {
+        // ATE-004: price >= 0 parity with CreateEventAsync
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
+
+        var result = await _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+            new ReplaceTicketTypeRequest(typeA.Id, "Free", 0m, 10)));
+
+        Assert.Equal(0m, result.Single().Price);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_ForeignId_ThrowsArgumentException_NoMutation()
+    {
+        // ATE-005: an id belonging to another event is rejected
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+        var (_, foreignType, _) = await CreateEventWithTwoTicketTypes();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(foreignType.Id, "X", 10m, 5))));
+
+        var names = await _context.TicketTypes.AsNoTracking()
+            .Where(tt => tt.EventId == eventEntity.Id).Select(tt => tt.Name).ToListAsync();
+        Assert.Equal(new[] { "A", "B" }, names.OrderBy(n => n).ToArray());
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_UnknownEvent_ThrowsKeyNotFoundException()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            _eventService.ReplaceTicketTypesAsync(Guid.NewGuid(), ReplaceRequest(
+                new ReplaceTicketTypeRequest(null, "A", 10m, 5))));
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_ApprovedEvent_ThrowsTicketTypesNotEditable_NoMutation()
+    {
+        // ATE-002: Approved fails eligibility even without history
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes(EventStatus.Approved);
+
+        await Assert.ThrowsAsync<TicketTypesNotEditableException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A2", 50m, 100))));
+
+        var persisted = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal("A", persisted.Name);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_PendingWithTicketHistory_ThrowsTicketTypesReferenced_NoMutation()
+    {
+        // ATE-003: Pending with history is blocked (Approved → Pending is reachable)
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+        await AddSoldTicketsAsync(eventEntity.Id, typeA.Id, 1);
+
+        await Assert.ThrowsAsync<TicketTypesReferencedException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A2", 50m, 100))));
+
+        Assert.True(await _context.TicketTypes.AsNoTracking().AnyAsync(tt => tt.Id == typeA.Id));
+        Assert.True(await _context.TicketTypes.AsNoTracking().AnyAsync(tt => tt.Id == typeB.Id));
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_PendingWithReservationHistory_ThrowsTicketTypesReferenced()
+    {
+        // ATE-003: ANY Reservation row counts as history, independent of status
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
+        await AddReservationAsync(eventEntity.Id, typeA.Id, 2);
+
+        await Assert.ThrowsAsync<TicketTypesReferencedException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A2", 50m, 100))));
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_RejectedWithRefundedTicket_ThrowsTicketTypesReferenced()
+    {
+        // ATE-003: refunded tickets still protect the type (Restrict FK)
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes(EventStatus.Rejected);
+        await AddSoldTicketsAsync(eventEntity.Id, typeA.Id, 1);
+
+        var ticket = await _context.Tickets.FirstAsync(t => t.TicketTypeId == typeA.Id);
+        ticket.IsRefunded = true;
+        ticket.RefundedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<TicketTypesReferencedException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A2", 50m, 100))));
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_PastApprovedEvent_ThrowsEventFinalized_NotNotEditable()
+    {
+        // ATE-002/PEM-002: the finalized guard runs BEFORE eligibility
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes(EventStatus.Approved);
+        eventEntity.Date = DateTime.UtcNow.AddDays(-2);
+        await _context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<EventFinalizedException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A2", 50m, 100))));
+
+        var persisted = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal("A", persisted.Name);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_SaveFailure_RollsBackEntireReplacement()
+    {
+        // ATE-001: a mid-transaction failure leaves the prior list unchanged
+        var (eventEntity, typeA, typeB) = await CreateEventWithTwoTicketTypes();
+
+        var faultOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        using var faultContext = new FaultingReplaceTicketTypesDbContext(faultOptions);
+        var faultingService = BuildService(faultContext);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            faultingService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A Prime", 75m, 120),
+                new ReplaceTicketTypeRequest(null, "C", 200m, 10))));
+
+        _context.ChangeTracker.Clear();
+        var persistedTypes = await _context.TicketTypes.AsNoTracking()
+            .Where(tt => tt.EventId == eventEntity.Id).ToListAsync();
+        Assert.Equal(2, persistedTypes.Count);
+        Assert.Equal("A", persistedTypes.Single(tt => tt.Id == typeA.Id).Name);
+        Assert.Equal(100, persistedTypes.Single(tt => tt.Id == typeA.Id).Quantity);
+        Assert.True(persistedTypes.Any(tt => tt.Id == typeB.Id));
     }
 
     #endregion
