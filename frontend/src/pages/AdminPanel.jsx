@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, X, Eye, TicketPlus, ShoppingCart, Pencil, Trash2, KeyRound } from 'lucide-react'
+import { Check, X, Eye, TicketPlus, TicketCheck, ShoppingCart, Pencil, Trash2, KeyRound } from 'lucide-react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
@@ -14,6 +14,7 @@ import Tooltip from '../components/ui/Tooltip.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import AddTicketsModal from '../components/AddTicketsModal.jsx'
+import EditTicketsModal from '../components/EditTicketsModal.jsx'
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
 import RoleEditModal from '../components/RoleEditModal.jsx'
 import ResetPasswordModal from '../components/ResetPasswordModal.jsx'
@@ -100,6 +101,8 @@ export default function AdminPanel() {
   const [feedback, setFeedback] = useState({ type: '', message: '' })
 
   const [addTicketsTarget, setAddTicketsTarget] = useState(null)
+  // ATE-010: Pending/Rejected events open the full-edit modal instead of add-only.
+  const [editTicketsTarget, setEditTicketsTarget] = useState(null)
 
   // EA-008: id of the event whose approve/reject request is in flight (disables
   // that row's action buttons while the request runs).
@@ -581,13 +584,24 @@ export default function AdminPanel() {
                               disabled: isPast || busyApprovalId === event.id,
                             }]
                           : []),
-                        {
-                          label: 'Agregar entradas',
-                          ariaLabel: `Agregar entradas a ${event.name}`,
-                          icon: <TicketPlus className="h-4 w-4" aria-hidden="true" />,
-                          onClick: () => setAddTicketsTarget(event),
-                          disabled: isPast,
-                        },
+                        // ATE-010/ATS-007: Approved keeps add-only; Pending/Rejected
+                        // offer the full-edit action (distinct label + icon from "Editar").
+                        ...(event.status === 'Approved'
+                          ? [{
+                              label: 'Agregar entradas',
+                              ariaLabel: `Agregar entradas a ${event.name}`,
+                              icon: <TicketPlus className="h-4 w-4" aria-hidden="true" />,
+                              onClick: () => setAddTicketsTarget(event),
+                              disabled: isPast,
+                            }]
+                          : [{
+                              label: 'Editar entradas',
+                              ariaLabel: `Editar entradas de ${event.name}`,
+                              icon: <TicketCheck className="h-4 w-4" aria-hidden="true" />,
+                              onClick: () => setEditTicketsTarget(event),
+                              disabled: isPast,
+                              title: isPast ? readonlyTitle : undefined,
+                            }]),
                         {
                           label: 'Compras',
                           ariaLabel: `Compras de ${event.name}`,
@@ -699,18 +713,33 @@ export default function AdminPanel() {
                                     </Button>
                                   </Tooltip>
                                 )}
-                                <Tooltip label="Agregar entradas">
-                                  <Button
-                                    variant="glass"
-                                    size="sm"
-                                    onClick={() => setAddTicketsTarget(event)}
-                                    disabled={isPast}
-                                    aria-label={`Agregar entradas a ${event.name}`}
-                                    className={ACTION_HOVER}
-                                  >
-                                    <TicketPlus className="h-4 w-4" aria-hidden="true" />
-                                  </Button>
-                                </Tooltip>
+                                {event.status === 'Approved' ? (
+                                  <Tooltip label="Agregar entradas">
+                                    <Button
+                                      variant="glass"
+                                      size="sm"
+                                      onClick={() => setAddTicketsTarget(event)}
+                                      disabled={isPast}
+                                      aria-label={`Agregar entradas a ${event.name}`}
+                                      className={ACTION_HOVER}
+                                    >
+                                      <TicketPlus className="h-4 w-4" aria-hidden="true" />
+                                    </Button>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip label="Editar entradas">
+                                    <Button
+                                      variant="glass"
+                                      size="sm"
+                                      onClick={() => setEditTicketsTarget(event)}
+                                      disabled={isPast}
+                                      aria-label={`Editar entradas de ${event.name}`}
+                                      className={ACTION_HOVER}
+                                    >
+                                      <TicketCheck className="h-4 w-4" aria-hidden="true" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
                                 <Tooltip label="Acciones">
                                   <DropdownMenu
                                     triggerLabel="Acciones"
@@ -1015,8 +1044,23 @@ export default function AdminPanel() {
           onClose={() => setAddTicketsTarget(null)}
           onSuccess={() => {
             setAddTicketsTarget(null)
-            // ATS-007: the modal already invalidated ['event', id] + ['events'];
+            // ATS-007: the modal already invalidated management/event/events;
             // re-run the manual admin list fetch to reflect the new stock.
+            const controller = new AbortController()
+            loadData(controller)
+          }}
+        />
+      )}
+
+      {editTicketsTarget && (
+        <EditTicketsModal
+          eventId={editTicketsTarget.id}
+          eventName={editTicketsTarget.name}
+          onClose={() => setEditTicketsTarget(null)}
+          onSuccess={() => {
+            setEditTicketsTarget(null)
+            // ATE-009/ATS-007: the modal already invalidated management/event/events;
+            // re-run the manual admin list fetch to reflect the replaced list.
             const controller = new AbortController()
             loadData(controller)
           }}

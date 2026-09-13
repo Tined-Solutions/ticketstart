@@ -107,6 +107,25 @@ public interface IEventService
     /// <exception cref="KeyNotFoundException">Event not found.</exception>
     /// <exception cref="ArgumentException">Invalid name/price/quantity.</exception>
     Task<TicketTypeWithAvailability> AddTicketTypeAsync(Guid eventId, string name, decimal price, int quantity);
+
+    /// <summary>
+    /// ATE-001/ATE-002: atomically replaces the COMPLETE ticket-type list of a
+    /// pre-approval event (Pending/Rejected without commercial history). Types present
+    /// on the event but absent from the payload are deleted; supplied ids are updated;
+    /// id-less items are inserted. Guards run in pinned order: event exists →
+    /// <c>EventFinalizedGuard.EnsureMutable</c> (PEM-001) → eligibility/history
+    /// (ATE-002/003) → payload validation (ATE-004) → id references (ATE-005). Returns
+    /// the recomputed availability list (ATE-006).
+    /// </summary>
+    /// <param name="eventId">ID of the event whose ticket types are replaced</param>
+    /// <param name="request">The complete desired ticket-type list</param>
+    /// <returns>The resulting ticket types with recomputed availability</returns>
+    /// <exception cref="KeyNotFoundException">Event not found.</exception>
+    /// <exception cref="EventFinalizedException">Past event (PEM-001).</exception>
+    /// <exception cref="TicketTypesNotEditableException">Approved event (ATE-002).</exception>
+    /// <exception cref="TicketTypesReferencedException">Commercial history exists (ATE-003).</exception>
+    /// <exception cref="ArgumentException">Invalid payload or foreign id (ATE-004/005).</exception>
+    Task<IReadOnlyList<TicketTypeWithAvailability>> ReplaceTicketTypesAsync(Guid eventId, ReplaceTicketTypesRequest request);
 }
 
 /// <summary>
@@ -118,6 +137,22 @@ public record AddTicketStockRequest(int AdditionalQuantity);
 /// Request body for creating a new ticket type on an existing event.
 /// </summary>
 public record AddTicketTypeRequest(string Name, decimal Price, int Quantity);
+
+/// <summary>
+/// ATE-001: request body for the atomic full replacement of an event's ticket
+/// types. The list is COMPLETE — types present on the event but absent from the
+/// payload MUST be deleted.
+/// </summary>
+public sealed class ReplaceTicketTypesRequest
+{
+    public List<ReplaceTicketTypeRequest> TicketTypes { get; set; } = new();
+}
+
+/// <summary>
+/// ATE-001: one item of the replacement payload. A null <c>Id</c> inserts a new
+/// type; a supplied id updates the matching existing type of the target event.
+/// </summary>
+public sealed record ReplaceTicketTypeRequest(Guid? Id, string Name, decimal Price, int Quantity);
 
 /// <summary>
 /// Request model for creating a new event.

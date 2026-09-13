@@ -245,6 +245,72 @@ public class AdminController : TicketeraControllerBase
     }
 
     /// <summary>
+    /// ATE-001/ATE-002: atomically replaces the COMPLETE ticket-type list of an
+    /// eligible pre-approval event (Pending/Rejected, no commercial history).
+    /// Admin-only via the class-level RequireAdminRole policy. Errors map to RFC 7807:
+    /// 404 unknown event; 400 payload/reference validation; 409
+    /// <c>ticket-types-not-editable</c> (Approved), <c>ticket-types-referenced</c>
+    /// (history), <c>event-finalized</c> (past); 500 unexpected. One audit entry is
+    /// written AFTER success (ATE-008); failures write none.
+    /// </summary>
+    /// <param name="eventId">ID of the event whose ticket types are replaced</param>
+    /// <param name="request">The complete desired ticket-type list</param>
+    /// <returns>200 with the recomputed ticket types and availability</returns>
+    [HttpPut("events/{eventId:guid}/ticket-types")]
+    public async Task<IActionResult> ReplaceTicketTypes(Guid eventId, [FromBody] ReplaceTicketTypesRequest request)
+    {
+        if (!TryGetUserId(out var adminId)) return Unauthorized();
+
+        try
+        {
+            var result = await _eventService.ReplaceTicketTypesAsync(eventId, request);
+            await TryLogAuditAsync(adminId, new AuditLogContext(
+                adminId,
+                AuditActionType.EditTicketTypes,
+                AuditResourceType.Event,
+                eventId,
+                Truncate($"Admin replaced ticket types for event {eventId} ({result.Count} types)", 1000)));
+            return Ok(result);
+        }
+        catch (KeyNotFoundException) { return NotFound(new { error = "Event not found" }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (TicketTypesNotEditableException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                instance: HttpContext.Request.Path,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Ticket types are not editable",
+                type: "ticket-types-not-editable");
+        }
+        catch (TicketTypesReferencedException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                instance: HttpContext.Request.Path,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Ticket types are referenced",
+                type: "ticket-types-referenced");
+        }
+        // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807, no audit.
+        catch (EventFinalizedException)
+        {
+            return Problem(
+                detail: "This event has already finished and can no longer be modified.",
+                instance: HttpContext.Request.Path,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event has already finished",
+                type: "event-finalized");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error replacing ticket types for event {EventId}", eventId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while replacing the ticket types" });
+        }
+    }
+
+    /// <summary>
     /// Lists an event's confirmed purchases with masked buyer data and per-event
     /// totalRefunded (APR-002). Admin-only via the class-level RequireAdminRole policy.
     /// </summary>

@@ -444,6 +444,177 @@ public class EventService : IEventService
     }
 
     /// <summary>
+    /// ATE-001/ATE-002: atomic full replacement of an event's ticket-type list.
+    /// Guards run in pinned order (event exists → finalized → eligibility/history →
+    /// payload → id references) inside one execution-strategy transaction so no
+    /// partial write can persist (ATE-001). Availability is recomputed, never stored.
+    /// </summary>
+    public async Task<IReadOnlyList<TicketTypeWithAvailability>> ReplaceTicketTypesAsync(Guid eventId, ReplaceTicketTypesRequest request)
+    {
+        _logger.LogInformation("Admin replacing ticket types for event {EventId}", eventId);
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                // (1) event exists — tracked + Include so updates/deletes persist (ATE-001)
+                var eventEntity = await _context.Events
+                    .Include(e => e.TicketTypes)
+                    .SingleOrDefaultAsync(e => e.Id == eventId);
+
+                if (eventEntity == null)
+                {
+                    _logger.LogWarning("Event {EventId} not found for ticket-type replacement", eventId);
+                    throw new KeyNotFoundException($"Event with ID {eventId} not found");
+                }
+
+                // (2) PEM-001/ATE-002: finalized guard BEFORE eligibility so EVERY past
+                // event returns event-finalized, whatever its status.
+                EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
+
+                // (3) eligibility: full edit only for Pending/Rejected (ATE-002)
+                if (eventEntity.Status != EventStatus.Pending && eventEntity.Status != EventStatus.Rejected)
+                    throw new TicketTypesNotEditableException();
+
+                // (3b) commercial history: ANY Ticket OR Reservation linked to this
+                // event's types, regardless of state (ATE-003 — Restrict FK safety).
+                var existingIds = eventEntity.TicketTypes.Select(tt => tt.Id).ToList();
+                if (existingIds.Count > 0)
+                {
+                    var hasHistory = await _context.Tickets.AnyAsync(t => existingIds.Contains(t.TicketTypeId))
+                        || await _context.Reservations.AnyAsync(r => existingIds.Contains(r.TicketTypeId));
+                    if (hasHistory)
+                        throw new TicketTypesReferencedException();
+                }
+
+                // (4) payload validation BEFORE reference checks (ATE-004)
+                ValidateReplacementPayload(request);
+
+                // (5) id reference validation (ATE-005)
+                var existingById = eventEntity.TicketTypes.ToDictionary(tt => tt.Id);
+                foreach (var item in request.TicketTypes)
+                {
+                    if (item.Id.HasValue && !existingById.ContainsKey(item.Id.Value))
+                        throw new ArgumentException(
+                            $"Ticket type {item.Id} does not belong to event {eventId}", nameof(item.Id));
+                }
+
+                var now = _clock.GetUtcNow().UtcDateTime;
+                var submittedIds = request.TicketTypes
+                    .Where(i => i.Id.HasValue)
+                    .Select(i => i.Id!.Value)
+                    .ToHashSet();
+
+                // Types absent from the payload are deleted.
+                var toRemove = eventEntity.TicketTypes.Where(tt => !submittedIds.Contains(tt.Id)).ToList();
+                if (toRemove.Count > 0)
+                    _context.TicketTypes.RemoveRange(toRemove);
+
+                // Supplied ids are updated; id-less items are inserted.
+                foreach (var item in request.TicketTypes)
+                {
+                    if (item.Id.HasValue)
+                    {
+                        var existing = existingById[item.Id.Value];
+                        existing.Name = item.Name.Trim();
+                        existing.Price = item.Price;
+                        existing.Quantity = item.Quantity;
+                    }
+                    else
+                    {
+                        _context.TicketTypes.Add(new TicketType
+                        {
+                            Id = Guid.NewGuid(),
+                            EventId = eventId,
+                            Name = item.Name.Trim(),
+                            Price = item.Price,
+                            Quantity = item.Quantity,
+                            CreatedAt = now
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Replaced ticket types for event {EventId}: {Count} resulting types",
+                    eventId, submittedIds.Count + request.TicketTypes.Count(i => !i.Id.HasValue));
+
+                // ATE-006: recompute availability for the full resulting list.
+                var finalTypes = await _context.TicketTypes
+                    .Where(tt => tt.EventId == eventId)
+                    .OrderBy(tt => tt.CreatedAt)
+                    .ToListAsync();
+
+                return await MapTicketTypesWithAvailabilityAsync(finalTypes);
+            }
+            catch
+            {
+                // ATE-001: any failure rolls back the ENTIRE replacement.
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    /// <summary>
+    /// ATE-004: validates the replacement payload (≥ 1 item; trimmed name 1..100;
+    /// price ≥ 0; integer quantity in (0, <see cref="MaxTicketQuantityPerOperation"/>]).
+    /// </summary>
+    private static void ValidateReplacementPayload(ReplaceTicketTypesRequest? request)
+    {
+        if (request?.TicketTypes == null || request.TicketTypes.Count == 0)
+            throw new ArgumentException("At least one ticket type is required", nameof(request));
+
+        foreach (var item in request.TicketTypes)
+        {
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new ArgumentException("Ticket type name is required", nameof(item.Name));
+
+            if (item.Name.Trim().Length > 100)
+                throw new ArgumentException("Ticket type name must not exceed 100 characters", nameof(item.Name));
+
+            if (item.Price < 0)
+                throw new ArgumentException("Ticket price cannot be negative", nameof(item.Price));
+
+            if (item.Quantity <= 0)
+                throw new ArgumentException("Ticket quantity must be greater than zero", nameof(item.Quantity));
+
+            if (item.Quantity > MaxTicketQuantityPerOperation)
+                throw new ArgumentException($"Ticket quantity must not exceed {MaxTicketQuantityPerOperation}", nameof(item.Quantity));
+        }
+    }
+
+    /// <summary>
+    /// Batch-maps ticket types to the { id, name, price, quantity, available } shape
+    /// (ATE-006), computing sold/reserved aggregates in two queries (no N+1).
+    /// </summary>
+    private async Task<List<TicketTypeWithAvailability>> MapTicketTypesWithAvailabilityAsync(IReadOnlyList<TicketType> types)
+    {
+        var ids = types.Select(tt => tt.Id).ToList();
+        var (sold, reserved) = await ComputeAvailabilityAggregatesAsync(ids);
+
+        return types.Select(tt =>
+        {
+            sold.TryGetValue(tt.Id, out var soldCount);
+            reserved.TryGetValue(tt.Id, out var reservedCount);
+
+            return new TicketTypeWithAvailability
+            {
+                Id = tt.Id,
+                Name = tt.Name,
+                Price = tt.Price,
+                Quantity = tt.Quantity,
+                Available = Math.Max(0, tt.Quantity - soldCount - reservedCount)
+            };
+        }).ToList();
+    }
+
+    /// <summary>
     /// Maps a TicketType entity to the { id, name, price, quantity, available } response shape (D-4).
     /// Availability is recomputed mathematically with the same clamping used by MapToEventWithAvailabilityAsync.
     /// </summary>

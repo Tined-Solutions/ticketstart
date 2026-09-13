@@ -30,18 +30,20 @@ The system MUST evaluate immutability via `eventEntity.IsExpired(clock.GetUtcNow
 - WHEN the guard is evaluated
 - THEN it returns without throwing
 
-### Requirement: PEM-002: All six mutation endpoints reject past events
+### Requirement: PEM-002: All seven mutation endpoints reject past events
 
-Each of the following MUST return 409 `event-finalized` when the target event is past, before any save/audit/notification: `PUT /events/{id}`; `DELETE /events/{id}`; `POST /admin/events/{id}/ticket-types/{ttId}/stock`; `POST /admin/events/{id}/ticket-types`; `POST /admin/events/{id}/approve`; `POST /admin/events/{id}/reject`.
+Each of the following MUST return 409 `event-finalized` when the target event is past, before any save/audit/notification: `PUT /events/{id}`; `DELETE /events/{id}`; `POST /admin/events/{id}/ticket-types/{ttId}/stock`; `POST /admin/events/{id}/ticket-types`; `PUT /admin/events/{id}/ticket-types`; `POST /admin/events/{id}/approve`; `POST /admin/events/{id}/reject`.
 
 (Archive-time clarification per `event-deletion` ED-001: the DELETE valid-requester set has narrowed to **Admin-only**. An organizer deleting any event — past events included — now receives **403 Forbidden** from the Admin-only service guard in `EventService.DeleteEventAsync`, which runs BEFORE the finalized guard — never 409. Admin + past event keeps the 409 `event-finalized` contract unchanged (ED-002).)
 
-(Previously: seven endpoints — the list included `POST /events/{id}/image`, removed by `fix-event-photo-upload` EIM-006. `PUT /events/{id}` is now the mutation that persists a replaced `imageUrl`; the event-agnostic upload endpoint (EIM-002) is not itself guarded because it mutates no event.)
+(Clarification per `admin-edit-ticket-types` ATE-002: for `PUT /admin/events/{id}/ticket-types` the finalized guard MUST run BEFORE the status-eligibility guard, so a past event returns `event-finalized` regardless of its status — a past `Approved` or past `Rejected`-with-history event MUST NOT surface `ticket-types-not-editable`/`ticket-types-referenced` instead.)
+
+(Previously: six endpoints — `POST /events/{id}/image` had been removed by `fix-event-photo-upload` EIM-006. The list now grows again with the replacement endpoint.)
 
 #### Scenario: Each mutation returns 409 on past event
 
-- GIVEN a past event and a valid requester (owner or Admin; DELETE is Admin-only per `event-deletion` ED-001 — organizers receive 403 from the service guard before this 409)
-- WHEN any of the six mutation endpoints is called
+- GIVEN a past event and a valid requester (owner or Admin; DELETE is Admin-only per `event-deletion` ED-001)
+- WHEN any of the seven mutation endpoints is called
 - THEN the response is 409 with `type: "event-finalized"` and title "Event has already finished"
 
 #### Scenario: Response is RFC 7807 ProblemDetails
@@ -56,6 +58,13 @@ Each of the following MUST return 409 `event-finalized` when the target event is
 - WHEN `UpdateEventAsync` runs
 - THEN `EnsureMutable` evaluates before `SaveChanges` and the new `imageUrl` is persisted with the other fields
 - AND the previous image object is best-effort deleted after save (EIM-005)
+
+#### Scenario: Ticket-type replacement obeys the finalized guard first
+
+- GIVEN a past `Approved` event
+- WHEN an admin calls `PUT /admin/events/{id}/ticket-types`
+- THEN the response is 409 with `type: "event-finalized"` (not `ticket-types-not-editable`)
+- AND no ticket type row is mutated and no audit entry is written
 
 ### Requirement: PEM-003: No side-effects on rejection
 
