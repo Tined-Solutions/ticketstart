@@ -163,37 +163,36 @@ export default function EventDetail() {
         ← Volver al catálogo
       </Link>
 
-      {/* Hero section */}
+      {/* Hero section — banner image stays clean (no overlay): event data
+          lives below so information inside the artwork is never hidden. */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="relative w-full mt-4 mb-10 overflow-hidden rounded-xl"
+        className="w-full mt-4 mb-10"
       >
-        {/* Background image */}
-        {event.imageUrl ? (
-          <img
-            src={event.imageUrl}
-            alt={event.name}
-            width="1280"
-            height="384"
-            className="w-full h-72 md:h-96 object-cover"
-          />
-        ) : (
-          <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
-            <span className="text-text-muted">Sin imagen</span>
-          </div>
-        )}
+        <div className="overflow-hidden rounded-xl">
+          {event.imageUrl ? (
+            <img
+              src={event.imageUrl}
+              alt={event.name}
+              width="1280"
+              height="384"
+              className="w-full h-72 md:h-96 object-cover"
+            />
+          ) : (
+            <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
+              <span className="text-text-muted">Sin imagen</span>
+            </div>
+          )}
+        </div>
 
-        {/* Dark gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-
-        {/* Hero text */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
-          <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
+        {/* Event heading + data, aligned with the page sections below */}
+        <div className="mt-6 px-4">
+          <h1 className="text-3xl md:text-4xl font-display font-bold text-text-1 mb-2">
             {event.name}
           </h1>
-          <div className="flex flex-wrap gap-4 text-white/80 text-sm md:text-base">
+          <div className="flex flex-wrap gap-4 text-text-2 text-sm md:text-base">
             <span>{formatEventDate(event.date)}</span>
             <span className="hidden sm:inline">·</span>
             <span>{event.location}</span>

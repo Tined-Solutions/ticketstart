@@ -87,7 +87,7 @@ export default function Login() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="min-h-[80vh] flex items-center justify-center px-4 py-12"
+      className="min-h-[calc(100svh-56px)] flex items-center justify-center px-4 py-12 bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15"
     >
       <motion.div
         animate={shakeCard ? shakeAnim : {}}
@@ -96,10 +96,13 @@ export default function Login() {
       >
         <GlassCard className="p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-display font-bold bg-gradient-to-r from-brand-1 to-brand-2 bg-clip-text text-transparent mb-2">
-              Iniciar sesion
-            </h1>
-            <p className="text-text-2 text-sm">TicketStart</p>
+            <div className="flex items-center gap-4">
+              <span aria-hidden="true" className="h-0.5 flex-1 rounded-full bg-gris-oscuro/30" />
+              <h1 className="m-0 text-3xl font-brand font-extrabold tracking-tight text-purpura">
+                Iniciar sesion
+              </h1>
+              <span aria-hidden="true" className="h-0.5 flex-1 rounded-full bg-gris-oscuro/30" />
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -123,7 +126,7 @@ export default function Login() {
                   focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
                   transition-all duration-200
                   disabled:opacity-60 disabled:cursor-not-allowed
-                  ${errors.email ? 'border-rose-400' : 'border-white/10'}`}
+                  ${errors.email ? 'border-rose-400' : 'border-gris-oscuro/15'}`}
               />
               <AnimatePresence>
                 {errors.email && (
@@ -159,7 +162,7 @@ export default function Login() {
                   focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent
                   transition-all duration-200
                   disabled:opacity-60 disabled:cursor-not-allowed
-                  ${errors.password ? 'border-rose-400' : 'border-white/10'}`}
+                  ${errors.password ? 'border-rose-400' : 'border-gris-oscuro/15'}`}
               />
               <AnimatePresence>
                 {errors.password && (
@@ -192,7 +195,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              variant="gradient"
+              variant="accent"
               size="lg"
               loading={loading}
               className="w-full"

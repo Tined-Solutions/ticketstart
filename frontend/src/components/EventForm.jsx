@@ -50,6 +50,25 @@ export default function EventForm({
 
   const isCreate = mode === 'create'
 
+  // Live preview of the buyer-visible order (price descending, ties by name
+  // ascending). Mirrors the backend shared mapping so the organizer sees
+  // exactly how the event page will list the ticket types.
+  const orderedTicketTypesPreview =
+    isCreate && !readOnly
+      ? ticketTypes
+          .filter(
+            (tt) =>
+              tt.name.trim() !== '' &&
+              String(tt.price).trim() !== '' &&
+              Number.isFinite(Number(tt.price))
+          )
+          .sort((a, b) => {
+            const priceDiff = Number(b.price) - Number(a.price)
+            if (priceDiff !== 0) return priceDiff
+            return a.name.trim().localeCompare(b.name.trim(), 'es')
+          })
+      : []
+
   function validate() {
     const newErrors = {}
 
@@ -372,6 +391,10 @@ export default function EventForm({
             <h2>Tipos de entrada</h2>
           </legend>
 
+          <p className="ticket-types-hint">
+            En la página del evento se muestran de la más cara a la más barata.
+          </p>
+
           {typeof errors.ticketTypes === 'string' && (
             <div className="error-container" role="alert">
               <p>{errors.ticketTypes}</p>
@@ -477,6 +500,21 @@ export default function EventForm({
           >
             + Agregar tipo de entrada
           </button>
+
+          {orderedTicketTypesPreview.length > 0 && (
+            <>
+              <p className="ticket-types-preview-label">
+                Así se van a mostrar en la página del evento:
+              </p>
+              <ol className="ticket-types-preview">
+                {orderedTicketTypesPreview.map((tt) => (
+                  <li key={tt.key}>
+                    {tt.name.trim()} — {formatCurrency(tt.price)}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </fieldset>
       ) : readOnly ? (
         // Read-only preview (moderation review / past-event consultation):
