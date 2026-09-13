@@ -178,10 +178,7 @@ export default function EventDetail() {
               alt={event.name}
               width="1280"
               height="384"
-              // Natural aspect ratio: the full photo is always visible — no
-              // fixed-height crop (object-cover) and no stretching. A tall or
-              // short banner simply renders at its own proportions.
-              className="w-full h-auto"
+              className="w-full h-72 md:h-96 object-cover"
             />
           ) : (
             <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
