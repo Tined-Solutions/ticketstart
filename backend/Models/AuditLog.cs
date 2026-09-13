@@ -85,7 +85,8 @@ public enum AuditActionType
     ApproveEvent,     // NEW (EA-003) — varchar-stored, no migration
     RejectEvent,      // NEW (EA-004) — varchar-stored, no migration
     UpdateUserRole,   // NEW (AUM-001) — varchar-stored, no migration
-    ResetPassword     // NEW (AUM-003) — varchar-stored, no migration
+    ResetPassword,    // NEW (AUM-003) — varchar-stored, no migration
+    EditTicketTypes   // NEW (ATE-008) — varchar-stored, no migration
 }
 
 /// <summary>

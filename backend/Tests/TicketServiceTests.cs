@@ -1279,7 +1279,8 @@ public class TicketServiceTests : IDisposable
             Location = "Test Location",
             OrganizerId = organizer.Id,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            Status = EventStatus.Approved
         };
         var ticketType = new TicketType
         {
@@ -1329,6 +1330,177 @@ public class TicketServiceTests : IDisposable
             It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1 && tickets.All(t => !t.IsRefunded)),
             It.IsAny<Event>(),
             It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendTicketsByEmailAsync_MatchesEmailCaseInsensitivelyAfterTrim()
+    {
+        // Arrange — the stored casing differs from the request, which also carries
+        // surrounding whitespace: both must be normalized (mirrors the lookup).
+        var (emailServiceMock, ticketService) = CreateResendService();
+        var (eventEntity, ticketType) = AddEventFixture("Case Event", DateTime.UtcNow.AddDays(10));
+        AddTicket(eventEntity, ticketType, "Juan@Mail.com");
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("  juan@mail.com  ");
+
+        // Assert — matched despite casing/whitespace; sent to the trimmed address
+        Assert.True(result);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            "juan@mail.com",
+            It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1),
+            It.IsAny<Event>(),
+            It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendTicketsByEmailAsync_OnlySendsScannableTickets()
+    {
+        // Arrange — mirrors the scanner chooser: only unused, non-refunded tickets
+        // from Approved events inside the validation window are resendable.
+        var (emailServiceMock, ticketService) = CreateResendService();
+        var (activeEvent, activeType) = AddEventFixture("Active Event", DateTime.UtcNow.AddDays(5));
+        var (pastEvent, pastType) = AddEventFixture("Past Event", DateTime.UtcNow.AddHours(-25));
+        var (pendingEvent, pendingType) = AddEventFixture("Pending Event", DateTime.UtcNow.AddDays(5), EventStatus.Pending);
+
+        AddTicket(activeEvent, activeType, "buyer@test.com");                       // sent
+        AddTicket(activeEvent, activeType, "buyer@test.com", isUsed: true);         // not scannable
+        AddTicket(activeEvent, activeType, "buyer@test.com", isRefunded: true);     // not scannable
+        AddTicket(pastEvent, pastType, "buyer@test.com");                           // window passed
+        AddTicket(pendingEvent, pendingType, "buyer@test.com");                     // not Approved
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("buyer@test.com");
+
+        // Assert — one email for the single active event, carrying only its active ticket
+        Assert.True(result);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            "buyer@test.com",
+            It.Is<IEnumerable<Ticket>>(tickets =>
+                tickets.Count() == 1 && !tickets.Single().IsUsed && !tickets.Single().IsRefunded),
+            It.Is<Event>(e => e.Id == activeEvent.Id),
+            It.IsAny<string?>()), Times.Once);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendTicketsByEmailAsync_IncludesOngoingEventWithinScanWindow()
+    {
+        // An event that started two hours ago is still scannable for
+        // ValidationWindowHours, so its unused tickets must still be resent
+        // (the "lost my email at the door" case).
+        var (emailServiceMock, ticketService) = CreateResendService();
+        var (eventEntity, ticketType) = AddEventFixture("Ongoing Event", DateTime.UtcNow.AddHours(-2));
+        AddTicket(eventEntity, ticketType, "buyer@test.com");
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("buyer@test.com");
+
+        // Assert
+        Assert.True(result);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            "buyer@test.com",
+            It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1),
+            It.IsAny<Event>(),
+            It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResendTicketsByEmailAsync_NoScannableTickets_ReturnsTrueWithoutSending()
+    {
+        // Arrange — a used ticket is not scannable; the resend stays generic and silent
+        var (emailServiceMock, ticketService) = CreateResendService();
+        var (eventEntity, ticketType) = AddEventFixture("Used Only", DateTime.UtcNow.AddDays(3));
+        AddTicket(eventEntity, ticketType, "buyer@test.com", isUsed: true);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("buyer@test.com");
+
+        // Assert
+        Assert.True(result);
+        emailServiceMock.Verify(s => s.SendResendEmailAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    /// <summary>Builds a TicketService whose IEmailService is a capturing mock.</summary>
+    private (Mock<IEmailService> Mock, TicketService Service) CreateResendService()
+    {
+        var emailServiceMock = new Mock<IEmailService>();
+        emailServiceMock
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
+            .ReturnsAsync(new EmailResult { Success = true });
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);
+        var service = new TicketService(
+            _context, _configuration, _mockLogger.Object, serviceCollection.BuildServiceProvider());
+        return (emailServiceMock, service);
+    }
+
+    /// <summary>Adds an event + ticket type pair for resend tests.</summary>
+    private (Event Event, TicketType TicketType) AddEventFixture(
+        string name, DateTime date, EventStatus status = EventStatus.Approved)
+    {
+        var organizer = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = $"organizer-{Guid.NewGuid():N}@test.com",
+            PasswordHash = "hash",
+            Role = UserRole.Organizador,
+            CreatedAt = DateTime.UtcNow
+        };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = "Test Description",
+            Date = date,
+            Location = "Test Location",
+            OrganizerId = organizer.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = status
+        };
+        var ticketType = new TicketType
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            Name = "General Admission",
+            Price = 100m,
+            Quantity = 10,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        return (eventEntity, ticketType);
+    }
+
+    /// <summary>Adds one ticket row for the given event/type.</summary>
+    private void AddTicket(
+        Event eventEntity,
+        TicketType ticketType,
+        string email,
+        bool isUsed = false,
+        bool isRefunded = false)
+    {
+        _context.Tickets.Add(new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = email,
+            PurchaserDNI = "12345678",
+            QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()),
+            IsUsed = isUsed,
+            IsRefunded = isRefunded,
+            RefundedAt = isRefunded ? DateTime.UtcNow.AddDays(-1) : null,
+            CreatedAt = DateTime.UtcNow
+        });
     }
 
     #endregion

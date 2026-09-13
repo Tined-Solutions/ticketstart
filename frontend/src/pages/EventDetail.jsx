@@ -163,37 +163,36 @@ export default function EventDetail() {
         ← Volver al catálogo
       </Link>
 
-      {/* Hero section */}
+      {/* Hero section — banner image stays clean (no overlay): event data
+          lives below so information inside the artwork is never hidden. */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="relative w-full mt-4 mb-10 overflow-hidden rounded-xl"
+        className="w-full mt-4 mb-10"
       >
-        {/* Background image */}
-        {event.imageUrl ? (
-          <img
-            src={event.imageUrl}
-            alt={event.name}
-            width="1280"
-            height="384"
-            className="w-full h-72 md:h-96 object-cover"
-          />
-        ) : (
-          <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
-            <span className="text-text-muted">Sin imagen</span>
-          </div>
-        )}
+        <div className="overflow-hidden rounded-xl">
+          {event.imageUrl ? (
+            <img
+              src={event.imageUrl}
+              alt={event.name}
+              width="1280"
+              height="384"
+              className="w-full h-72 md:h-96 object-cover"
+            />
+          ) : (
+            <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
+              <span className="text-text-muted">Sin imagen</span>
+            </div>
+          )}
+        </div>
 
-        {/* Dark gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-
-        {/* Hero text */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
-          <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
+        {/* Event heading + data, aligned with the page sections below */}
+        <div className="mt-6 px-4">
+          <h1 className="text-3xl md:text-4xl font-display font-bold text-text-1 mb-2">
             {event.name}
           </h1>
-          <div className="flex flex-wrap gap-4 text-white/80 text-sm md:text-base">
+          <div className="flex flex-wrap gap-4 text-text-2 text-sm md:text-base">
             <span>{formatEventDate(event.date)}</span>
             <span className="hidden sm:inline">·</span>
             <span>{event.location}</span>
@@ -235,16 +234,31 @@ export default function EventDetail() {
           </GlassCard>
         ) : (
           <>
-            <div className="grid grid-cols-[repeat(auto-fit,10.625rem)] justify-start gap-3">
+            {/* Mobile: horizontal snap carousel (two cards per view, swipe for
+                the rest) so the list never becomes a tall vertical stack. The
+                -mx-4/px-4 pair lets the strip bleed to the screen edge while
+                keeping the first card aligned with the page content; the scroll
+                region is focusable so keyboard users can reach it. Desktop
+                (sm+) keeps the fixed-width grid. */}
+            <div
+              role="group"
+              aria-label="Tipos de entrada"
+              tabIndex={0}
+              className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 scroll-px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,10.625rem)] sm:justify-start sm:overflow-visible sm:px-0 sm:pb-0"
+            >
               {event.ticketTypes.map((ticketType) => (
-                <TicketTypeTicket
+                <div
                   key={ticketType.id}
-                  ticketType={ticketType}
-                  isSelected={selectedTicketTypeId === ticketType.id}
-                  quantity={quantities[ticketType.id] || 0}
-                  onSelect={handleSelectTicketType}
-                  onChange={(nextQuantity) => updateQuantity(ticketType.id, nextQuantity)}
-                />
+                  className="w-[calc(50%-0.375rem)] shrink-0 snap-start sm:w-auto"
+                >
+                  <TicketTypeTicket
+                    ticketType={ticketType}
+                    isSelected={selectedTicketTypeId === ticketType.id}
+                    quantity={quantities[ticketType.id] || 0}
+                    onSelect={handleSelectTicketType}
+                    onChange={(nextQuantity) => updateQuantity(ticketType.id, nextQuantity)}
+                  />
+                </div>
               ))}
             </div>
 

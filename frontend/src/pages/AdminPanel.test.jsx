@@ -1596,4 +1596,96 @@ describe('AdminPanel — Visual Regression', () => {
     const glassElements = document.querySelectorAll('.glass-surface')
     expect(glassElements.length).toBeGreaterThanOrEqual(1)
   })
+
+  // ── ATE-010: status-aware ticket-type action ─────────────────────
+
+  it('offers a distinct "Editar entradas" action for Pending events, not "Agregar entradas"', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+
+    const pendingRow = eventRow('feria de emprendedores')
+    expect(
+      within(pendingRow).getByRole('button', { name: /editar entradas de feria de emprendedores/i })
+    ).toBeInTheDocument()
+    expect(within(pendingRow).queryByRole('button', { name: /agregar entradas/i })).not.toBeInTheDocument()
+
+    // The organizer-navigation "Editar" stays a separate action (kebab).
+    await userEvent.click(within(pendingRow).getByRole('button', { name: /^acciones/i }))
+    expect(
+      await screen.findByRole('menuitem', { name: /editar feria de emprendedores/i })
+    ).toBeInTheDocument()
+  })
+
+  it('offers "Editar entradas" for Rejected events too', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/workshop de fotografia/i)).toBeInTheDocument()
+    })
+
+    const rejectedRow = eventRow('workshop de fotografia')
+    expect(
+      within(rejectedRow).getByRole('button', { name: /editar entradas de workshop de fotografia/i })
+    ).toBeInTheDocument()
+    expect(within(rejectedRow).queryByRole('button', { name: /agregar entradas/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps "Agregar entradas" (add-only) for Approved events, without a full-edit action', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const approvedRow = eventRow('recital de rock nacional')
+    expect(
+      within(approvedRow).getByRole('button', {
+        name: /agregar entradas a recital de rock nacional/i,
+      })
+    ).toBeInTheDocument()
+    expect(within(approvedRow).queryByRole('button', { name: /editar entradas/i })).not.toBeInTheDocument()
+  })
+
+  it('disables the full-edit action for a past Pending event', async () => {
+    const day = 24 * 60 * 60 * 1000
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({
+          data: {
+            items: [
+              {
+                id: 'event-past-pending',
+                name: 'Pendiente Pasado',
+                date: new Date(Date.now() - day).toISOString(),
+                location: 'Anfiteatro',
+                organizerId: 'user-2',
+                status: 'Pending',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 2500,
+          },
+        })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/pendiente pasado/i)).toBeInTheDocument()
+    })
+
+    const pastRow = eventRow('pendiente pasado')
+    expect(
+      within(pastRow).getByRole('button', { name: /editar entradas de pendiente pasado/i })
+    ).toBeDisabled()
+  })
 })

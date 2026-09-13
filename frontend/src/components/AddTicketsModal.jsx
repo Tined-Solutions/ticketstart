@@ -12,8 +12,9 @@ import Button from './Button.jsx'
  * Two modes (D-8):
  *  - 'increase': increment the Quantity of an existing ticket type.
  *  - 'newType':  create a new ticket type (different zone/price).
- * On success invalidates ['event', id] + ['events'] so buyer EventDetail/catalog
- * refetch, then calls onSuccess() so AdminPanel refreshes its manual list (ATS-006/007).
+ * On success invalidates ['management-event', id], ['event', id] and ['events'] so
+ * management and buyer views refetch, then calls onSuccess() so AdminPanel
+ * refreshes its manual list (ATS-006/007).
  */
 export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess }) {
   const queryClient = useQueryClient()
@@ -121,7 +122,9 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
         })
       }
 
-      // ATS-007: success invalidates buyer-facing queries, then refreshes the admin list.
+      // ATS-007: success invalidates the management, public-detail and catalog
+      // caches, then refreshes the admin list.
+      queryClient.invalidateQueries({ queryKey: queryKeys.managementEvent(eventId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.event(eventId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.events })
       onSuccess()

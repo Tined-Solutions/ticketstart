@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EventDetail from './EventDetail.jsx'
 import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
@@ -70,6 +70,22 @@ describe('EventDetail', () => {
     expect(screen.getByRole('radio', { name: /campo/i })).toBeInTheDocument()
     expect(screen.getByText(/\$\s*25\.000/)).toBeInTheDocument()
     expect(screen.getByText('150 disponibles')).toBeInTheDocument()
+  })
+
+  it('renders the ticket types in a focusable horizontal scroll region', async () => {
+    mockGet.mockResolvedValue({ data: mockEvent })
+
+    renderWithQueryClient(<EventDetail />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    })
+
+    const carousel = screen.getByRole('group', { name: /tipos de entrada/i })
+    expect(carousel).toHaveAttribute('tabindex', '0')
+    // The radios live inside the scroll region (no ticket is orphaned from it).
+    expect(within(carousel).getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    expect(within(carousel).getByRole('radio', { name: /campo/i })).toBeInTheDocument()
   })
 
   it('shows loading state while fetching', () => {
