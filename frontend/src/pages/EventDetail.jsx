@@ -234,16 +234,31 @@ export default function EventDetail() {
           </GlassCard>
         ) : (
           <>
-            <div className="grid grid-cols-[repeat(auto-fit,10.625rem)] justify-start gap-3">
+            {/* Mobile: horizontal snap carousel (two cards per view, swipe for
+                the rest) so the list never becomes a tall vertical stack. The
+                -mx-4/px-4 pair lets the strip bleed to the screen edge while
+                keeping the first card aligned with the page content; the scroll
+                region is focusable so keyboard users can reach it. Desktop
+                (sm+) keeps the fixed-width grid. */}
+            <div
+              role="group"
+              aria-label="Tipos de entrada"
+              tabIndex={0}
+              className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 scroll-px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,10.625rem)] sm:justify-start sm:overflow-visible sm:px-0 sm:pb-0"
+            >
               {event.ticketTypes.map((ticketType) => (
-                <TicketTypeTicket
+                <div
                   key={ticketType.id}
-                  ticketType={ticketType}
-                  isSelected={selectedTicketTypeId === ticketType.id}
-                  quantity={quantities[ticketType.id] || 0}
-                  onSelect={handleSelectTicketType}
-                  onChange={(nextQuantity) => updateQuantity(ticketType.id, nextQuantity)}
-                />
+                  className="w-[calc(50%-0.375rem)] shrink-0 snap-start sm:w-auto"
+                >
+                  <TicketTypeTicket
+                    ticketType={ticketType}
+                    isSelected={selectedTicketTypeId === ticketType.id}
+                    quantity={quantities[ticketType.id] || 0}
+                    onSelect={handleSelectTicketType}
+                    onChange={(nextQuantity) => updateQuantity(ticketType.id, nextQuantity)}
+                  />
+                </div>
               ))}
             </div>
 
