@@ -1,13 +1,31 @@
+import { useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Music, Drama, Laugh, PartyPopper } from 'lucide-react'
 import { fadeInUp, heroTransition, useReducedMotion } from '../../lib/motion.js'
+import { Disc3Icon } from '../icons/disc-3.jsx'
+import { ClapIcon } from '../icons/clap.jsx'
+import { LaughIcon } from '../icons/laugh.jsx'
+import { PartyPopperIcon } from '../icons/party-popper.jsx'
+import { PaletteIcon } from '../icons/palette.jsx'
 
 // Representative icon per category, rendered as decorative hero chips.
 const categoryIcons = {
-  musica: Music,
-  teatro: Drama,
-  standup: Laugh,
-  festivales: PartyPopper,
+  musica: Disc3Icon,
+  teatro: ClapIcon,
+  standup: LaughIcon,
+  festivales: PartyPopperIcon,
+  arte: PaletteIcon,
+}
+
+// Fill color per category, using the ORIGINAL logo colors (base tones from
+// tokens.css, not the dark variants — the chip fill is decorative, so the
+// AA text tones don't apply). Classes must stay full literals so the
+// Tailwind v4 scanner picks them up; never interpolate the color name.
+const chipFillColor = {
+  naranja: 'bg-naranja',
+  purpura: 'bg-purpura',
+  amarillo: 'bg-amarillo',
+  verde: 'bg-verde',
+  cian: 'bg-cian',
 }
 
 
@@ -34,6 +52,14 @@ export default function GradientHero({
   chips = [],
 }) {
   const shouldReduceMotion = useReducedMotion()
+
+  // Refs to drive each chip icon imperatively: hovering anywhere on the chip
+  // (not just the 20px icon) starts/stops its animation through the handle
+  // every icon exposes. Passing a ref also switches the icon to controlled
+  // mode, so its own hover no longer double-triggers.
+  const iconRefs = useRef({})
+  const startChipIcon = (id) => iconRefs.current[id]?.startAnimation?.()
+  const stopChipIcon = (id) => iconRefs.current[id]?.stopAnimation?.()
 
   return (
     // #home-hero is the anchor the Navbar scroll-linked reveal measures
@@ -141,6 +167,8 @@ export default function GradientHero({
               return (
                 <motion.span
                   key={chip.id}
+                  onMouseEnter={() => startChipIcon(chip.id)}
+                  onMouseLeave={() => stopChipIcon(chip.id)}
                   variants={{
                     hidden: { opacity: 0, y: -22 },
                     show: {
@@ -154,14 +182,26 @@ export default function GradientHero({
                       },
                     },
                   }}
-                  className="group relative flex h-11 w-11 items-center justify-center rounded-full border border-gris-oscuro/10 bg-white/60 text-gris-oscuro/70 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/90 hover:text-gris-oscuro motion-reduce:transition-none"
+                  className="group relative flex h-11 w-11 items-center justify-center rounded-full border border-gris-oscuro/10 bg-white/60 text-gris-oscuro/70 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-transparent motion-reduce:transition-none"
                   role="img"
                   aria-label={chip.label}
                 >
+                  {/* Fill layer: rises from the bottom on hover, tinted with
+                      the category's original logo color. The chip keeps
+                      overflow visible for the tooltip; the layer itself is
+                      rounded-full so it never spills outside the circle. */}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute inset-0 origin-bottom scale-y-0 rounded-full transition-transform duration-300 group-hover:scale-y-100 motion-reduce:transition-none ${chipFillColor[chip.colorKey] ?? ''}`}
+                  />
                   {Icon && (
                     <Icon
-                      strokeWidth={2}
-                      className="relative h-5 w-5 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none"
+                      ref={(node) => {
+                        if (node) iconRefs.current[chip.id] = node
+                        else delete iconRefs.current[chip.id]
+                      }}
+                      size={20}
+                      className="relative"
                     />
                   )}
 
