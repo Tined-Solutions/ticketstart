@@ -5,6 +5,7 @@ import EventForm from '../EventForm.jsx'
 const mockPost = vi.fn()
 const mockPut = vi.fn()
 const mockOnSuccess = vi.fn()
+const mockReadImageDimensions = vi.fn()
 
 vi.mock('../../api/client.js', () => ({
   default: {
@@ -12,6 +13,17 @@ vi.mock('../../api/client.js', () => ({
     put: (...args) => mockPut(...args),
   },
 }))
+
+// jsdom cannot decode images, so the dropzone's dimension check is mocked to
+// treat every fixture as a conforming 16:9, 1920×1080 image.
+vi.mock('../../lib/readImageDimensions.js', () => ({
+  readImageDimensions: (...args) => mockReadImageDimensions(...args),
+}))
+
+beforeEach(() => {
+  mockReadImageDimensions.mockReset()
+  mockReadImageDimensions.mockResolvedValue({ width: 1920, height: 1080 })
+})
 
 describe('EventForm — eventId validation before PUT', () => {
   beforeEach(() => {
@@ -72,6 +84,57 @@ describe('EventForm — eventId validation before PUT', () => {
     expect(feedback).toBeInTheDocument()
     expect(feedback.textContent).toBeTruthy()
     expect(mockOnSuccess).not.toHaveBeenCalled()
+  })
+
+  it('scrolls the global banner into view when the update fails', async () => {
+    mockPut.mockRejectedValueOnce({
+      response: { data: { error: { message: 'No tiene permisos' } } },
+    })
+
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    // prefersReducedMotion() reads window.matchMedia, absent in jsdom
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+    try {
+      const event = {
+        id: 'event-1',
+        name: 'Test Event',
+        date: '2026-12-25T20:00:00Z',
+        location: 'Somewhere',
+        description: 'Test',
+        ticketTypes: [{ id: 'tt-1', name: 'General', price: 5000, quantity: 100 }],
+      }
+
+      render(
+        <EventForm mode="edit" initialData={event} onSuccess={mockOnSuccess} />
+      )
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }))
+        await Promise.resolve()
+      })
+
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/no tiene permisos/i)
+      expect(alert.className).toContain('feedback-message')
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(mockOnSuccess).not.toHaveBeenCalled()
+    } finally {
+      delete Element.prototype.scrollIntoView
+      vi.unstubAllGlobals()
+    }
   })
 })
 

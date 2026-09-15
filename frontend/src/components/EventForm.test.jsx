@@ -6,6 +6,7 @@ import EventForm from './EventForm.jsx'
 const mockPost = vi.fn()
 const mockPut = vi.fn()
 const mockOnSuccess = vi.fn()
+const mockReadImageDimensions = vi.fn()
 
 vi.mock('../api/client.js', () => ({
   default: {
@@ -13,6 +14,17 @@ vi.mock('../api/client.js', () => ({
     put: (...args) => mockPut(...args),
   },
 }))
+
+// jsdom cannot decode images, so the dropzone's dimension check is mocked to
+// treat every fixture as a conforming 16:9, 1920×1080 image.
+vi.mock('../lib/readImageDimensions.js', () => ({
+  readImageDimensions: (...args) => mockReadImageDimensions(...args),
+}))
+
+beforeEach(() => {
+  mockReadImageDimensions.mockReset()
+  mockReadImageDimensions.mockResolvedValue({ width: 1920, height: 1080 })
+})
 
 function buildEvent(overrides = {}) {
   return {
@@ -451,19 +463,22 @@ describe('EventForm — create mode', () => {
     })
   })
 
-  it('validates image file type', async () => {
+  it('validates image file type inline under the dropzone, not in the banner', async () => {
     render(<EventForm mode="create" />)
 
     const file = new File(['dummy'], 'event.pdf', { type: 'application/pdf' })
     const fileInput = screen.getByLabelText(/imagen del evento/i)
     fireEvent.change(fileInput, { target: { files: [file] } })
 
-    expect(
-      await screen.findByText(/formato de imagen no valido/i)
-    ).toBeInTheDocument()
+    // The rejection is INLINE (role=alert inside the image form-group), never
+    // the global banner on top of the form.
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/formato de imagen no valido/i)
+    expect(alert.closest('.form-group')).not.toBeNull()
+    expect(document.querySelector('.feedback-message')).not.toBeInTheDocument()
   })
 
-  it('validates image file size', async () => {
+  it('validates image file size inline under the dropzone, not in the banner', async () => {
     render(<EventForm mode="create" />)
 
     // Create a file larger than 5MB
@@ -473,9 +488,32 @@ describe('EventForm — create mode', () => {
     const fileInput = screen.getByLabelText(/imagen del evento/i)
     fireEvent.change(fileInput, { target: { files: [largeFile] } })
 
-    expect(
-      await screen.findByText(/la imagen no debe superar los 5 mb/i)
-    ).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/la imagen no debe superar los 5 mb/i)
+    expect(alert.closest('.form-group')).not.toBeNull()
+    expect(document.querySelector('.feedback-message')).not.toBeInTheDocument()
+  })
+
+  it('clears the inline image error when a new valid image is selected', async () => {
+    render(<EventForm mode="create" />)
+
+    const fileInput = screen.getByLabelText(/imagen del evento/i)
+
+    // Reject a bad file first → inline error appears
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['dummy'], 'event.pdf', { type: 'application/pdf' })] },
+    })
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/formato de imagen no valido/i)
+
+    // A fresh valid selection clears the previous rejection
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })] },
+      })
+    })
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('scrolls to and focuses the first invalid field when validation fails', () => {
@@ -566,6 +604,51 @@ describe('EventForm — create mode', () => {
     }
   })
 
+  it('scrolls the global banner into view when a backend error appears', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { data: { error: { message: 'Datos invalidos' } } },
+    })
+
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    // prefersReducedMotion() reads window.matchMedia, absent in jsdom
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+    try {
+      render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+      fillBasicFieldsFire()
+      fillTicketTypeFire()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+        await Promise.resolve()
+      })
+
+      // Backend errors still land in the global banner (image rejects are
+      // inline now) and the form scrolls the banner into view.
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/datos invalidos/i)
+      expect(alert.className).toContain('feedback-message')
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(mockOnSuccess).not.toHaveBeenCalled()
+    } finally {
+      delete Element.prototype.scrollIntoView
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('disables form inputs while submitting', async () => {
     // Make the POST never resolve so we can observe the disabled state
     mockPost.mockImplementation(() => new Promise(() => {}))
@@ -611,6 +694,12 @@ describe('EventForm — edit mode', () => {
     const preview = screen.getByAltText(/vista previa/i)
     expect(preview).toBeInTheDocument()
     expect(preview.src).toBe('https://example.com/rock.jpg')
+
+    // Crop previews appear once there is an image, so the organizer sees how
+    // the photo will be cut in each production context before saving.
+    expect(
+      screen.getByText(/así se va a ver la imagen en cada lugar/i)
+    ).toBeInTheDocument()
 
     // ATS-008 / D-2: edit mode hides the ticket-type fieldset (no silent no-op).
     // The admin is pointed to the supported stock path instead.
@@ -730,6 +819,15 @@ describe('EventForm — readOnly mode', () => {
       'Recital de Rock Nacional'
     )
     expect(screen.getByAltText(/vista previa/i)).toBeInTheDocument()
+
+    // Crop previews are visible for the reviewer too — same information the
+    // organizer sees when authoring, so moderation can judge the real crops.
+    expect(
+      screen.getByText('Así se va a ver la imagen en cada lugar:')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Banner — página del evento')).toBeInTheDocument()
+    expect(screen.getByText('Card — listado de eventos')).toBeInTheDocument()
+    expect(screen.getByText('Miniatura — resumen de compra')).toBeInTheDocument()
   })
 
   it('does not call the API when readOnly (no submit path exists)', () => {
