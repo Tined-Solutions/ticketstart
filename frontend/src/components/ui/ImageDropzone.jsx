@@ -1,27 +1,37 @@
 import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { ImagePlus, X } from 'lucide-react'
+import { readImageDimensions } from '../../lib/readImageDimensions.js'
 
 const ACCEPT = { 'image/jpeg': [], 'image/png': [], 'image/webp': [] }
 const MAX_SIZE = 5 * 1024 * 1024
+
+// Standard event image: 16:9, 1920×1080 or larger. The ratio tolerance
+// absorbs rounding in real photos (accepted range ≈ 1.68–1.88).
+const RATIO_TARGET = 16 / 9
+const RATIO_TOLERANCE = 0.1
+const MIN_WIDTH = 1920
+const MIN_HEIGHT = 1080
 
 /**
  * Brand-styled image dropzone (drag & drop + click to browse).
  *
  * Headless logic comes from react-dropzone; every visual is a repo token so
  * it matches the TicketStart brand. Validation mirrors the event form rules
- * (JPEG/PNG/WebP, 5 MB max); rejections are reported through `onReject` so
- * the parent form shows them in its own feedback area.
+ * (JPEG/PNG/WebP, 5 MB max) and additionally enforces the standard event
+ * image format (16:9, ≥1920×1080). Rejections are reported through `onReject`
+ * and the parent surfaces them inline here via the `error` prop.
  */
 export default function ImageDropzone({
   preview = '',
   disabled = false,
+  error = '',
   onSelect,
   onClear,
   onReject,
 }) {
   const onDrop = useCallback(
-    (accepted, rejections) => {
+    async (accepted, rejections) => {
       if (rejections.length > 0) {
         const code = rejections[0]?.errors?.[0]?.code
         onReject?.(
@@ -31,9 +41,32 @@ export default function ImageDropzone({
         )
         return
       }
-      if (accepted.length > 0) {
-        onSelect?.(accepted[0])
+      if (accepted.length === 0) return
+
+      const file = accepted[0]
+
+      let dimensions
+      try {
+        dimensions = await readImageDimensions(file)
+      } catch {
+        onReject?.('No se pudo leer la imagen. Probá con otro archivo.')
+        return
       }
+
+      const ratio = dimensions.width / dimensions.height
+      if (Math.abs(ratio - RATIO_TARGET) > RATIO_TOLERANCE) {
+        onReject?.(
+          'La imagen debe tener proporción 16:9 (por ej. 1920×1080 o mayor).'
+        )
+        return
+      }
+
+      if (dimensions.width < MIN_WIDTH || dimensions.height < MIN_HEIGHT) {
+        onReject?.('La imagen debe ser de al menos 1920×1080 px.')
+        return
+      }
+
+      onSelect?.(file)
     },
     [onSelect, onReject]
   )
@@ -59,7 +92,15 @@ export default function ImageDropzone({
             !preview && !isDragActive && !isDragReject ? 'border-gris-oscuro/25' : '',
             isDragActive && !isDragReject ? 'border-purpura-dark bg-purpura-dark/10' : '',
             isDragReject ? 'border-danger bg-danger/5' : '',
-            preview ? 'border-transparent bg-transparent p-0' : 'p-6',
+            // Keep the preview layout (no padding) but swap the transparent
+            // border/background for the red error signal — the error is the
+            // primary visual cue and must win over the preview state.
+            preview
+              ? error
+                ? 'p-0'
+                : 'border-transparent bg-transparent p-0'
+              : 'p-6',
+            error ? 'border-danger bg-danger/5' : '',
           ].join(' '),
         })}
       >
@@ -98,11 +139,18 @@ export default function ImageDropzone({
                   : 'Arrastrá la imagen acá o tocá para elegir'}
             </p>
             <p id="eventImage-hint" className="mt-1 text-[13px] text-text-2">
-              Formatos: JPEG, PNG, WebP. Máximo 5 MB.
+              Formatos: JPEG, PNG o WebP. Máximo 5 MB.
+              <br />
+              Proporción: 16:9 (1920×1080 o mayor).
             </p>
           </>
         )}
       </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-medium text-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

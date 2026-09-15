@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { formatCurrency, toDateTimeLocalValue } from '../lib/format.js'
 import { prefersReducedMotion } from '../lib/motion.js'
 import ImageDropzone from './ui/ImageDropzone.jsx'
+import ImageCropPreviews from './ui/ImageCropPreviews.jsx'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -49,6 +50,25 @@ export default function EventForm({
   const [phase, setPhase] = useState('')
   const submitting = phase !== ''
   const [feedback, setFeedback] = useState({ type: '', message: '' })
+  // Image rejects are shown INLINE under the dropzone (where the user is), not
+  // in the global banner — the banner is reserved for backend/submit errors.
+  const [imageError, setImageError] = useState('')
+  const feedbackRef = useRef(null)
+
+  // Backend/submit errors land in the global banner at the TOP of the form,
+  // which can be off-screen. Bring it into view when one appears. Guarded for
+  // jsdom, which doesn't implement scrollIntoView.
+  useEffect(() => {
+    if (feedback.type === 'error' && feedback.message) {
+      const node = feedbackRef.current
+      if (node && typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          block: 'center',
+        })
+      }
+    }
+  }, [feedback])
 
   const isCreate = mode === 'create'
 
@@ -284,15 +304,21 @@ export default function EventForm({
     }
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+    // A fresh valid selection clears any previous inline rejection.
+    setImageError('')
   }
 
   function handleImageClear() {
     setImageFile(null)
     setImagePreview(initialData?.imageUrl || '')
+    setImageError('')
   }
 
+  // Image rejects are shown INLINE under the dropzone, not in the global
+  // banner (the banner is off-screen at that moment and the user never sees
+  // the rejection there).
   function handleImageReject(message) {
-    setFeedback({ type: 'error', message })
+    setImageError(message)
   }
 
   function handleTicketTypeChange(index, field, value) {
@@ -315,6 +341,7 @@ export default function EventForm({
     <form onSubmit={handleSubmit} className="event-form" noValidate>
       {feedback.message && (
         <div
+          ref={feedbackRef}
           className={`feedback-message feedback-message--${feedback.type}`}
           role={feedback.type === 'error' ? 'alert' : 'status'}
         >
@@ -403,28 +430,43 @@ export default function EventForm({
       <div className="form-group">
         <label htmlFor="eventImage">Imagen del evento</label>
         {!readOnly ? (
-          <ImageDropzone
-            preview={imagePreview}
-            disabled={submitting}
-            onSelect={handleImageSelect}
-            onClear={handleImageClear}
-            onReject={handleImageReject}
-          />
+          <>
+            <ImageDropzone
+              preview={imagePreview}
+              disabled={submitting}
+              error={imageError}
+              onSelect={handleImageSelect}
+              onClear={handleImageClear}
+              onReject={handleImageReject}
+            />
+            {imagePreview && (
+              <ImageCropPreviews
+                src={imagePreview}
+                alt={name.trim() || 'Imagen del evento'}
+              />
+            )}
+          </>
         ) : (
           imagePreview && (
-            <div style={{ marginTop: '8px' }}>
-              <img
+            <>
+              <div style={{ marginTop: '8px' }}>
+                <img
+                  src={imagePreview}
+                  alt="Vista previa"
+                  style={{
+                    maxWidth: '200px',
+                    maxHeight: '150px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    objectFit: 'cover',
+                  }}
+                />
+              </div>
+              <ImageCropPreviews
                 src={imagePreview}
-                alt="Vista previa"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '150px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border)',
-                  objectFit: 'cover',
-                }}
+                alt={name.trim() || 'Imagen del evento'}
               />
-            </div>
+            </>
           )
         )}
       </div>
