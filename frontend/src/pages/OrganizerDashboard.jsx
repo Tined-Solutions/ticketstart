@@ -10,6 +10,7 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import DropdownMenu from '../components/ui/DropdownMenu.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import { TicketIcon } from '../components/icons/ticket.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import { fadeIn } from '../lib/motion.js'
@@ -124,14 +125,9 @@ export default function OrganizerDashboard() {
 
           {metrics.length === 0 ? (
             <EmptyState
-              icon="🎟️"
+              icon={<TicketIcon size={48} className="inline-block" />}
               title="No tenes eventos creados todavia"
               description="Crea tu primer evento para empezar a vender entradas y ver sus metricas."
-              action={
-                <Button variant="gradient" onClick={() => navigate('/organizer/events/new')}>
-                  Crear evento
-                </Button>
-              }
             />
           ) : (
             <div className="flex flex-col">

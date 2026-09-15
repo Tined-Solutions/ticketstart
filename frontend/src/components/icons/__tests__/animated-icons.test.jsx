@@ -5,6 +5,9 @@ import { ClapIcon } from '../clap.jsx'
 import { LaughIcon } from '../laugh.jsx'
 import { PartyPopperIcon } from '../party-popper.jsx'
 import { PaletteIcon } from '../palette.jsx'
+import { TicketIcon } from '../ticket.jsx'
+import { SearchIcon } from '../search.jsx'
+import { CalendarDaysIcon } from '../calendar-days.jsx'
 
 const ICONS = [
   ['Disc3Icon', Disc3Icon],
@@ -12,6 +15,9 @@ const ICONS = [
   ['LaughIcon', LaughIcon],
   ['PartyPopperIcon', PartyPopperIcon],
   ['PaletteIcon', PaletteIcon],
+  ['TicketIcon', TicketIcon],
+  ['SearchIcon', SearchIcon],
+  ['CalendarDaysIcon', CalendarDaysIcon],
 ]
 
 function stubMatchMedia(reducedMotion) {

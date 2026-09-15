@@ -8,6 +8,7 @@ import { getErrorMessage } from '../lib/apiError.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import { SearchIcon } from '../components/icons/search.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/Button.jsx'
 import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
@@ -352,7 +353,7 @@ export default function TicketLookup() {
             className="mt-6"
           >
             <EmptyState
-              icon="🎫"
+              icon={<SearchIcon size={48} className="inline-block" />}
               title="No se encontraron entradas"
               description="No se encontraron entradas con ese email y documento. Verifica que los datos sean correctos."
               action={
