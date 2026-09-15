@@ -76,6 +76,11 @@
 /* ── EventForm ──────────────────────────────────────────────────────────── */
 
 .event-form { display: flex; flex-direction: column; gap: 0; }
+/* Pointer over every field (text, date, file, number, textarea, select).
+   Disabled fields keep not-allowed via the .form-group rule above. */
+.event-form input:not(:disabled),
+.event-form select:not(:disabled),
+.event-form textarea:not(:disabled) { cursor: pointer; }
 .event-form textarea:focus {
   border-color: var(--accent);
   outline: none;

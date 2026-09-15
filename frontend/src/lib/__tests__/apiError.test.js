@@ -70,10 +70,36 @@ describe('getErrorMessage', () => {
     expect(result).toBe('Not found')
   })
 
-  it('uses error.message as last resort for non-Axios errors', () => {
+  it('translates the axios "Network Error" to Spanish', () => {
     const error = new Error('Network Error')
     const result = getErrorMessage(error)
-    expect(result).toBe('Network Error')
+    expect(result).toBe(
+      'No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.'
+    )
+  })
+
+  it('translates axios timeout errors to Spanish', () => {
+    const result = getErrorMessage(new Error('timeout of 0ms exceeded'))
+    expect(result).toBe('La solicitud tardó demasiado. Intentá de nuevo.')
+  })
+
+  it('translates axios status-code errors to Spanish', () => {
+    expect(
+      getErrorMessage(new Error('Request failed with status code 404'))
+    ).toBe('No se encontró lo que buscabas.')
+    expect(
+      getErrorMessage(new Error('Request failed with status code 500'))
+    ).toBe('Error interno del servidor. Intentá de nuevo en unos minutos.')
+  })
+
+  it('falls back to a generic Spanish message for unknown status codes', () => {
+    expect(
+      getErrorMessage(new Error('Request failed with status code 418'))
+    ).toBe('Error del servidor (código 418). Intentá de nuevo.')
+  })
+
+  it('passes through non-axios error.message strings untouched', () => {
+    expect(getErrorMessage(new Error('Something broke'))).toBe('Something broke')
   })
 
   it('returns a fallback message for null input', () => {

@@ -105,8 +105,10 @@ describe('EventForm — edit mode with photo (EIM-004 upload-first)', () => {
     )
 
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
-    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
-      target: { files: [file] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+        target: { files: [file] },
+      })
     })
 
     await act(async () => {
@@ -134,8 +136,10 @@ describe('EventForm — edit mode with photo (EIM-004 upload-first)', () => {
     )
 
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
-    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
-      target: { files: [file] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+        target: { files: [file] },
+      })
     })
 
     await act(async () => {

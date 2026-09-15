@@ -18,7 +18,9 @@ function buildEvent(overrides = {}) {
   return {
     id: 'event-1',
     name: 'Recital de Rock Nacional',
-    date: '2026-08-15T21:00:00Z',
+    // Dynamic future date: a hardcoded date eventually becomes past and trips
+    // the future-date validation.
+    date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     location: 'Estadio Luna Park, Buenos Aires',
     description: 'Un gran recital',
     imageUrl: 'https://example.com/rock.jpg',
@@ -334,10 +336,13 @@ describe('EventForm — create mode', () => {
     fillBasicFieldsFire()
     fillTicketTypeFire()
 
-    // Simulate file selection
+    // Simulate file selection (async: react-dropzone processes files in a
+    // microtask, so flush it before submitting)
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
     const fileInput = screen.getByLabelText(/imagen del evento/i)
-    fireEvent.change(fileInput, { target: { files: [file] } })
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } })
+    })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
@@ -371,7 +376,9 @@ describe('EventForm — create mode', () => {
 
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
     const fileInput = screen.getByLabelText(/imagen del evento/i)
-    fireEvent.change(fileInput, { target: { files: [file] } })
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } })
+    })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
@@ -403,8 +410,10 @@ describe('EventForm — create mode', () => {
     fillTicketTypeFire()
 
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
-    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
-      target: { files: [file] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+        target: { files: [file] },
+      })
     })
 
     fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
@@ -427,8 +436,10 @@ describe('EventForm — create mode', () => {
     fillTicketTypeFire()
 
     const file = new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })
-    fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
-      target: { files: [file] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/imagen del evento/i), {
+        target: { files: [file] },
+      })
     })
 
     fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
@@ -448,7 +459,7 @@ describe('EventForm — create mode', () => {
     fireEvent.change(fileInput, { target: { files: [file] } })
 
     expect(
-      screen.getByText(/formato de imagen no valido/i)
+      await screen.findByText(/formato de imagen no valido/i)
     ).toBeInTheDocument()
   })
 
@@ -463,8 +474,96 @@ describe('EventForm — create mode', () => {
     fireEvent.change(fileInput, { target: { files: [largeFile] } })
 
     expect(
-      screen.getByText(/la imagen no debe superar los 5 mb/i)
+      await screen.findByText(/la imagen no debe superar los 5 mb/i)
     ).toBeInTheDocument()
+  })
+
+  it('scrolls to and focuses the first invalid field when validation fails', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    // prefersReducedMotion() reads window.matchMedia, absent in jsdom
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+    try {
+      render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+      // Empty submit: the first error is the event name
+      fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(document.activeElement?.id).toBe('eventName')
+    } finally {
+      delete Element.prototype.scrollIntoView
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('rejects past dates in Spanish without calling the API', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fillBasicFieldsFire({ date: '2020-01-01T20:00' })
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(
+      await screen.findByText(/la fecha del evento debe ser futura/i)
+    ).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockOnSuccess).not.toHaveBeenCalled()
+  })
+
+  it('translates the backend past-date error to Spanish and scrolls to the date field', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { data: { error: 'Event date must be in the future' } },
+    })
+
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+    try {
+      render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+      fillBasicFieldsFire()
+      fillTicketTypeFire()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+      })
+
+      expect(
+        await screen.findByText(/la fecha del evento debe ser futura/i)
+      ).toBeInTheDocument()
+      // The field is disabled while submitting, so only the scroll applies;
+      // focus is covered by the validation-path test above.
+      expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      delete Element.prototype.scrollIntoView
+      vi.unstubAllGlobals()
+    }
   })
 
   it('disables form inputs while submitting', async () => {

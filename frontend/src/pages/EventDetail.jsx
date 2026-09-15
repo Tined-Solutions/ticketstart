@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Ticket } from 'lucide-react'
@@ -8,6 +8,16 @@ import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import Button from '../components/Button.jsx'
 import TicketTypeTicket from '../components/events/TicketTypeTicket.jsx'
+
+// Edge-fade masks for the mobile ticket carousel (full literals so the
+// Tailwind v4 scanner picks them up). Disabled on sm+ where the grid
+// doesn't scroll.
+const FADE_MASK = {
+  none: '',
+  right: '[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]',
+  left: '[mask-image:linear-gradient(to_right,transparent,black_2.5rem)]',
+  both: '[mask-image:linear-gradient(to_right,transparent,black_2.5rem,black_calc(100%-2.5rem),transparent)]',
+}
 
 // ─── Loading skeleton ────────────────────────────────────────────────────
 
@@ -48,6 +58,58 @@ export default function EventDetail() {
 
   const [selectedTicketTypeId, setSelectedTicketTypeId] = useState(null)
   const [quantities, setQuantities] = useState({})
+
+  // ─── Mobile carousel affordance ─────────────────────────────────────
+  // The snap carousel fits two full cards per view, so nothing hints that
+  // more ticket types exist. Edge fade + page dots make the horizontal
+  // scroll discoverable. Desktop keeps the grid.
+  const trackRef = useRef(null)
+  const [activePage, setActivePage] = useState(0)
+  const [fade, setFade] = useState('none')
+  const ticketCount = event?.ticketTypes?.length ?? 0
+  const pageCount = Math.ceil(ticketCount / 2)
+
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track || ticketCount <= 2) {
+      setFade('none')
+      return
+    }
+
+    const updateFade = () => {
+      const left = track.scrollLeft > 4
+      const right = track.scrollLeft + track.clientWidth < track.scrollWidth - 4
+      setFade(left && right ? 'both' : right ? 'right' : left ? 'left' : 'none')
+    }
+    updateFade()
+
+    track.addEventListener('scroll', updateFade, { passive: true })
+    window.addEventListener('resize', updateFade)
+
+    // Dots follow the most visible card pair. Guarded: jsdom (tests) has no
+    // IntersectionObserver, and the dots simply stay on the first page there.
+    let observer
+    if (typeof IntersectionObserver !== 'undefined') {
+      const cards = track.querySelectorAll('[data-ticket-page]')
+      observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              setActivePage(Math.floor(Number(entry.target.dataset.index) / 2))
+            }
+          })
+        },
+        { root: track, threshold: 0.6 }
+      )
+      cards.forEach((card) => observer.observe(card))
+    }
+
+    return () => {
+      track.removeEventListener('scroll', updateFade)
+      window.removeEventListener('resize', updateFade)
+      observer?.disconnect()
+    }
+  }, [ticketCount])
 
   const errorMessage = isError
     ? error?.response?.status === 404
@@ -241,14 +303,17 @@ export default function EventDetail() {
                 region is focusable so keyboard users can reach it. Desktop
                 (sm+) keeps the fixed-width grid. */}
             <div
+              ref={trackRef}
               role="group"
               aria-label="Tipos de entrada"
               tabIndex={0}
-              className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 scroll-px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,10.625rem)] sm:justify-start sm:overflow-visible sm:px-0 sm:pb-0"
+              className={`-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 scroll-px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,10.625rem)] sm:justify-start sm:overflow-visible sm:px-0 sm:pb-0 ${FADE_MASK[fade]} sm:[mask-image:none]`}
             >
-              {event.ticketTypes.map((ticketType) => (
+              {event.ticketTypes.map((ticketType, index) => (
                 <div
                   key={ticketType.id}
+                  data-ticket-page
+                  data-index={index}
                   className="w-[calc(50%-0.375rem)] shrink-0 snap-start sm:w-auto"
                 >
                   <TicketTypeTicket
@@ -261,6 +326,25 @@ export default function EventDetail() {
                 </div>
               ))}
             </div>
+
+            {/* Page dots (mobile only, only when scrolling exists): explicit
+                affordance that more ticket types are a swipe away. Decorative;
+                the live region announces the page to assistive tech. */}
+            {pageCount > 1 && (
+              <div className="mt-3 sm:hidden">
+                <span className="sr-only" aria-live="polite">
+                  Mostrando página {activePage + 1} de {pageCount} de tipos de entrada
+                </span>
+                <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
+                  {Array.from({ length: pageCount }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-1.5 rounded-full transition-all duration-300 motion-reduce:transition-none ${i === activePage ? 'w-5 bg-purpura-dark' : 'w-1.5 bg-gris-oscuro/25'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Reservation summary — always visible, button disabled when no selection.
             Single ticket type per purchase: the summary reflects exactly the one
