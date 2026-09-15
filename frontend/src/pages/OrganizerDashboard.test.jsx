@@ -193,7 +193,7 @@ describe('OrganizerDashboard', () => {
     })
   })
 
-  it('shows the EmptyState with Eventos (0) and a gradient CTA when no events exist', async () => {
+  it('shows the EmptyState with Eventos (0) and no duplicate CTA when no events exist', async () => {
     mockGet.mockResolvedValue({ data: [] })
 
     render(<OrganizerDashboard />)
@@ -205,9 +205,9 @@ describe('OrganizerDashboard', () => {
     expect(screen.getByText(/no tenes eventos creados todavia/i)).toBeInTheDocument()
     expect(screen.getByText(/crea tu primer evento/i)).toBeInTheDocument()
 
-    const createBtn = screen.getByRole('button', { name: /^crear evento$/i })
-    await userEvent.click(createBtn)
-    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/new')
+    // The empty state has no CTA of its own: creation lives in the header button.
+    expect(screen.queryByRole('button', { name: /^crear evento$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\+\s*crear evento/i })).toBeInTheDocument()
   })
 
   // ── Section header actions ─────────────────────────────────────────
