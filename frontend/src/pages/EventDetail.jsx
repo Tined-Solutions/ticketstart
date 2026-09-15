@@ -25,7 +25,7 @@ function DetailSkeleton() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
       {/* Hero skeleton */}
-      <div className="relative w-full h-72 md:h-96 overflow-hidden rounded-xl">
+      <div className="relative w-full aspect-video overflow-hidden rounded-xl">
         <Skeleton width="100%" height="100%" variant="rectangular" />
       </div>
 
@@ -226,24 +226,27 @@ export default function EventDetail() {
       </Link>
 
       {/* Hero section — banner image stays clean (no overlay): event data
-          lives below so information inside the artwork is never hidden. */}
+          lives below so information inside the artwork is never hidden.
+          Fixed 16:9 aspect (no h-72/h-96): matches the standard 16:9 photo
+          so it isn't cropped, and the aspect-video wrapper keeps CLS in
+          check while the image loads. */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         className="w-full mt-4 mb-10"
       >
-        <div className="overflow-hidden rounded-xl">
+        <div className="relative w-full aspect-video overflow-hidden rounded-xl">
           {event.imageUrl ? (
             <img
               src={event.imageUrl}
               alt={event.name}
-              width="1280"
-              height="384"
-              className="w-full h-72 md:h-96 object-cover"
+              width="1920"
+              height="1080"
+              className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-72 md:h-96 bg-surface-elevated flex items-center justify-center">
+            <div className="w-full h-full bg-surface-elevated flex items-center justify-center">
               <span className="text-text-muted">Sin imagen</span>
             </div>
           )}
