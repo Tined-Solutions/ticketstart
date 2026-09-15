@@ -2,6 +2,8 @@ import { useState } from 'react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { formatCurrency, toDateTimeLocalValue } from '../lib/format.js'
+import { prefersReducedMotion } from '../lib/motion.js'
+import ImageDropzone from './ui/ImageDropzone.jsx'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -78,6 +80,11 @@ export default function EventForm({
 
     if (!date) {
       newErrors.date = 'La fecha es obligatoria'
+    } else {
+      const timestamp = new Date(date).getTime()
+      if (Number.isNaN(timestamp) || timestamp <= Date.now()) {
+        newErrors.date = 'La fecha del evento debe ser futura'
+      }
     }
 
     if (!location.trim()) {
@@ -132,6 +139,56 @@ export default function EventForm({
     return newErrors
   }
 
+  // Scrolls a field into view and focuses it. scrollIntoView is guarded:
+  // jsdom (tests) doesn't implement it. Focus is skipped on disabled fields
+  // (during submit everything is disabled and browsers ignore focus there).
+  function scrollToField(selector) {
+    const node = document.querySelector(selector)
+    if (!node || typeof node.scrollIntoView !== 'function') return
+    node.scrollIntoView({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'center',
+    })
+    if (!node.disabled) node.focus({ preventScroll: true })
+  }
+
+  // After a failed validation, bring the first invalid field into view and
+  // focus it so keyboard users land on it too. The ticket-types fallback has
+  // no single focusable target, so it only scrolls the section.
+  function scrollToFirstError(validationErrors) {
+    let selector = null
+    if (validationErrors.name) selector = '#eventName'
+    else if (validationErrors.date) selector = '#eventDate'
+    else if (validationErrors.location) selector = '#eventLocation'
+    else if (Array.isArray(validationErrors.ticketTypes)) {
+      const index = validationErrors.ticketTypes.findIndex(
+        (row) => row && Object.keys(row).length > 0
+      )
+      if (index >= 0 && ticketTypes[index]) {
+        selector = `#tt-name-${ticketTypes[index].key}`
+      }
+    }
+    if (selector) {
+      scrollToField(selector)
+      return
+    }
+    const section = document.querySelector('.ticket-types-section')
+    if (section && typeof section.scrollIntoView === 'function') {
+      section.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'center',
+      })
+    }
+  }
+
+  // The backend still enforces a future date (clock skew / midnight race). If
+  // its English message slips through, show Spanish instead.
+  function translatePastDateError(message) {
+    return /event date must be in the future/i.test(message)
+      ? 'La fecha del evento debe ser futura'
+      : null
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     setFeedback({ type: '', message: '' })
@@ -140,6 +197,7 @@ export default function EventForm({
     setErrors(validationErrors)
 
     if (Object.keys(validationErrors).length > 0) {
+      scrollToFirstError(validationErrors)
       return
     }
 
@@ -208,42 +266,33 @@ export default function EventForm({
         onSuccess(eventId)
       }
     } catch (error) {
-      setFeedback({ type: 'error', message: getErrorMessage(error) })
+      const message = getErrorMessage(error)
+      const translated = translatePastDateError(message)
+      setFeedback({ type: 'error', message: translated ?? message })
+      if (translated) scrollToField('#eventDate')
     } finally {
       setPhase('')
     }
   }
 
-  function handleImageChange(event) {
-    const file = event.target.files?.[0]
+  // Image selection comes pre-validated from the dropzone (JPEG/PNG/WebP,
+  // 5 MB max) — no manual type/size checks needed here.
+  function handleImageSelect(file) {
     if (!file) {
-      setImageFile(null)
-      setImagePreview(initialData?.imageUrl || '')
+      handleImageClear()
       return
     }
-
-    // Validate file type and size
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      setFeedback({
-        type: 'error',
-        message: 'Formato de imagen no valido. Use JPEG, PNG o WebP.',
-      })
-      event.target.value = ''
-      return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setFeedback({
-        type: 'error',
-        message: 'La imagen no debe superar los 5 MB.',
-      })
-      event.target.value = ''
-      return
-    }
-
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+  }
+
+  function handleImageClear() {
+    setImageFile(null)
+    setImagePreview(initialData?.imageUrl || '')
+  }
+
+  function handleImageReject(message) {
+    setFeedback({ type: 'error', message })
   }
 
   function handleTicketTypeChange(index, field, value) {
@@ -352,36 +401,31 @@ export default function EventForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="eventImage">Imagen del evento (opcional)</label>
-        {!readOnly && (
-          <>
-            <input
-              id="eventImage"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleImageChange}
-              disabled={submitting}
-              aria-describedby="eventImage-hint"
-            />
-            <small id="eventImage-hint" style={{ color: 'var(--text)', fontSize: '13px' }}>
-              Formatos: JPEG, PNG, WebP. Maximo 5 MB.
-            </small>
-          </>
-        )}
-        {imagePreview && (
-          <div style={{ marginTop: '8px' }}>
-            <img
-              src={imagePreview}
-              alt="Vista previa"
-              style={{
-                maxWidth: '200px',
-                maxHeight: '150px',
-                borderRadius: '8px',
-                border: '1px solid var(--border)',
-                objectFit: 'cover',
-              }}
-            />
-          </div>
+        <label htmlFor="eventImage">Imagen del evento</label>
+        {!readOnly ? (
+          <ImageDropzone
+            preview={imagePreview}
+            disabled={submitting}
+            onSelect={handleImageSelect}
+            onClear={handleImageClear}
+            onReject={handleImageReject}
+          />
+        ) : (
+          imagePreview && (
+            <div style={{ marginTop: '8px' }}>
+              <img
+                src={imagePreview}
+                alt="Vista previa"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '150px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  objectFit: 'cover',
+                }}
+              />
+            </div>
+          )
         )}
       </div>
 
