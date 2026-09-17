@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 import { screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import StaffScan from './StaffScan.jsx'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 
 // ---------------------------------------------------------------------------
@@ -51,8 +52,9 @@ beforeAll(() => {
 })
 
 vi.mock('html5-qrcode', () => ({
-  Html5Qrcode: vi.fn().mockImplementation(function (elementId) {
+  Html5Qrcode: vi.fn().mockImplementation(function (elementId, config) {
     this._elementId = elementId
+    this._config = config
     this.start = vi.fn().mockImplementation(
       async (_cameraConfig, _scanConfig, successCallback) => {
         if (shouldFailCamera) {
@@ -71,6 +73,7 @@ vi.mock('html5-qrcode', () => ({
       configurable: true,
     })
   }),
+  Html5QrcodeSupportedFormats: { QR_CODE: 'QR_CODE' },
 }))
 
 // ---------------------------------------------------------------------------
@@ -323,6 +326,19 @@ describe('StaffScan', () => {
     const user = userEvent.setup()
     await startScanning(user)
     expect(screen.getByRole('button', { name: /detener escaneo/i })).toBeInTheDocument()
+  })
+
+  it('forces the ZXing decoder (no native BarcodeDetector) for Android compatibility', async () => {
+    renderWithQueryClient(<StaffScan />)
+    const user = userEvent.setup()
+    await startScanning(user)
+    // Android Chrome's native BarcodeDetector opens the camera but silently fails
+    // to decode QR codes; iOS has no BarcodeDetector and already used ZXing.
+    // The fix pins the decoder to ZXing on every platform.
+    expect(Html5Qrcode).toHaveBeenCalledWith('qr-reader', {
+      useBarCodeDetectorIfSupported: false,
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+    })
   })
 
   it('shows a camera error message when camera access is denied', async () => {
