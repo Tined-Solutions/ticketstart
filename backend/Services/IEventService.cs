@@ -38,9 +38,11 @@ public interface IEventService
 
     /// <summary>
     /// Retrieves the events the staff QR scanner can validate tickets for
-    /// (EHE-007): future events plus events that ended within the QR validation
-    /// window (<see cref="TicketService.ValidationWindowHours"/> hours). Ordered
-    /// with future events first (ascending by date), then ended events descending
+    /// (EHE-007): future events that start within
+    /// <see cref="EventService.ScanChooserWindowDays"/> days, plus events that
+    /// ended within the QR validation window
+    /// (<see cref="TicketService.ValidationWindowHours"/> hours). Ordered with
+    /// future events first (ascending by date), then ended events descending
     /// (most recently ended first). This is a hard technical rule independent of
     /// the HideExpiredEvents feature flag.
     /// </summary>

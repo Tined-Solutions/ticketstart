@@ -4,6 +4,7 @@ import { Camera } from 'lucide-react'
 import { Html5Qrcode } from 'html5-qrcode'
 import apiClient from '../api/client.js'
 import Badge from '../components/ui/Badge.jsx'
+import EventSelect from '../components/ui/EventSelect.jsx'
 import Spinner from '../components/Spinner.jsx'
 import { fadeInScale } from '../lib/motion.js'
 import { useManagementEvents } from '../hooks/useManagementEvents.js'
@@ -290,24 +291,17 @@ export default function StaffScan() {
             </motion.p>
           )}
           {!eventsLoading && !eventsError && (
-            <select
+            <EventSelect
               id="event-select"
+              events={events}
               value={eventId}
-              onChange={(e) => {
-                setEventId(e.target.value)
+              onChange={(id) => {
+                setEventId(id)
                 setError('')
                 setResult(null)
               }}
               disabled={scanning}
-              className="w-full min-w-0"
-            >
-              <option value="" disabled>Seleccionar evento...</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name} — {new Date(event.date).toLocaleDateString('es-AR')} — {new Date(event.date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })} — {event.location}
-                </option>
-              ))}
-            </select>
+            />
           )}
           {error && (
             <motion.p
