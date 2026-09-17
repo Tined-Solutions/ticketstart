@@ -1684,6 +1684,81 @@ public class EventServiceTests : IDisposable
         Assert.Contains(approved.Id, ids);
     }
 
+    [Fact]
+    public async Task GetScannableEvents_ExcludesFutureEventMoreThanSevenDaysOut()
+    {
+        // EHE-007 horizon: the scan chooser must not ship distant future events.
+        // An Approved event starting more than ScanChooserWindowDays away is
+        // filtered, while one within the week is still returned.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var withinWeek = CreateEventEntity(organizerId, "Within Week", now.AddDays(6));
+        var farFuture = CreateEventEntity(organizerId, "Far Future", now.AddDays(EventService.ScanChooserWindowDays + 1));
+        _context.Events.AddRange(withinWeek, farFuture);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert — only the within-week event is scannable
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Single(ids);
+        Assert.Contains(withinWeek.Id, ids);
+        Assert.DoesNotContain(farFuture.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetScannableEvents_HorizonBoundary_IncludesExactlyAtHorizonExcludesJustPast()
+    {
+        // Boundary: Date <= horizon is inclusive, so an event starting exactly
+        // ScanChooserWindowDays out is listed while a tick later is not. Uses the
+        // constant, never a magic number.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var organizerId = Guid.NewGuid();
+        var exactlyAtHorizon = CreateEventEntity(organizerId, "Exactly Horizon", now.AddDays(EventService.ScanChooserWindowDays));
+        var justPastHorizon = CreateEventEntity(organizerId, "Just Past Horizon", now.AddDays(EventService.ScanChooserWindowDays).AddTicks(1));
+        _context.Events.AddRange(exactlyAtHorizon, justPastHorizon);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert
+        var ids = result.Select(e => e.Id).ToHashSet();
+        Assert.Single(ids);
+        Assert.Contains(exactlyAtHorizon.Id, ids);
+        Assert.DoesNotContain(justPastHorizon.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetScannableEvents_EndedEventWithinWindow_StillReturnedDespiteHorizon()
+    {
+        // The 7-day horizon must never drop the ended-window rule: an event that
+        // ended a couple of hours ago (Date <= now <= horizon) stays scannable.
+        var fake = new FakeTimeProvider();
+        fake.SetUtcNow(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var service = CreateServiceWithClockAndOptions(fake, new HideExpiredEventsOptions { Enabled = true });
+
+        var now = fake.GetUtcNow().UtcDateTime;
+        var recentlyEnded = CreateEventEntity(Guid.NewGuid(), "Recently Ended", now.AddHours(-2));
+        _context.Events.Add(recentlyEnded);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await service.GetScannableEventsAsync();
+
+        // Assert
+        Assert.Contains(result, e => e.Id == recentlyEnded.Id);
+    }
+
     #endregion
 }
 
