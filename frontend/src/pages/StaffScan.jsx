@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera } from 'lucide-react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import apiClient from '../api/client.js'
 import Badge from '../components/ui/Badge.jsx'
 import Spinner from '../components/Spinner.jsx'
@@ -210,7 +210,18 @@ export default function StaffScan() {
     setResult(null)
 
     try {
-      const scanner = new Html5Qrcode('qr-reader')
+      // Force the pure-JS ZXing decoder instead of the native BarcodeDetector:
+      // on Android Chrome the camera opens but the native detector silently
+      // fails to decode QR codes (known html5-qrcode 2.3.8 issue, esp. Samsung),
+      // while iOS Safari has no BarcodeDetector and already used ZXing — which
+      // is why scanning worked on iOS but not Android. useBarCodeDetectorIfSupported
+      // defaults to true; setting it to false makes ZXing the primary decoder on
+      // every platform. QR_CODE-only keeps ZXing from wasting frames on other
+      // barcode formats (tickets are always QR codes).
+      const scanner = new Html5Qrcode('qr-reader', {
+        useBarCodeDetectorIfSupported: false,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      })
       scannerRef.current = scanner
 
       await scanner.start(
