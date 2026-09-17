@@ -4,6 +4,7 @@ import { getErrorMessage } from '../lib/apiError.js'
 import { formatCurrency, toDateTimeLocalValue } from '../lib/format.js'
 import { prefersReducedMotion } from '../lib/motion.js'
 import ImageDropzone from './ui/ImageDropzone.jsx'
+import DateTimePicker from './ui/DateTimePicker.jsx'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -137,6 +138,12 @@ export default function EventForm({
     }
 
     return newErrors
+  }
+
+  // Filling a field resolves it: drop its error immediately instead of
+  // waiting for the next submit.
+  function clearFieldError(field) {
+    setErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev))
   }
 
   // Scrolls a field into view and focuses it. scrollIntoView is guarded:
@@ -301,6 +308,15 @@ export default function EventForm({
       updated[index] = { ...updated[index], [field]: value }
       return updated
     })
+
+    // Filling a row field resolves it: drop its error immediately.
+    setErrors((prev) => {
+      const rowErrors = Array.isArray(prev.ticketTypes) ? prev.ticketTypes[index] : null
+      if (!rowErrors?.[field]) return prev
+      const nextTicketErrors = [...prev.ticketTypes]
+      nextTicketErrors[index] = { ...rowErrors, [field]: undefined }
+      return { ...prev, ticketTypes: nextTicketErrors }
+    })
   }
 
   function handleAddTicketType() {
@@ -328,7 +344,10 @@ export default function EventForm({
           id="eventName"
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            clearFieldError('name')
+          }}
           required
           disabled={submitting || readOnly}
           aria-invalid={errors.name ? 'true' : undefined}
@@ -343,13 +362,15 @@ export default function EventForm({
 
       <div className="form-group">
         <label htmlFor="eventDate">Fecha y hora</label>
-        <input
+        <DateTimePicker
           id="eventDate"
-          type="datetime-local"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required
-          disabled={submitting || readOnly}
+          onChange={(value) => {
+            setDate(value)
+            clearFieldError('date')
+          }}
+          disabled={submitting}
+          readOnly={readOnly}
           aria-invalid={errors.date ? 'true' : undefined}
           aria-describedby={errors.date ? 'eventDate-error' : undefined}
         />
@@ -366,7 +387,10 @@ export default function EventForm({
           id="eventLocation"
           type="text"
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={(e) => {
+            setLocation(e.target.value)
+            clearFieldError('location')
+          }}
           required
           disabled={submitting || readOnly}
           aria-invalid={errors.location ? 'true' : undefined}
@@ -595,7 +619,7 @@ export default function EventForm({
         <div className="form-actions">
           <button
             type="submit"
-            className="button-primary"
+            className="button-accent"
             disabled={submitting}
           >
             {submitting

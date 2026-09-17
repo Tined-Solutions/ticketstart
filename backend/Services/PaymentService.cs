@@ -152,14 +152,19 @@ public class PaymentService : IPaymentService
             NotificationUrl = string.IsNullOrEmpty(_options.WebhookBaseUrl) ? null : $"{_options.WebhookBaseUrl}/api/payments/webhook",
             BackUrls = new MercadoPagoBackUrls
             {
-                Success = $"{_options.FrontendUrl}/checkout/success?preference_id={{preference_id}}",
-                Failure = $"{_options.FrontendUrl}/checkout/return?status=failure",
+                // MP appends its own preference_id (and status) params on redirect
+                // ("Return URLs Response" docs). Do NOT seed a placeholder here —
+                // a literal first occurrence would shadow the real value.
+                Success = $"{_options.FrontendUrl}/checkout/success",
+                Failure = $"{_options.FrontendUrl}/checkout/return?event={reservation.EventId}",
                 Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
             },
             // Auto-return the buyer to /checkout/success a few seconds after an
-            // approved payment instead of leaving them on the MP screen. Only
-            // effective with publicly-accessible back_urls (production/staging).
-            AutoReturn = "approved"
+            // approved payment. Mercado Pago REJECTS the whole preference (400
+            // invalid_auto_return, "back_url.success must be defined") when the
+            // success back URL is not publicly reachable — e.g. http://localhost
+            // in local dev — so only request it for https frontends.
+            AutoReturn = _options.FrontendUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? "approved" : null
         };
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);
