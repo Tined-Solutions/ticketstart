@@ -196,9 +196,14 @@ function simulateQrScan(qrData = 'ticket-001:1750000000:abc123sig') {
   }
 }
 
+async function chooseEvent(user, nameRegex) {
+  const trigger = await screen.findByLabelText(/^evento$/i)
+  await user.click(trigger)
+  await user.click(screen.getByRole('option', { name: nameRegex }))
+}
+
 async function startScanning(user) {
-  const select = await screen.findByLabelText(/^evento$/i)
-  await user.selectOptions(select, eventId)
+  await chooseEvent(user, /rock en el parque/i)
   await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 }
 
@@ -211,16 +216,18 @@ describe('StaffScan', () => {
 
   it('renders the event selector with fetched events', async () => {
     renderWithQueryClient(<StaffScan />)
-    const select = await screen.findByLabelText(/^evento$/i)
-    expect(select).toBeInTheDocument()
+    const user = userEvent.setup()
+    const trigger = await screen.findByLabelText(/^evento$/i)
+    expect(trigger).toBeInTheDocument()
+    expect(trigger.textContent).toContain('Seleccionar evento...')
 
-    const options = Array.from(select.options)
-    expect(options).toHaveLength(3) // placeholder + 2 events
-    expect(options[0].textContent).toBe('Seleccionar evento...')
-    expect(options[1].textContent).toMatch(/Rock en el Parque/)
-    expect(options[1].textContent).toMatch(/Estadio Monumental/)
-    expect(options[2].textContent).toMatch(/Jazz Night/)
-    expect(options[2].textContent).toMatch(/Teatro Colon/)
+    await user.click(trigger)
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(2)
+    expect(options[0].textContent).toMatch(/Rock en el Parque/)
+    expect(options[0].textContent).toMatch(/Estadio Monumental/)
+    expect(options[1].textContent).toMatch(/Jazz Night/)
+    expect(options[1].textContent).toMatch(/Teatro Colon/)
 
     // The option must include the event time in 24h local format so staff can
     // tell apart same-day events. Computed dynamically so the assertion is
@@ -235,20 +242,18 @@ describe('StaffScan', () => {
       minute: '2-digit',
       hour12: false,
     })
-    expect(options[1].textContent).toContain(expectedTime1)
-    expect(options[2].textContent).toContain(expectedTime2)
+    expect(options[0].textContent).toContain(expectedTime1)
+    expect(options[1].textContent).toContain(expectedTime2)
   })
 
   it('the UUID is never displayed to the user', async () => {
     renderWithQueryClient(<StaffScan />)
-    const select = await screen.findByLabelText(/^evento$/i)
-    const options = Array.from(select.options)
-    for (const opt of options) {
-      if (opt.value) {
-        expect(opt.textContent).not.toMatch(
-          /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-        )
-      }
+    const user = userEvent.setup()
+    await user.click(await screen.findByLabelText(/^evento$/i))
+    for (const opt of screen.getAllByRole('option')) {
+      expect(opt.textContent).not.toMatch(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+      )
     }
   })
 
@@ -301,7 +306,7 @@ describe('StaffScan', () => {
     await userEvent.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
     expect(screen.getByText(/tenes que seleccionar un evento/i)).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
+    await chooseEvent(user, /rock en el parque/i)
     expect(screen.queryByText(/tenes que seleccionar un evento/i)).not.toBeInTheDocument()
   })
 
@@ -310,8 +315,7 @@ describe('StaffScan', () => {
   it('selecting an event enables the scan button', async () => {
     renderWithQueryClient(<StaffScan />)
     const user = userEvent.setup()
-    const select = await screen.findByLabelText(/^evento$/i)
-    await user.selectOptions(select, eventId)
+    await chooseEvent(user, /rock en el parque/i)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
     expect(screen.getByRole('button', { name: /detener escaneo/i })).toBeInTheDocument()
   })
@@ -504,7 +508,7 @@ describe('StaffScan', () => {
 
     // Click "Escanear Otro" and re-start scanning
     await user.click(screen.getByRole('button', { name: /escanear otro/i }))
-    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
+    await chooseEvent(user, /rock en el parque/i)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 
     // Second scan — already used
@@ -517,7 +521,7 @@ describe('StaffScan', () => {
 
     // Click "Escanear Otro" again
     await user.click(screen.getByRole('button', { name: /escanear otro/i }))
-    await user.selectOptions(screen.getByLabelText(/^evento$/i), eventId)
+    await chooseEvent(user, /rock en el parque/i)
     await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
 
     // Third scan — invalid signature
@@ -581,7 +585,7 @@ describe('StaffScan', () => {
     expect(screen.getAllByText(/entrada valida/i).length).toBeGreaterThan(0)
 
     // Select a different event — result should clear
-    await user.selectOptions(screen.getByLabelText(/^evento$/i), mockEvents[1].id)
+    await chooseEvent(user, /jazz night/i)
     // The overlay exits via AnimatePresence — wait for the exit animation to finish
     await waitFor(() => {
       expect(screen.queryByText(/entrada valida/i)).not.toBeInTheDocument()
