@@ -732,6 +732,67 @@ describe('EventForm — create mode', () => {
     expect(screen.queryByText(/la cantidad es obligatoria/i)).not.toBeInTheDocument()
   })
 
+  it('keeps the name error until the new value is actually valid', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    expect(
+      await screen.findByText(/el nombre del evento es obligatorio/i)
+    ).toBeInTheDocument()
+
+    const nameInput = screen.getByLabelText(/nombre del evento/i)
+
+    // Empty / whitespace-only values are still invalid: the message survives
+    // the change and the field stays marked as invalid.
+    fireEvent.change(nameInput, { target: { value: '' } })
+    expect(screen.getByText(/el nombre del evento es obligatorio/i)).toBeInTheDocument()
+
+    fireEvent.change(nameInput, { target: { value: '   ' } })
+    expect(screen.getByText(/el nombre del evento es obligatorio/i)).toBeInTheDocument()
+    expect(nameInput).toHaveAttribute('aria-invalid', 'true')
+
+    // A valid name resolves the field immediately.
+    fireEvent.change(nameInput, { target: { value: 'Nuevo Evento' } })
+
+    expect(
+      screen.queryByText(/el nombre del evento es obligatorio/i)
+    ).not.toBeInTheDocument()
+    expect(nameInput).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('keeps ticket-type row errors while the new value is still invalid', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    expect(await screen.findByText(/el precio es obligatorio/i)).toBeInTheDocument()
+    expect(screen.getByText(/la cantidad es obligatoria/i)).toBeInTheDocument()
+
+    const priceInput = document.querySelector('input[id^="tt-price-"]')
+    const quantityInput = document.querySelector('input[id^="tt-quantity-"]')
+
+    // 0 and empty are still invalid: the row errors survive the change (the
+    // message is not re-evaluated until the next submit).
+    fireEvent.change(priceInput, { target: { value: '' } })
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+
+    fireEvent.change(priceInput, { target: { value: '0' } })
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+    expect(priceInput).toHaveAttribute('aria-invalid', 'true')
+
+    fireEvent.change(quantityInput, { target: { value: '0' } })
+    expect(screen.getByText(/la cantidad es obligatoria/i)).toBeInTheDocument()
+    expect(quantityInput).toHaveAttribute('aria-invalid', 'true')
+
+    // Valid values resolve each row error.
+    fireEvent.change(priceInput, { target: { value: '5000' } })
+    expect(screen.queryByText(/el precio es obligatorio/i)).not.toBeInTheDocument()
+    expect(priceInput).not.toHaveAttribute('aria-invalid')
+
+    fireEvent.change(quantityInput, { target: { value: '100' } })
+    expect(screen.queryByText(/la cantidad es obligatoria/i)).not.toBeInTheDocument()
+    expect(quantityInput).not.toHaveAttribute('aria-invalid')
+  })
+
   it('translates the backend past-date error to Spanish and scrolls to the date field', async () => {
     mockPost.mockRejectedValueOnce({
       response: { data: { error: 'Event date must be in the future' } },
