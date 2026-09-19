@@ -79,8 +79,10 @@ public class PaymentServiceTests : IDisposable
             Times.Never);
     }
 
-    [Fact]
-    public async Task CreatePaymentPreferenceAsync_RequestsAutoReturnOnApprovedPayment()
+    [Theory]
+    [InlineData("https://front.test", "approved")]
+    [InlineData("http://localhost:5173", null)]
+    public async Task CreatePaymentPreferenceAsync_SetsAutoReturnOnlyForPublicHttpsFrontend(string frontendUrl, string? expectedAutoReturn)
     {
         // Arrange — seed an active reservation with event + ticket type
         var user = new User
@@ -145,14 +147,43 @@ public class PaymentServiceTests : IDisposable
                 InitPoint = "https://mp.test/checkout/pref-123"
             });
 
-        // Act
-        var result = await _paymentService.CreatePaymentPreferenceAsync(reservation.Id, token);
+        // Act — build the service with the frontend URL under test
+        var result = await CreatePaymentService(frontendUrl).CreatePaymentPreferenceAsync(reservation.Id, token);
 
         // Assert
         Assert.NotNull(result);
         Assert.Equal("pref-123", result.PreferenceId);
         Assert.NotNull(captured);
-        Assert.Equal("approved", captured.AutoReturn);
+        Assert.Equal(expectedAutoReturn, captured.AutoReturn);
         Assert.Contains("/checkout/success", captured.BackUrls!.Success);
+        Assert.DoesNotContain("preference_id", captured.BackUrls!.Success);
+
+        // The failure back URL must carry the event id, not a synthetic status:
+        // Mercado Pago appends its own status query param and a seeded value
+        // would shadow it on the return page.
+        Assert.NotNull(captured.BackUrls!.Failure);
+        Assert.Contains($"/checkout/return?event={reservation.EventId}", captured.BackUrls!.Failure);
+        Assert.DoesNotContain("status=", captured.BackUrls!.Failure);
+
+        // The pending back URL must not seed status either — MP owns that param.
+        // `origin=pending` is our own non-colliding fallback marker.
+        Assert.NotNull(captured.BackUrls!.Pending);
+        Assert.Contains("/checkout/return?origin=pending", captured.BackUrls!.Pending);
+        Assert.DoesNotContain("status=", captured.BackUrls!.Pending);
     }
+
+    /// <summary>
+    /// Builds a PaymentService sharing this fixture's context/mocks with a given
+    /// FrontendUrl so the AutoReturn gating can be exercised.
+    /// </summary>
+    private PaymentService CreatePaymentService(string frontendUrl) => new(
+        _context,
+        _mockMpClient.Object,
+        Options.Create(new MercadoPagoOptions { AccessToken = "test-access-token", FrontendUrl = frontendUrl }),
+        Options.Create(new ReservationTokenOptions { TokenSecretKey = TokenSecret }),
+        new Mock<ITicketService>().Object,
+        new Mock<IEmailService>().Object,
+        new Mock<ILogger<PaymentService>>().Object,
+        TimeProvider.System,
+        Options.Create(new HideExpiredEventsOptions()));
 }
