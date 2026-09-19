@@ -206,12 +206,22 @@ public class EventService : IEventService
     }
 
     /// <summary>
+    /// Scan chooser lookahead: the staff scanner only lists future events that
+    /// start within this many days from now (in addition to events ended within
+    /// <see cref="TicketService.ValidationWindowHours"/>). Keeps the chooser
+    /// payload small — the API must not ship hundreds of distant future events.
+    /// </summary>
+    public const int ScanChooserWindowDays = 7;
+
+    /// <summary>
     /// Retrieves the events the staff QR scanner can validate tickets for
-    /// (EHE-007): future events plus events that ended within the QR validation
-    /// window (TicketService.ValidationWindowHours hours). Ordered with future
-    /// events first (ascending), then ended events descending (most recently
-    /// ended first). The scanner window is a hard technical rule — it applies
-    /// regardless of the HideExpiredEvents feature flag.
+    /// (EHE-007): future events that start within
+    /// <see cref="ScanChooserWindowDays"/> days, plus events that ended within
+    /// the QR validation window (<see cref="TicketService.ValidationWindowHours"/>
+    /// hours). Ordered with future events first (ascending), then ended events
+    /// descending (most recently ended first). The scanner window is a hard
+    /// technical rule — it applies regardless of the HideExpiredEvents feature
+    /// flag.
     /// </summary>
     public async Task<IEnumerable<EventWithAvailability>> GetScannableEventsAsync()
     {
@@ -219,6 +229,7 @@ public class EventService : IEventService
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var cutoff = now.AddHours(-TicketService.ValidationWindowHours);
+        var horizon = now.AddDays(ScanChooserWindowDays);
 
         var events = await _context.Events
             .Include(e => e.TicketTypes)
@@ -230,6 +241,11 @@ public class EventService : IEventService
             // The inline predicate (and the ordering below) are EF-translatable —
             // never call e.IsExpired(...) inside an IQueryable.
             .Where(e => e.Date > cutoff)
+            // Future lookahead: only events starting within ScanChooserWindowDays
+            // are listed — the API must not ship hundreds of distant events to
+            // the scanner chooser. Ended events (Date <= now) still pass because
+            // their Date is always <= horizon; the predicate is EF-translatable.
+            .Where(e => e.Date <= horizon)
             // Ordering: future events (Date > now) first, ascending by Date;
             // ended events after them, descending by Date (most recently ended
             // first). The ternaries fold into translatable CASE expressions.
