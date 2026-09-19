@@ -164,6 +164,12 @@ public class PaymentServiceTests : IDisposable
         Assert.NotNull(captured.BackUrls!.Failure);
         Assert.Contains($"/checkout/return?event={reservation.EventId}", captured.BackUrls!.Failure);
         Assert.DoesNotContain("status=", captured.BackUrls!.Failure);
+
+        // The pending back URL must not seed status either — MP owns that param.
+        // `origin=pending` is our own non-colliding fallback marker.
+        Assert.NotNull(captured.BackUrls!.Pending);
+        Assert.Contains("/checkout/return?origin=pending", captured.BackUrls!.Pending);
+        Assert.DoesNotContain("status=", captured.BackUrls!.Pending);
     }
 
     /// <summary>

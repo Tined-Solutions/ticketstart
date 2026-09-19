@@ -99,11 +99,22 @@ function normalizeParam(value) {
 }
 
 function resolveStatus(searchParams) {
+  // MP's status is the primary signal on every back URL: approved/success →
+  // success, pending/in_process → pending, rejected → error. A failure return
+  // WITHOUT status intentionally falls through to `incomplete`: MP only omits
+  // it when the flow was not completed (cancel/abandonment), while a real
+  // rejection always arrives as status=rejected.
   const status = normalizeParam(searchParams.get('status'))
 
   if (status === 'approved' || status === 'success') return 'success'
   if (status === 'pending' || status === 'in_process') return 'pending'
   if (status === 'rejected') return 'error'
+
+  // MP may omit status entirely (e.g. abandoned flow). The origin marker is
+  // our own param and only used as a fallback — it never shadows MP's status.
+  const origin = normalizeParam(searchParams.get('origin'))
+  if (origin === 'pending') return 'pending'
+
   return 'incomplete'
 }
 

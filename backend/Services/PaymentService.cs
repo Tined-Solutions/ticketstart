@@ -152,12 +152,15 @@ public class PaymentService : IPaymentService
             NotificationUrl = string.IsNullOrEmpty(_options.WebhookBaseUrl) ? null : $"{_options.WebhookBaseUrl}/api/payments/webhook",
             BackUrls = new MercadoPagoBackUrls
             {
-                // MP appends its own preference_id (and status) params on redirect
-                // ("Return URLs Response" docs). Do NOT seed a placeholder here —
-                // a literal first occurrence would shadow the real value.
+                // MP appends its own params on redirect — payment_id, status,
+                // external_reference ("Return URLs Response" docs) — so no back URL
+                // may seed `status`: a literal first occurrence would shadow MP's
+                // real value. The pending URL carries `origin=pending` instead, a
+                // non-colliding marker the return page only uses as a fallback when
+                // MP sends no status at all (flow abandoned before completion).
                 Success = $"{_options.FrontendUrl}/checkout/success",
                 Failure = $"{_options.FrontendUrl}/checkout/return?event={reservation.EventId}",
-                Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
+                Pending = $"{_options.FrontendUrl}/checkout/return?origin=pending"
             },
             // Auto-return the buyer to /checkout/success a few seconds after an
             // approved payment. Mercado Pago REJECTS the whole preference (400

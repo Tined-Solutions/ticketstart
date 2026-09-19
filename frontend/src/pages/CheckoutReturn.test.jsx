@@ -179,4 +179,62 @@ describe('CheckoutReturn', () => {
     expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
   })
+
+  it('keeps the incomplete state and offers retry for a failure return without status', () => {
+    // Abandonment/cancel path: MP appends no status to the failure back URL.
+    setSearchParams({ event: 'evt-3' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /no completaste el pago/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /reintentar pago/i })).toHaveAttribute(
+      'href',
+      '/events/evt-3'
+    )
+  })
+
+  it('shows rejection when MP reports the real rejected status', () => {
+    setSearchParams({ status: 'rejected' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /pago rechazado/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
+  })
+
+  it('treats a literal null status as incomplete, not rejected', () => {
+    setSearchParams({ status: 'null' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /no completaste el pago/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /pago rechazado/i })).not.toBeInTheDocument()
+  })
+
+  it('falls back to pending when only the origin marker is present', () => {
+    setSearchParams({ origin: 'pending' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+  })
+
+  it('prefers MP approved status over the origin marker', () => {
+    setSearchParams({ status: 'approved', origin: 'pending' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
+  })
+
+  it('treats literal null status with the origin marker as pending', () => {
+    setSearchParams({ status: 'null', origin: 'pending' })
+
+    render(<CheckoutReturn />)
+
+    expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /no completaste el pago/i })
+    ).not.toBeInTheDocument()
+  })
 })
