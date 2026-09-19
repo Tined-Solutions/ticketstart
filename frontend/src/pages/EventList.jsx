@@ -19,10 +19,12 @@ export default function EventList() {
     : ''
 
   return (
-    <div className="relative -mt-16 overflow-x-hidden bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+    <div className="relative -mt-16 min-h-[calc(100svh-56px)] overflow-x-hidden bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
       {/* Gradient background identical to the Mis Entradas page: it starts at
           the very top, behind the fixed translucent navbar, so there is no
-          white gap between the navbar and the page background. */}
+          white gap between the navbar and the page background. min-h keeps it
+          reaching the viewport bottom on tall screens (same as the dashboard
+          and admin sections), where the card grid is shorter than the screen. */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-12">
         {/* Page header — same scale as the Mis Entradas section header */}
         <motion.header
