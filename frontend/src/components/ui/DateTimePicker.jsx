@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { DayPicker } from '@daypicker/react'
 import { es } from '@daypicker/react/locale'
 import { CalendarDays } from 'lucide-react'
+import { useDialog } from '../../hooks/useDialog.js'
 import Button from '../Button.jsx'
 
 /**
@@ -149,8 +150,15 @@ export default function DateTimePicker({
   const [draft, setDraft] = useState(() => parseValue(value))
 
   const triggerRef = useRef(null)
-  const popoverRef = useRef(null)
   const wasOpenRef = useRef(false)
+  // Focus trap, Escape→close, body scroll lock and focus restore come from the
+  // project dialog hook. DayPicker's own autoFocus owns initial focus, so
+  // useDialog must not steal it (autoFocus: false).
+  const popoverRef = useDialog({
+    onClose: () => setOpen(false),
+    open,
+    autoFocus: false,
+  })
 
   const { today, startMonth, endMonth } = useMemo(() => {
     const now = new Date()
@@ -164,6 +172,10 @@ export default function DateTimePicker({
   }, [])
 
   // Return focus to the trigger when the popover closes (not on first render).
+  // useDialog-restored focus would land nowhere here: DayPicker's autoFocus
+  // moves focus into the calendar from a child passive effect, which runs
+  // BEFORE useDialog captures the previously focused element, so the hook's
+  // restore target is a day button that is detached by close time.
   useEffect(() => {
     if (wasOpenRef.current && !open) {
       triggerRef.current?.focus()
@@ -171,6 +183,7 @@ export default function DateTimePicker({
     wasOpenRef.current = open
   }, [open])
 
+  // Close on an outside pointerdown. Escape is owned by useDialog.
   useEffect(() => {
     if (!open) return undefined
 
@@ -180,19 +193,11 @@ export default function DateTimePicker({
       setOpen(false)
     }
 
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setOpen(false)
-      }
-    }
-
     document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [open])
+  }, [open, popoverRef])
 
   function handleToggle() {
     if (open) {
@@ -245,6 +250,7 @@ export default function DateTimePicker({
           ref={popoverRef}
           id={panelId}
           role="dialog"
+          aria-modal="true"
           aria-label="Seleccionar fecha y hora"
           className="absolute left-0 top-full z-50 mt-2 w-[min(92vw,18rem)] max-w-full rounded-2xl border border-gris-oscuro/15 bg-white/95 p-2.5 shadow-xl backdrop-blur sm:w-[25rem]"
         >

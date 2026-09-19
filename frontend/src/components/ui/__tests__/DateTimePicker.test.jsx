@@ -138,6 +138,32 @@ describe('DateTimePicker', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('is a modal dialog and traps Tab focus inside it', async () => {
+    const user = userEvent.setup()
+    const { trigger } = setup()
+
+    const dialog = await openPicker(user, trigger)
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
+    // Picking a day enables "Listo", the last focusable in the popover tab
+    // order (the month dropdown comes first — DayPicker renders it before the
+    // year dropdown).
+    await pickDay(user, dialog, futureTarget())
+    const firstFocusable = within(dialog).getByLabelText(/elegir el mes/i)
+    const lastFocusable = within(dialog).getByRole('button', { name: 'Listo' })
+    expect(lastFocusable).toBeEnabled()
+
+    // Tab from the last focusable cycles back to the first one…
+    lastFocusable.focus()
+    await user.tab()
+    expect(firstFocusable).toHaveFocus()
+
+    // …and Shift+Tab from the first cycles to the last.
+    firstFocusable.focus()
+    await user.tab({ shift: true })
+    expect(lastFocusable).toHaveFocus()
+  })
+
   it('is disabled and does not open when disabled', async () => {
     const user = userEvent.setup()
     const { trigger } = setup({ disabled: true })
