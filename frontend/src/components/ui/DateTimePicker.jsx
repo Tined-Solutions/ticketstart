@@ -3,6 +3,7 @@ import { DayPicker } from '@daypicker/react'
 import { es } from '@daypicker/react/locale'
 import { CalendarDays } from 'lucide-react'
 import { useDialog } from '../../hooks/useDialog.js'
+import { prefersReducedMotion } from '../../lib/motion.js'
 import Button from '../Button.jsx'
 
 /**
@@ -197,6 +198,19 @@ export default function DateTimePicker({
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
+  }, [open, popoverRef])
+
+  // The dialog hook locks body scroll while the popover is open, so a picker
+  // opening near the viewport edge would stay clipped with no way to scroll it
+  // into view. Center it on open (jsdom doesn't implement scrollIntoView).
+  useEffect(() => {
+    if (!open) return
+    const popover = popoverRef.current
+    if (!popover || typeof popover.scrollIntoView !== 'function') return
+    popover.scrollIntoView({
+      block: 'center',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
   }, [open, popoverRef])
 
   function handleToggle() {
