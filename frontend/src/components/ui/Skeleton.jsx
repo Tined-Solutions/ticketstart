@@ -19,13 +19,13 @@ export default function Skeleton({
   return (
     <div
       role="status"
-      aria-label="Loading…"
+      aria-label="Cargando…"
       className={`bg-neutral-200 dark:bg-neutral-700
         motion-safe:animate-pulse
         ${variantClass} ${className}`}
       style={{ width, height: height || undefined }}
     >
-      <span className="sr-only">Loading…</span>
+      <span className="sr-only">Cargando…</span>
     </div>
   )
 }

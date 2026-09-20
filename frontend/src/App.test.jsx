@@ -40,6 +40,6 @@ describe('App routing', () => {
     )
 
     expect(screen.getByText(/404/i)).toBeInTheDocument()
-    expect(screen.getByText(/doesn't exist/i)).toBeInTheDocument()
+    expect(screen.getByText(/la página que buscás no existe/i)).toBeInTheDocument()
   })
 })

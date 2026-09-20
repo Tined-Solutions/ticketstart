@@ -18,6 +18,18 @@ const AXIOS_STATUS_MESSAGES = {
   500: 'Error interno del servidor. Intentá de nuevo en unos minutos.',
 }
 
+// Backend-owned English messages that reach the user, translated to voseo.
+// Keys MUST stay byte-identical to the backend strings (AdminController /
+// AuthService). Unknown messages pass through untouched.
+const BACKEND_MESSAGE_TRANSLATIONS = {
+  'You cannot change your own role': 'No podés cambiar tu propio rol.',
+  'User with this email already exists': 'Ya existe un usuario con ese email.',
+}
+
+function translateBackendMessage(message) {
+  return BACKEND_MESSAGE_TRANSLATIONS[message] ?? message
+}
+
 /**
  * Translates axios-generated English strings (no server body behind them)
  * to Spanish. Returns null when the message isn't a known axios shape —
@@ -44,19 +56,21 @@ function translateAxiosMessage(message) {
 export function getErrorMessage(error) {
   if (!error) return 'Ocurrio un error inesperado'
   if (error.response?.data?.error?.message) {
-    return error.response.data.error.message
+    return translateBackendMessage(error.response.data.error.message)
   }
   if (error.response?.data?.error) {
     const backendError = error.response.data.error
     return typeof backendError === 'string'
-      ? backendError
-      : backendError.title || backendError.detail || 'Ocurrio un error inesperado'
+      ? translateBackendMessage(backendError)
+      : translateBackendMessage(
+          backendError.title || backendError.detail || 'Ocurrio un error inesperado'
+        )
   }
   if (error.response?.data?.message) {
-    return error.response.data.message
+    return translateBackendMessage(error.response.data.message)
   }
   if (error.response?.data?.detail) {
-    return error.response.data.detail
+    return translateBackendMessage(error.response.data.detail)
   }
   if (error.message) {
     return translateAxiosMessage(error.message) ?? error.message

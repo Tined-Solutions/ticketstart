@@ -17,8 +17,6 @@ const variantClasses = {
     'bg-transparent text-neutral-700 hover:bg-neutral-100 focus-visible:ring-primary',
   glass:
     'backdrop-blur-sm bg-white/60 border border-gris-oscuro/15 text-purpura-dark hover:bg-white/80 hover:border-purpura/40 hover:shadow-[0_10px_24px_rgba(74,74,74,0.16)] focus-visible:ring-brand-1',
-  gradient:
-    'bg-gradient-to-r from-brand-1 to-brand-2 hover:brightness-95 text-white focus-visible:ring-brand-1',
 }
 
 const sizeClasses = {

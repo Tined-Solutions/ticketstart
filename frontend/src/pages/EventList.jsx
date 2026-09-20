@@ -61,7 +61,7 @@ export default function EventList() {
         {!isLoading && isError && (
           <GlassCard className="text-center py-12 max-w-lg mx-auto">
             <p className="text-text-1 mb-4">{errorMessage}</p>
-            <Button variant="gradient" onClick={() => refetch()}>
+            <Button variant="accent" onClick={() => refetch()}>
               Reintentar
             </Button>
           </GlassCard>

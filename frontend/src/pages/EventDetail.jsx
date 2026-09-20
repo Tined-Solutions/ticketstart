@@ -192,7 +192,7 @@ export default function EventDetail() {
         </Link>
         <GlassCard className="py-12">
           <p className="text-text-1 mb-4">{errorMessage}</p>
-          <Button variant="gradient" onClick={() => refetch()}>
+          <Button variant="accent" onClick={() => refetch()}>
             Reintentar
           </Button>
         </GlassCard>
@@ -378,7 +378,7 @@ export default function EventDetail() {
                   type="button"
                   onClick={handleReserve}
                   disabled={!selectedTicketType || selectedQuantity === 0}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-1 to-brand-2 px-5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   <Ticket className="h-4 w-4" aria-hidden="true" />
                   Reservar entradas

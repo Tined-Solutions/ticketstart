@@ -5,7 +5,6 @@ import OrganizerDashboard from './OrganizerDashboard.jsx'
 
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
-const mockUseAuth = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -15,10 +14,6 @@ vi.mock('../api/client.js', () => ({
   default: {
     get: (...args) => mockGet(...args),
   },
-}))
-
-vi.mock('../context/auth.js', () => ({
-  useAuth: () => mockUseAuth(),
 }))
 
 // Far-future dates computed at runtime so the mock events never become "past"
@@ -69,21 +64,11 @@ const mockMetrics = [
 const eventRow = (name) =>
   screen.getByRole('heading', { name: new RegExp(name, 'i') }).closest('[class*="bg-surface-elevated"]')
 
-// Opens a row's "Acciones" dropdown (kebab) and waits for the menu panel.
-const openActionsMenu = async (name) => {
-  const row = eventRow(name)
-  await userEvent.click(within(row).getByRole('button', { name: /^acciones/i }))
-  await screen.findByRole('menu')
-}
-
 describe('OrganizerDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
     mockNavigate.mockReset()
-    mockUseAuth.mockReset()
-    // Default: organizer role — Editar hidden (EA-009 UI-only)
-    mockUseAuth.mockReturnValue({ user: { role: 'Organizador' } })
     mockGet.mockResolvedValue({ data: mockMetrics })
   })
 
@@ -263,44 +248,15 @@ describe('OrganizerDashboard', () => {
     expect(within(recitalRow).getByRole('button', { name: /ver recital de rock nacional/i })).toBeEnabled()
   })
 
-  it('shows Editar menuitem for admins and navigates to edit (EA-009)', async () => {
-    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
-
+  it('offers no Editar affordance regardless of role — editing lives in AdminPanel (EA-009)', async () => {
     render(<OrganizerDashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
     })
 
-    await openActionsMenu('recital de rock nacional')
-
-    // ED-001/EHE-006: the admin kebab narrows to Editar only — Metricas and
-    // Eliminar are removed for every row regardless of role
-    expect(screen.queryByRole('menuitem', { name: /ver metricas de recital de rock nacional/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: /eliminar recital de rock nacional/i })).not.toBeInTheDocument()
-
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: /editar recital de rock nacional/i })
-    )
-    expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-1')
-  })
-
-  it('kebab menu opens with a high z-index panel (not clipped by the row below)', async () => {
-    // The kebab survives only for admins (ED-001/D-4) — their menu still
-    // exercises the z-index-over-sibling-rows behavior.
-    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
-    render(<OrganizerDashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
-    })
-
-    await openActionsMenu('recital de rock nacional')
-
-    const menu = screen.getByRole('menu')
-    expect(menu).toBeInTheDocument()
-    // The panel carries a high z-index so it paints above sibling rows
-    expect(menu.className).toContain('z-50')
+    expect(screen.queryByRole('button', { name: /^acciones/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument()
   })
 
   // ── Delete flow ────────────────────────────────────────────────────
@@ -310,8 +266,7 @@ describe('OrganizerDashboard', () => {
 
   // ── Past events: read-only (PEM-002) ────────────────────────────────
 
-  it('keeps past events read-only: Finalizado badge, Ver enabled, mutations disabled with title', async () => {
-    mockUseAuth.mockReturnValue({ user: { role: 'Admin' } })
+  it('keeps past events read-only: Finalizado badge and Ver enabled', async () => {
     mockGet.mockResolvedValue({
       data: [
         {
@@ -342,16 +297,6 @@ describe('OrganizerDashboard', () => {
     expect(verBtn).toBeEnabled()
     await userEvent.click(verBtn)
     expect(mockNavigate).toHaveBeenCalledWith('/organizer/events/event-past/view')
-
-    // Kebab (admin): Editar disabled with the readonly title; Eliminar and
-    // Metricas no longer exist on ANY row — past rows included (PEC-004
-    // metricas-absent-past-row, ED-001 change-wide removal)
-    await openActionsMenu('concierto pasado')
-    const editarItem = await screen.findByRole('menuitem', { name: /editar concierto pasado/i })
-    expect(editarItem).toBeDisabled()
-    expect(editarItem).toHaveAttribute('title', 'Evento finalizado — solo lectura')
-    expect(screen.queryByRole('menuitem', { name: /eliminar concierto pasado/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: /ver metricas de concierto pasado/i })).not.toBeInTheDocument()
   })
 
   // ── Sort order ─────────────────────────────────────────────────────
@@ -406,8 +351,6 @@ describe('OrganizerDashboard — Visual Regression', () => {
     vi.clearAllMocks()
     mockGet.mockReset()
     mockNavigate.mockReset()
-    mockUseAuth.mockReset()
-    mockUseAuth.mockReturnValue({ user: { role: 'Organizador' } })
   })
 
   it('renders GlassCard wrappers in the loaded state', async () => {

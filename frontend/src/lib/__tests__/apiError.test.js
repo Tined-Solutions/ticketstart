@@ -70,6 +70,19 @@ describe('getErrorMessage', () => {
     expect(result).toBe('Not found')
   })
 
+  it('translates known backend-owned English messages to voseo', () => {
+    expect(
+      getErrorMessage({
+        response: { data: { error: 'You cannot change your own role' } },
+      })
+    ).toBe('No podés cambiar tu propio rol.')
+    expect(
+      getErrorMessage({
+        response: { data: { error: 'User with this email already exists' } },
+      })
+    ).toBe('Ya existe un usuario con ese email.')
+  })
+
   it('translates the axios "Network Error" to Spanish', () => {
     const error = new Error('Network Error')
     const result = getErrorMessage(error)

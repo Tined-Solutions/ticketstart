@@ -236,8 +236,9 @@ describe('AdminPurchases', () => {
     const dialog = screen.getByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Reembolsar' }))
 
-    // APR-010: error is shown, no refetch happened, row state unchanged
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/cannot refund a purchase with used tickets/i)
+    // APR-010: error is shown (translated to voseo), no refetch happened, row
+    // state unchanged
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/no podés reembolsar esta compra: tiene entradas ya escaneadas/i)
 
     expect(mockGet).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Confirmada')).toBeInTheDocument()

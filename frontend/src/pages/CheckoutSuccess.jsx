@@ -189,7 +189,7 @@ export default function CheckoutSuccess() {
 
         <div className="flex flex-col gap-3 items-center">
           <Link to="/events">
-            <Button variant={state === 'confirmed' ? 'gradient' : 'secondary'}>
+            <Button variant={state === 'confirmed' ? 'accent' : 'secondary'}>
               Volver al catálogo
             </Button>
           </Link>

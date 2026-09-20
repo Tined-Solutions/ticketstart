@@ -11,10 +11,6 @@ vi.mock('../../api/client.js', () => ({
   },
 }))
 
-vi.mock('../../lib/apiError.js', () => ({
-  getErrorMessage: (err) => err?.response?.data?.error || 'Error inesperado',
-}))
-
 const user = { id: 'user-1', email: 'staff@ticketera.com', role: 'Staff' }
 
 describe('RoleEditModal', () => {
@@ -66,7 +62,7 @@ describe('RoleEditModal', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Guardar' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/you cannot change your own role/i)
+    expect(alert).toHaveTextContent(/no podés cambiar tu propio rol/i)
 
     // The modal stays open (dialog still present) and success never fired.
     expect(screen.getByRole('dialog')).toBeInTheDocument()

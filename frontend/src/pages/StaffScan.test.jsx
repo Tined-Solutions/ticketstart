@@ -424,8 +424,9 @@ describe('StaffScan', () => {
 
     const resultAlert = screen.getByRole('alert')
     expect(resultAlert).toBeInTheDocument()
+    // Includes WHEN it was used, in the app's date/time format (es-AR, 24h)
     expect(
-      within(resultAlert).getByText(/esta entrada ya fue usada/i)
+      within(resultAlert).getByText(/esta entrada ya fue usada el .*2026/i)
     ).toBeInTheDocument()
     expect(window.AudioContext).toHaveBeenCalled()
   })

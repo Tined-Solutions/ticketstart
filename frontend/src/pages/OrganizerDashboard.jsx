@@ -5,10 +5,8 @@ import apiClient from '../api/client.js'
 import { formatCurrency, formatEventDate } from '../lib/format.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
-import { useAuth } from '../context/auth.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Badge from '../components/ui/Badge.jsx'
-import DropdownMenu from '../components/ui/DropdownMenu.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import { TicketIcon } from '../components/icons/ticket.jsx'
 import Button from '../components/Button.jsx'
@@ -24,10 +22,6 @@ const ACTION_HOVER =
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  // EA-009: backend EventOwnership is unchanged; Edit is hidden for organizers
-  // (UI-only) and kept for admins (D-8).
-  const canEdit = user?.role === 'Admin'
 
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
@@ -132,11 +126,9 @@ export default function OrganizerDashboard() {
           ) : (
             <div className="flex flex-col">
               {sortedMetrics.map((m, index) => {
-                // D-7: past events are immutable (PEM-002) — computed per row
-                // in UTC (m.eventDate is an ISO UTC DateTime). Backend guard is
-                // authoritative; this disables mutation affordances cosmetically.
+                // D-7/PEM-002: past events are immutable; `isPast` only drives the
+                // "Finalizado" badge — this dashboard has no mutation affordances.
                 const isPast = new Date(m.eventDate) < new Date()
-                const readonlyTitle = 'Evento finalizado — solo lectura'
                 const isLast = index === sortedMetrics.length - 1
                 return (
                   <div
@@ -182,7 +174,7 @@ export default function OrganizerDashboard() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-shrink-0 items-center gap-2">
+                    <div className="flex flex-shrink-0 items-center gap-2 pr-2">
                       <Button
                         variant="glass"
                         size="sm"
@@ -192,26 +184,8 @@ export default function OrganizerDashboard() {
                       >
                         Ver
                       </Button>
-                      {/* ED-001/EHE-006 (D-4): the kebab only exists for admins —
-                          organizers would otherwise get a dead trigger opening an
-                          empty panel. It narrows to Editar: Metricas (page removed)
-                          and Eliminar (Admin-only via the backend service guard)
-                          are gone for every row regardless of status. */}
-                      {canEdit && (
-                        <DropdownMenu
-                          triggerLabel="Acciones"
-                          align="right"
-                          items={[
-                            {
-                              label: 'Editar',
-                              ariaLabel: `Editar ${m.eventName}`,
-                              onClick: () => navigate(`/organizer/events/${m.eventId}`),
-                              disabled: isPast,
-                              title: isPast ? readonlyTitle : undefined,
-                            },
-                          ]}
-                        />
-                      )}
+                      {/* EA-009: editing is Admin-only and lives in the AdminPanel —
+                          the organizer dashboard offers no edit affordance. */}
                     </div>
                   </div>
                 )

@@ -2,6 +2,8 @@
 // El backend devuelve un `errorCode` estable; acá se traduce a copy
 // orientada al staff que escanea (para poder explicarle al comprador).
 
+import { formatEventDate } from './format.js'
+
 const SCAN_ERROR_MESSAGES = {
   invalid_signature: 'Este QR no es de una entrada valida. Parece que esta adulterado.',
   invalid_format: 'El QR no tiene un formato valido.',
@@ -27,6 +29,12 @@ export function getScanMessage(response) {
 
   if (response.errorCode === 'wrong_event' && response.ticket?.eventName) {
     return `Esta entrada es de otro evento: ${response.ticket.eventName}.`
+  }
+
+  // "Ya usada" incluye CUÁNDO, con el formato de fecha/hora del resto del app
+  // (es-AR, hora local, 24h) — el backend manda el instante en UTC.
+  if (response.errorCode === 'already_used' && response.ticket?.usedAt) {
+    return `Esta entrada ya fue usada el ${formatEventDate(response.ticket.usedAt)}.`
   }
 
   return (

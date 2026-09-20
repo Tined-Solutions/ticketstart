@@ -22,32 +22,32 @@ describe('NotFound', () => {
     )
 
     expect(
-      screen.getByText(/the page you're looking for doesn't exist/i)
+      screen.getByText(/la página que buscás no existe/i)
     ).toBeInTheDocument()
   })
 
-  it('has a link back to the home page via the Go Home button', () => {
+  it('has a link back to the home page via the "Volver al inicio" button', () => {
     render(
       <MemoryRouter>
         <NotFound />
       </MemoryRouter>
     )
 
-    const homeButton = screen.getByRole('link', { name: /go home/i })
+    const homeButton = screen.getByRole('link', { name: /volver al inicio/i })
     expect(homeButton).toBeInTheDocument()
     expect(homeButton).toHaveAttribute('href', '/')
   })
 
-  it('renders the Button component with gradient variant', () => {
+  it('renders the Button component with the solid accent (brand purple) style', () => {
     render(
       <MemoryRouter>
         <NotFound />
       </MemoryRouter>
     )
 
-    const link = screen.getByRole('link', { name: /go home/i })
+    const link = screen.getByRole('link', { name: /volver al inicio/i })
     const btn = link.querySelector('button')
     expect(btn).toBeTruthy()
-    expect(btn.className).toContain('to-brand-2')
+    expect(btn.className).toContain('bg-accent')
   })
 })

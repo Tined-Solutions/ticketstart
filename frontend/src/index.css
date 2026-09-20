@@ -62,7 +62,8 @@
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 .form-group input:disabled,
-.form-group select:disabled { opacity: 0.6; cursor: not-allowed; }
+.form-group select:disabled,
+.form-group textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .form-error { color: var(--danger, #dc2626); font-size: 14px; }
 
