@@ -48,7 +48,8 @@ public class MetricsService : IMetricsService
     /// <summary>
     /// Calculates metrics for all events owned by the specified organizer.
     /// Uses consolidated GroupBy projections — one query per aggregate dimension
-    /// (tickets, inventory, reservations) instead of per-event N+1 loops.
+    /// (tickets, inventory, reservations, charged money, refunded money) instead of
+    /// per-event N+1 loops.
     /// </summary>
     public async Task<IEnumerable<EventMetrics>> GetOrganizerMetricsAsync(Guid organizerId)
     {
@@ -68,8 +69,8 @@ public class MetricsService : IMetricsService
 
         var eventIds = events.Select(e => e.Id).ToList();
 
-        // Single GroupBy query: ticket aggregates (sold, revenue, scanned) per event.
-        // Refunded tickets are excluded from sold/revenue (APR-005); TicketsScanned is
+        // Single GroupBy query: ticket aggregates (sold, scanned) per event.
+        // Refunded tickets are excluded from sold (APR-005); TicketsScanned is
         // unchanged because a refund is blocked when IsUsed (no overlap).
         var ticketAggregates = await _context.Tickets
             .AsNoTracking()
@@ -79,12 +80,47 @@ public class MetricsService : IMetricsService
             {
                 EventId = g.Key,
                 TicketsSold = g.Count(),
-                TicketsScanned = g.Count(t => t.IsUsed),
-                Revenue = g.Join(
-                    _context.TicketTypes.AsNoTracking(),
-                    t => t.TicketTypeId,
-                    tt => tt.Id,
-                    (t, tt) => tt.Price).Sum()
+                TicketsScanned = g.Count(t => t.IsUsed)
+            })
+            .ToListAsync();
+
+        // APR-017: charged money per event — Σ Transaction.Amount for Approved|Refunded
+        // transactions whose reservation is Confirmed. Same filters as
+        // AdminPurchaseService.GetPurchasesAsync so the values match by construction.
+        var chargedAggregates = await _context.Transactions
+            .AsNoTracking()
+            .Join(
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => eventIds.Contains(r.EventId) && r.Status == ReservationStatus.Confirmed),
+                t => t.ReservationId,
+                r => r.Id,
+                (t, r) => new { r.EventId, t.Amount, t.Status })
+            .Where(x => x.Status == TransactionStatus.Approved || x.Status == TransactionStatus.Refunded)
+            .GroupBy(x => x.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                Charged = g.Sum(x => (decimal?)x.Amount) ?? 0m
+            })
+            .ToListAsync();
+
+        // APR-017: refunded money per event — Σ Refunds.Amount for the same Confirmed
+        // reservations. Both aggregates feed TotalRevenue = charged − refunded.
+        var refundedAggregates = await _context.Refunds
+            .AsNoTracking()
+            .Join(
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => eventIds.Contains(r.EventId) && r.Status == ReservationStatus.Confirmed),
+                rf => rf.ReservationId,
+                r => r.Id,
+                (rf, r) => new { r.EventId, rf.Amount })
+            .GroupBy(x => x.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                Refunded = g.Sum(x => (decimal?)x.Amount) ?? 0m
             })
             .ToListAsync();
 
@@ -118,16 +154,24 @@ public class MetricsService : IMetricsService
         var ticketLookup = ticketAggregates.ToDictionary(a => a.EventId);
         var inventoryLookup = inventoryAggregates.ToDictionary(a => a.EventId);
         var reservationLookup = reservationAggregates.ToDictionary(a => a.EventId);
+        var chargedLookup = chargedAggregates.ToDictionary(a => a.EventId);
+        var refundedLookup = refundedAggregates.ToDictionary(a => a.EventId);
 
         var metrics = events.Select(e =>
         {
             ticketLookup.TryGetValue(e.Id, out var t);
             inventoryLookup.TryGetValue(e.Id, out var inv);
             reservationLookup.TryGetValue(e.Id, out var res);
+            chargedLookup.TryGetValue(e.Id, out var charged);
+            refundedLookup.TryGetValue(e.Id, out var refunded);
 
             var ticketsSold = t?.TicketsSold ?? 0;
             var activeReservations = res?.ActiveReservations ?? 0;
             var totalInventory = inv?.TotalInventory ?? 0;
+
+            // APR-017: money-based revenue — charged minus recorded refunds
+            // (missing aggregate → 0). Never derived from TicketType.Price.
+            var totalRevenue = (charged?.Charged ?? 0m) - (refunded?.Refunded ?? 0m);
 
             return new EventMetrics
             {
@@ -136,7 +180,7 @@ public class MetricsService : IMetricsService
                 EventName = e.Name,
                 EventDate = e.Date,
                 TicketsSold = ticketsSold,
-                TotalRevenue = t?.Revenue ?? 0m,
+                TotalRevenue = totalRevenue,
                 RemainingInventory = totalInventory - ticketsSold - activeReservations,
                 TicketsScanned = t?.TicketsScanned ?? 0,
                 // EA-007: organizer dashboard renders the moderation badge
@@ -163,17 +207,34 @@ public class MetricsService : IMetricsService
             .AsNoTracking()
             .CountAsync(t => t.EventId == eventId && !t.IsRefunded);
 
-        // Total revenue: sum of ticket type prices for each sold ticket.
-        // Refunded tickets do not count (APR-005).
-        var totalRevenue = await _context.Tickets
+        // APR-017: money-based revenue for this event — Σ charged transaction amounts
+        // (Approved|Refunded) of its Confirmed reservations minus Σ recorded refunds
+        // for those same reservations. Same filters as AdminPurchaseService so the
+        // organizer figure equals the admin purchases "Neto" (APR-016).
+        var charged = await _context.Transactions
             .AsNoTracking()
-            .Where(t => t.EventId == eventId && !t.IsRefunded)
             .Join(
-                _context.TicketTypes.AsNoTracking(),
-                ticket => ticket.TicketTypeId,
-                ticketType => ticketType.Id,
-                (ticket, ticketType) => ticketType.Price)
-            .SumAsync(price => price);
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => r.EventId == eventId && r.Status == ReservationStatus.Confirmed),
+                t => t.ReservationId,
+                r => r.Id,
+                (t, r) => t)
+            .Where(t => t.Status == TransactionStatus.Approved || t.Status == TransactionStatus.Refunded)
+            .SumAsync(t => (decimal?)t.Amount) ?? 0m;
+
+        var refunded = await _context.Refunds
+            .AsNoTracking()
+            .Join(
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => r.EventId == eventId && r.Status == ReservationStatus.Confirmed),
+                rf => rf.ReservationId,
+                r => r.Id,
+                (rf, r) => rf)
+            .SumAsync(rf => (decimal?)rf.Amount) ?? 0m;
+
+        var totalRevenue = charged - refunded;
 
         // Tickets scanned: tickets marked as used
         var ticketsScanned = await _context.Tickets
