@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EventForm from './EventForm.jsx'
 
 const mockPost = vi.fn()
 const mockPut = vi.fn()
 const mockOnSuccess = vi.fn()
+const mockReadImageDimensions = vi.fn()
 
 vi.mock('../api/client.js', () => ({
   default: {
@@ -13,6 +14,17 @@ vi.mock('../api/client.js', () => ({
     put: (...args) => mockPut(...args),
   },
 }))
+
+// jsdom cannot decode images, so the dropzone's dimension check is mocked to
+// treat every fixture as a conforming 16:9, 1920×1080 image.
+vi.mock('../lib/readImageDimensions.js', () => ({
+  readImageDimensions: (...args) => mockReadImageDimensions(...args),
+}))
+
+beforeEach(() => {
+  mockReadImageDimensions.mockReset()
+  mockReadImageDimensions.mockResolvedValue({ width: 1920, height: 1080 })
+})
 
 function buildEvent(overrides = {}) {
   return {
@@ -32,10 +44,88 @@ function buildEvent(overrides = {}) {
   }
 }
 
+// ── DateTimePicker helpers ────────────────────────────────────────────────
+// The event date is now a custom picker: open the trigger, navigate with the
+// month/year dropdowns, click the day, set the time selects and confirm.
+
+const pad = (n) => String(n).padStart(2, '0')
+
+/** Local "YYYY-MM-DDTHH:mm" some days ahead — always future and inside the picker range. */
+function futureDateTimeLocal({ daysAhead = 30, hours = '20', minutes = '00' } = {}) {
+  const target = new Date()
+  target.setDate(target.getDate() + daysAhead)
+  return (
+    `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}` +
+    `T${hours}:${minutes}`
+  )
+}
+
+function fullDayLabel(year, monthIndex, day) {
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'full' }).format(
+    new Date(year, monthIndex, day)
+  )
+}
+
+function parseDateTimeLocal(value) {
+  const [datePart, timePart] = value.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hours, minutes] = timePart.split(':')
+  return { year, month, day, hours, minutes }
+}
+
+async function fillDateTimePicker(user, value) {
+  const { year, month, day, hours, minutes } = parseDateTimeLocal(value)
+
+  await user.click(screen.getByLabelText(/fecha y hora/i))
+  const dialog = screen.getByRole('dialog', { name: /seleccionar fecha y hora/i })
+  await user.selectOptions(
+    within(dialog).getByLabelText(/elegir el año/i),
+    String(year)
+  )
+  await user.selectOptions(
+    within(dialog).getByLabelText(/elegir el mes/i),
+    String(month - 1)
+  )
+  await user.click(
+    within(dialog).getByRole('button', { name: fullDayLabel(year, month - 1, day) })
+  )
+  await user.selectOptions(within(dialog).getByLabelText('Hora'), hours)
+  await user.selectOptions(within(dialog).getByLabelText('Minutos'), minutes)
+  await user.click(within(dialog).getByRole('button', { name: 'Listo' }))
+}
+
+function fillDateTimePickerFire(value) {
+  const { year, month, day, hours, minutes } = parseDateTimeLocal(value)
+
+  fireEvent.click(screen.getByLabelText(/fecha y hora/i))
+  const dialog = screen.getByRole('dialog', { name: /seleccionar fecha y hora/i })
+  fireEvent.change(within(dialog).getByLabelText(/elegir el año/i), {
+    target: { value: String(year) },
+  })
+  fireEvent.change(within(dialog).getByLabelText(/elegir el mes/i), {
+    target: { value: String(month - 1) },
+  })
+  // "Today" carries the localized "Hoy, …" accessible name.
+  const now = new Date()
+  const isToday =
+    year === now.getFullYear() && month - 1 === now.getMonth() && day === now.getDate()
+  const dayName = isToday
+    ? `Hoy, ${fullDayLabel(year, month - 1, day)}`
+    : fullDayLabel(year, month - 1, day)
+  fireEvent.click(within(dialog).getByRole('button', { name: dayName }))
+  fireEvent.change(within(dialog).getByLabelText('Hora'), {
+    target: { value: hours },
+  })
+  fireEvent.change(within(dialog).getByLabelText('Minutos'), {
+    target: { value: minutes },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Listo' }))
+}
+
 async function fillBasicFields(user, overrides = {}) {
   const data = {
     name: 'Nuevo Evento',
-    date: '2026-12-25T20:00',
+    date: futureDateTimeLocal(),
     location: 'Teatro Colon',
     description: 'Descripcion del evento',
     ...overrides,
@@ -44,8 +134,7 @@ async function fillBasicFields(user, overrides = {}) {
   await user.clear(screen.getByLabelText(/nombre del evento/i))
   await user.type(screen.getByLabelText(/nombre del evento/i), data.name)
 
-  await user.clear(screen.getByLabelText(/fecha y hora/i))
-  await user.type(screen.getByLabelText(/fecha y hora/i), data.date)
+  await fillDateTimePicker(user, data.date)
 
   await user.clear(screen.getByLabelText(/^ubicacion/i))
   await user.type(screen.getByLabelText(/^ubicacion/i), data.location)
@@ -85,7 +174,7 @@ async function fillTicketType(user, { index = 0, name = 'General', price = '5000
 function fillBasicFieldsFire(overrides = {}) {
   const data = {
     name: 'Nuevo Evento',
-    date: '2026-12-25T20:00',
+    date: futureDateTimeLocal(),
     location: 'Teatro Colon',
     description: 'Descripcion del evento',
     ...overrides,
@@ -94,9 +183,7 @@ function fillBasicFieldsFire(overrides = {}) {
   fireEvent.change(screen.getByLabelText(/nombre del evento/i), {
     target: { value: data.name },
   })
-  fireEvent.change(screen.getByLabelText(/fecha y hora/i), {
-    target: { value: data.date },
-  })
+  fillDateTimePickerFire(data.date)
   fireEvent.change(screen.getByLabelText(/^ubicacion/i), {
     target: { value: data.location },
   })
@@ -134,7 +221,9 @@ describe('EventForm — create mode', () => {
     render(<EventForm mode="create" />)
 
     expect(screen.getByLabelText(/nombre del evento/i)).toHaveValue('')
-    expect(screen.getByLabelText(/fecha y hora/i)).toHaveValue('')
+    expect(screen.getByLabelText(/fecha y hora/i)).toHaveTextContent(
+      'Seleccioná fecha y hora'
+    )
     expect(screen.getByLabelText(/^ubicacion/i)).toHaveValue('')
     expect(screen.getByLabelText(/descripcion/i)).toHaveValue('')
     expect(screen.getByLabelText(/imagen del evento/i)).toBeInTheDocument()
@@ -252,7 +341,8 @@ describe('EventForm — create mode', () => {
 
     render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
 
-    fillBasicFieldsFire()
+    const eventDate = futureDateTimeLocal()
+    fillBasicFieldsFire({ date: eventDate })
     fillTicketTypeFire()
 
     await act(async () => {
@@ -262,7 +352,7 @@ describe('EventForm — create mode', () => {
 
     expect(mockPost).toHaveBeenCalledWith('/events', {
       name: 'Nuevo Evento',
-      date: expect.stringContaining('2026-12-25'),
+      date: expect.stringContaining(eventDate.slice(0, 10)),
       location: 'Teatro Colon',
       description: 'Descripcion del evento',
       ticketTypes: [
@@ -451,19 +541,22 @@ describe('EventForm — create mode', () => {
     })
   })
 
-  it('validates image file type', async () => {
+  it('validates image file type inline under the dropzone, not in the banner', async () => {
     render(<EventForm mode="create" />)
 
     const file = new File(['dummy'], 'event.pdf', { type: 'application/pdf' })
     const fileInput = screen.getByLabelText(/imagen del evento/i)
     fireEvent.change(fileInput, { target: { files: [file] } })
 
-    expect(
-      await screen.findByText(/formato de imagen no valido/i)
-    ).toBeInTheDocument()
+    // The rejection is INLINE (role=alert inside the image form-group), never
+    // the global banner on top of the form.
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/formato de imagen no valido/i)
+    expect(alert.closest('.form-group')).not.toBeNull()
+    expect(document.querySelector('.feedback-message')).not.toBeInTheDocument()
   })
 
-  it('validates image file size', async () => {
+  it('validates image file size inline under the dropzone, not in the banner', async () => {
     render(<EventForm mode="create" />)
 
     // Create a file larger than 5MB
@@ -473,9 +566,32 @@ describe('EventForm — create mode', () => {
     const fileInput = screen.getByLabelText(/imagen del evento/i)
     fireEvent.change(fileInput, { target: { files: [largeFile] } })
 
-    expect(
-      await screen.findByText(/la imagen no debe superar los 5 mb/i)
-    ).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/la imagen no debe superar los 5 mb/i)
+    expect(alert.closest('.form-group')).not.toBeNull()
+    expect(document.querySelector('.feedback-message')).not.toBeInTheDocument()
+  })
+
+  it('clears the inline image error when a new valid image is selected', async () => {
+    render(<EventForm mode="create" />)
+
+    const fileInput = screen.getByLabelText(/imagen del evento/i)
+
+    // Reject a bad file first → inline error appears
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['dummy'], 'event.pdf', { type: 'application/pdf' })] },
+    })
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/formato de imagen no valido/i)
+
+    // A fresh valid selection clears the previous rejection
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File(['dummy'], 'event.jpg', { type: 'image/jpeg' })] },
+      })
+    })
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('scrolls to and focuses the first invalid field when validation fails', () => {
@@ -509,10 +625,15 @@ describe('EventForm — create mode', () => {
     }
   })
 
-  it('rejects past dates in Spanish without calling the API', async () => {
+  it('rejects past datetimes in Spanish without calling the API', async () => {
     render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
 
-    fillBasicFieldsFire({ date: '2020-01-01T20:00' })
+    // Past days are no longer selectable in the picker, so exercise the
+    // boundary that is still reachable: today at 00:00 is always past.
+    const now = new Date()
+    const todayAtMidnight =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T00:00`
+    fillBasicFieldsFire({ date: todayAtMidnight })
     fillTicketTypeFire()
 
     fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
@@ -522,6 +643,154 @@ describe('EventForm — create mode', () => {
     ).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalled()
     expect(mockOnSuccess).not.toHaveBeenCalled()
+  })
+
+  it('clears the date error as soon as a date is picked after a failed submit', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    // Fill everything except the date, then submit → "La fecha es obligatoria".
+    fireEvent.change(screen.getByLabelText(/nombre del evento/i), {
+      target: { value: 'Nuevo Evento' },
+    })
+    fireEvent.change(screen.getByLabelText(/^ubicacion/i), {
+      target: { value: 'Teatro Colon' },
+    })
+    fireEvent.change(screen.getByLabelText(/descripcion/i), {
+      target: { value: 'Descripcion del evento' },
+    })
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(await screen.findByText(/la fecha es obligatoria/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/fecha y hora/i)).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+
+    // Picking a date resolves the field: message and red state disappear.
+    fillDateTimePickerFire(futureDateTimeLocal())
+
+    expect(screen.queryByText(/la fecha es obligatoria/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/fecha y hora/i)).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('clears name and location errors as soon as their fields are filled', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(
+      await screen.findByText(/el nombre del evento es obligatorio/i)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/la ubicacion es obligatoria/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/nombre del evento/i), {
+      target: { value: 'Nuevo Evento' },
+    })
+
+    expect(
+      screen.queryByText(/el nombre del evento es obligatorio/i)
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/nombre del evento/i)).not.toHaveAttribute(
+      'aria-invalid'
+    )
+    expect(screen.getByText(/la ubicacion es obligatoria/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^ubicacion/i), {
+      target: { value: 'Teatro Colon' },
+    })
+
+    expect(screen.queryByText(/la ubicacion es obligatoria/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^ubicacion/i)).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('clears ticket-type row errors as soon as their fields are filled', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(await screen.findByText(/el nombre es obligatorio/i)).toBeInTheDocument()
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+    expect(screen.getByText(/la cantidad es obligatoria/i)).toBeInTheDocument()
+
+    fireEvent.change(document.querySelector('input[id^="tt-name-"]'), {
+      target: { value: 'General' },
+    })
+
+    expect(screen.queryByText(/el nombre es obligatorio/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+
+    fireEvent.change(document.querySelector('input[id^="tt-price-"]'), {
+      target: { value: '5000' },
+    })
+    fireEvent.change(document.querySelector('input[id^="tt-quantity-"]'), {
+      target: { value: '100' },
+    })
+
+    expect(screen.queryByText(/el precio es obligatorio/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/la cantidad es obligatoria/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the name error until the new value is actually valid', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    expect(
+      await screen.findByText(/el nombre del evento es obligatorio/i)
+    ).toBeInTheDocument()
+
+    const nameInput = screen.getByLabelText(/nombre del evento/i)
+
+    // Empty / whitespace-only values are still invalid: the message survives
+    // the change and the field stays marked as invalid.
+    fireEvent.change(nameInput, { target: { value: '' } })
+    expect(screen.getByText(/el nombre del evento es obligatorio/i)).toBeInTheDocument()
+
+    fireEvent.change(nameInput, { target: { value: '   ' } })
+    expect(screen.getByText(/el nombre del evento es obligatorio/i)).toBeInTheDocument()
+    expect(nameInput).toHaveAttribute('aria-invalid', 'true')
+
+    // A valid name resolves the field immediately.
+    fireEvent.change(nameInput, { target: { value: 'Nuevo Evento' } })
+
+    expect(
+      screen.queryByText(/el nombre del evento es obligatorio/i)
+    ).not.toBeInTheDocument()
+    expect(nameInput).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('keeps ticket-type row errors while the new value is still invalid', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    expect(await screen.findByText(/el precio es obligatorio/i)).toBeInTheDocument()
+    expect(screen.getByText(/la cantidad es obligatoria/i)).toBeInTheDocument()
+
+    const priceInput = document.querySelector('input[id^="tt-price-"]')
+    const quantityInput = document.querySelector('input[id^="tt-quantity-"]')
+
+    // 0 and empty are still invalid: the row errors survive the change (the
+    // message is not re-evaluated until the next submit).
+    fireEvent.change(priceInput, { target: { value: '' } })
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+
+    fireEvent.change(priceInput, { target: { value: '0' } })
+    expect(screen.getByText(/el precio es obligatorio/i)).toBeInTheDocument()
+    expect(priceInput).toHaveAttribute('aria-invalid', 'true')
+
+    fireEvent.change(quantityInput, { target: { value: '0' } })
+    expect(screen.getByText(/la cantidad es obligatoria/i)).toBeInTheDocument()
+    expect(quantityInput).toHaveAttribute('aria-invalid', 'true')
+
+    // Valid values resolve each row error.
+    fireEvent.change(priceInput, { target: { value: '5000' } })
+    expect(screen.queryByText(/el precio es obligatorio/i)).not.toBeInTheDocument()
+    expect(priceInput).not.toHaveAttribute('aria-invalid')
+
+    fireEvent.change(quantityInput, { target: { value: '100' } })
+    expect(screen.queryByText(/la cantidad es obligatoria/i)).not.toBeInTheDocument()
+    expect(quantityInput).not.toHaveAttribute('aria-invalid')
   })
 
   it('translates the backend past-date error to Spanish and scrolls to the date field', async () => {
@@ -560,6 +829,51 @@ describe('EventForm — create mode', () => {
       // The field is disabled while submitting, so only the scroll applies;
       // focus is covered by the validation-path test above.
       expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      delete Element.prototype.scrollIntoView
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('scrolls the global banner into view when a backend error appears', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { data: { error: { message: 'Datos invalidos' } } },
+    })
+
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    // prefersReducedMotion() reads window.matchMedia, absent in jsdom
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+    try {
+      render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+      fillBasicFieldsFire()
+      fillTicketTypeFire()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+        await Promise.resolve()
+      })
+
+      // Backend errors still land in the global banner (image rejects are
+      // inline now) and the form scrolls the banner into view.
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/datos invalidos/i)
+      expect(alert.className).toContain('feedback-message')
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(mockOnSuccess).not.toHaveBeenCalled()
     } finally {
       delete Element.prototype.scrollIntoView
       vi.unstubAllGlobals()
@@ -611,6 +925,12 @@ describe('EventForm — edit mode', () => {
     const preview = screen.getByAltText(/vista previa/i)
     expect(preview).toBeInTheDocument()
     expect(preview.src).toBe('https://example.com/rock.jpg')
+
+    // Crop previews appear once there is an image, so the organizer sees how
+    // the photo will be cut in each production context before saving.
+    expect(
+      screen.getByText(/así se va a ver la imagen en cada lugar/i)
+    ).toBeInTheDocument()
 
     // ATS-008 / D-2: edit mode hides the ticket-type fieldset (no silent no-op).
     // The admin is pointed to the supported stock path instead.
@@ -730,6 +1050,15 @@ describe('EventForm — readOnly mode', () => {
       'Recital de Rock Nacional'
     )
     expect(screen.getByAltText(/vista previa/i)).toBeInTheDocument()
+
+    // Crop previews are visible for the reviewer too — same information the
+    // organizer sees when authoring, so moderation can judge the real crops.
+    expect(
+      screen.getByText('Así se va a ver la imagen en cada lugar:')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Banner — página del evento')).toBeInTheDocument()
+    expect(screen.getByText('Card — listado de eventos')).toBeInTheDocument()
+    expect(screen.getByText('Miniatura — resumen de compra')).toBeInTheDocument()
   })
 
   it('does not call the API when readOnly (no submit path exists)', () => {

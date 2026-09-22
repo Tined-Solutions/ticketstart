@@ -249,7 +249,7 @@ export default function Checkout() {
           <p className="text-text-2 mb-6">
             Tu reserva ya no es válida. Las entradas fueron liberadas.
           </p>
-          <Button variant="gradient" onClick={handleRestart}>
+          <Button variant="accent" onClick={handleRestart}>
             Volver al catálogo
           </Button>
         </GlassCard>

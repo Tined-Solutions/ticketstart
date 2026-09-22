@@ -42,6 +42,39 @@ function refundBadge(qty, refundedQty) {
   return { ...de, label: `${refundedQty} de ${qty} reembolsadas` } // APR-010
 }
 
+// Backend refund guards (AdminPurchaseService) are English; translate them for
+// the admin dialog so the admin never reads English here. Unknown messages
+// pass through untouched.
+function translateRefundError(message) {
+  if (!message) return message
+  const exact = {
+    'Cannot refund a purchase with used tickets':
+      'No podés reembolsar esta compra: tiene entradas ya escaneadas.',
+    'Refund amount must be greater than zero':
+      'El monto a reembolsar tiene que ser mayor a cero.',
+    'Refund amount cannot have more than 2 decimal places':
+      'El monto no puede tener más de 2 decimales.',
+    'No approved transaction found for this purchase':
+      'No encontramos una compra aprobada para reembolsar.',
+    'Reservation not found': 'No encontramos la compra que querés reembolsar.',
+    'An error occurred while refunding the purchase':
+      'Ocurrió un error al procesar el reembolso. Intentá de nuevo.',
+  }
+  if (exact[message]) return exact[message]
+
+  const quantity = /^Cannot refund (\d+) tickets; (\d+) active remaining$/.exec(message)
+  if (quantity) {
+    return `No podés reembolsar ${quantity[1]} entradas: quedan ${quantity[2]} activas.`
+  }
+
+  const cap = /^Cannot refund ([\d.]+) for (\d+) tickets; maximum is ([\d.]+)$/.exec(message)
+  if (cap) {
+    return `No podés reembolsar ${formatCurrency(Number(cap[1]))} por ${cap[2]} entradas: el máximo es ${formatCurrency(Number(cap[3]))}.`
+  }
+
+  return message
+}
+
 function RefundConfirmationDialog({ purchase, eventName, onConfirm, onCancel, refunding, error }) {
   const dialogRef = useDialog({ onClose: onCancel })
   const [selectedQuantity, setSelectedQuantity] = useState(1)
@@ -230,7 +263,7 @@ export default function AdminPurchases() {
     if (!refundTarget) return
     setRefundError('')
     refundMutation.mutate({ reservationId: refundTarget.reservationId, quantity, amount }, {
-      onError: (err) => setRefundError(getErrorMessage(err)),
+      onError: (err) => setRefundError(translateRefundError(getErrorMessage(err))),
     })
   }
 

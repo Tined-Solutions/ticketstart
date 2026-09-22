@@ -62,7 +62,8 @@
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 .form-group input:disabled,
-.form-group select:disabled { opacity: 0.6; cursor: not-allowed; }
+.form-group select:disabled,
+.form-group textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .form-error { color: var(--danger, #dc2626); font-size: 14px; }
 
@@ -123,12 +124,16 @@
   border-radius: 8px;
   background: var(--code-bg);
 }
-.ticket-type-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; flex: 1; }
-.ticket-type-name-group,
-.ticket-type-price-group,
-.ticket-type-quantity-group { margin-bottom: 0; }
+.ticket-type-fields { display: grid; /* minmax(0,·): permite encogerse bajo el ancho intrínseco de los inputs (fix scroll horizontal) */ grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; flex: 1; min-width: 0; }
+.ticket-type-fields .form-group { min-width: 0; margin-bottom: 0; }
 .ticket-type-remove { flex-shrink: 0; margin-top: 20px; font-size: 14px; padding: 6px 14px; }
 .ticket-type-add { margin-top: 4px; width: 100%; }
+@media (max-width: 480px) {
+  .ticket-type-row { flex-wrap: wrap; }
+  .ticket-type-fields { flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ticket-type-name-group { grid-column: 1 / -1; }
+  .ticket-type-remove { margin-top: 0; margin-left: auto; }
+}
 .ticket-types-hint { color: var(--text); font-size: 13px; margin: 0 0 16px; }
 .ticket-types-preview-label { color: var(--text); font-size: 13px; margin: 16px 0 4px; }
 .form-actions { margin-top: 32px; display: flex; gap: 12px; justify-content: flex-end; }

@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { formatCurrency, toDateTimeLocalValue } from '../lib/format.js'
 import { prefersReducedMotion } from '../lib/motion.js'
 import ImageDropzone from './ui/ImageDropzone.jsx'
+import ImageCropPreviews from './ui/ImageCropPreviews.jsx'
+import DateTimePicker from './ui/DateTimePicker.jsx'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -13,6 +15,55 @@ function nextTicketTypeKey() {
 
 function emptyTicketType() {
   return { key: nextTicketTypeKey(), name: '', price: '', quantity: '' }
+}
+
+// Per-field validity rules returning the SAME error message validate() shows
+// (`null` when valid). The submit path and the onChange path share them, so
+// the two can never disagree about what counts as fixed.
+function getNameError(value) {
+  return value.trim() ? null : 'El nombre del evento es obligatorio'
+}
+
+function getDateError(value) {
+  if (!value) return 'La fecha es obligatoria'
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp) || timestamp <= Date.now()) {
+    return 'La fecha del evento debe ser futura'
+  }
+  return null
+}
+
+function getLocationError(value) {
+  return value.trim() ? null : 'La ubicacion es obligatoria'
+}
+
+function getTicketNameError(value) {
+  return value.trim() ? null : 'El nombre es obligatorio'
+}
+
+function getTicketPriceError(value) {
+  if (value === '' || Number.isNaN(Number(value))) {
+    return 'El precio es obligatorio'
+  }
+  if (Number(value) <= 0) return 'El precio debe ser mayor a 0'
+  return null
+}
+
+function getTicketQuantityError(value) {
+  if (value === '' || Number.isNaN(Number(value))) {
+    return 'La cantidad es obligatoria'
+  }
+  const quantity = Number(value)
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return 'La cantidad debe ser un numero entero mayor a 0'
+  }
+  return null
+}
+
+const TICKET_FIELD_RULES = {
+  name: getTicketNameError,
+  price: getTicketPriceError,
+  quantity: getTicketQuantityError,
 }
 
 export default function EventForm({
@@ -49,6 +100,25 @@ export default function EventForm({
   const [phase, setPhase] = useState('')
   const submitting = phase !== ''
   const [feedback, setFeedback] = useState({ type: '', message: '' })
+  // Image rejects are shown INLINE under the dropzone (where the user is), not
+  // in the global banner — the banner is reserved for backend/submit errors.
+  const [imageError, setImageError] = useState('')
+  const feedbackRef = useRef(null)
+
+  // Backend/submit errors land in the global banner at the TOP of the form,
+  // which can be off-screen. Bring it into view when one appears. Guarded for
+  // jsdom, which doesn't implement scrollIntoView.
+  useEffect(() => {
+    if (feedback.type === 'error' && feedback.message) {
+      const node = feedbackRef.current
+      if (node && typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          block: 'center',
+        })
+      }
+    }
+  }, [feedback])
 
   const isCreate = mode === 'create'
 
@@ -74,22 +144,14 @@ export default function EventForm({
   function validate() {
     const newErrors = {}
 
-    if (!name.trim()) {
-      newErrors.name = 'El nombre del evento es obligatorio'
-    }
+    const nameError = getNameError(name)
+    if (nameError) newErrors.name = nameError
 
-    if (!date) {
-      newErrors.date = 'La fecha es obligatoria'
-    } else {
-      const timestamp = new Date(date).getTime()
-      if (Number.isNaN(timestamp) || timestamp <= Date.now()) {
-        newErrors.date = 'La fecha del evento debe ser futura'
-      }
-    }
+    const dateError = getDateError(date)
+    if (dateError) newErrors.date = dateError
 
-    if (!location.trim()) {
-      newErrors.location = 'La ubicacion es obligatoria'
-    }
+    const locationError = getLocationError(location)
+    if (locationError) newErrors.location = locationError
 
     const ticketErrors = []
     let hasTicketError = false
@@ -101,27 +163,12 @@ export default function EventForm({
         const tt = ticketTypes[i]
         const rowErrors = {}
 
-        if (!tt.name.trim()) {
-          rowErrors.name = 'El nombre es obligatorio'
-          hasTicketError = true
-        }
-
-        const priceNum = Number(tt.price)
-        if (tt.price === '' || Number.isNaN(priceNum)) {
-          rowErrors.price = 'El precio es obligatorio'
-          hasTicketError = true
-        } else if (priceNum <= 0) {
-          rowErrors.price = 'El precio debe ser mayor a 0'
-          hasTicketError = true
-        }
-
-        const quantityNum = Number(tt.quantity)
-        if (tt.quantity === '' || Number.isNaN(quantityNum)) {
-          rowErrors.quantity = 'La cantidad es obligatoria'
-          hasTicketError = true
-        } else if (!Number.isInteger(quantityNum) || quantityNum <= 0) {
-          rowErrors.quantity = 'La cantidad debe ser un numero entero mayor a 0'
-          hasTicketError = true
+        for (const field of Object.keys(TICKET_FIELD_RULES)) {
+          const fieldError = TICKET_FIELD_RULES[field](tt[field])
+          if (fieldError) {
+            rowErrors[field] = fieldError
+            hasTicketError = true
+          }
         }
 
         ticketErrors.push(rowErrors)
@@ -137,6 +184,15 @@ export default function EventForm({
     }
 
     return newErrors
+  }
+
+  // Drop an existing error only when the new value already satisfies the SAME
+  // rule validate() applies on submit (`error` is that rule's message or null).
+  // A still-invalid value keeps its message until the next submit — typing
+  // alone must not mark the field as fixed.
+  function clearFieldError(field, error) {
+    if (error) return
+    setErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev))
   }
 
   // Scrolls a field into view and focuses it. scrollIntoView is guarded:
@@ -284,15 +340,21 @@ export default function EventForm({
     }
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+    // A fresh valid selection clears any previous inline rejection.
+    setImageError('')
   }
 
   function handleImageClear() {
     setImageFile(null)
     setImagePreview(initialData?.imageUrl || '')
+    setImageError('')
   }
 
+  // Image rejects are shown INLINE under the dropzone, not in the global
+  // banner (the banner is off-screen at that moment and the user never sees
+  // the rejection there).
   function handleImageReject(message) {
-    setFeedback({ type: 'error', message })
+    setImageError(message)
   }
 
   function handleTicketTypeChange(index, field, value) {
@@ -300,6 +362,18 @@ export default function EventForm({
       const updated = [...prev]
       updated[index] = { ...updated[index], [field]: value }
       return updated
+    })
+
+    // Same rule as validate(): a still-invalid value keeps its row error until
+    // the next submit.
+    if (TICKET_FIELD_RULES[field](value)) return
+
+    setErrors((prev) => {
+      const rowErrors = Array.isArray(prev.ticketTypes) ? prev.ticketTypes[index] : null
+      if (!rowErrors?.[field]) return prev
+      const nextTicketErrors = [...prev.ticketTypes]
+      nextTicketErrors[index] = { ...rowErrors, [field]: undefined }
+      return { ...prev, ticketTypes: nextTicketErrors }
     })
   }
 
@@ -315,6 +389,7 @@ export default function EventForm({
     <form onSubmit={handleSubmit} className="event-form" noValidate>
       {feedback.message && (
         <div
+          ref={feedbackRef}
           className={`feedback-message feedback-message--${feedback.type}`}
           role={feedback.type === 'error' ? 'alert' : 'status'}
         >
@@ -328,7 +403,11 @@ export default function EventForm({
           id="eventName"
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value
+            setName(value)
+            clearFieldError('name', getNameError(value))
+          }}
           required
           disabled={submitting || readOnly}
           aria-invalid={errors.name ? 'true' : undefined}
@@ -343,13 +422,15 @@ export default function EventForm({
 
       <div className="form-group">
         <label htmlFor="eventDate">Fecha y hora</label>
-        <input
+        <DateTimePicker
           id="eventDate"
-          type="datetime-local"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required
-          disabled={submitting || readOnly}
+          onChange={(value) => {
+            setDate(value)
+            clearFieldError('date', getDateError(value))
+          }}
+          disabled={submitting}
+          readOnly={readOnly}
           aria-invalid={errors.date ? 'true' : undefined}
           aria-describedby={errors.date ? 'eventDate-error' : undefined}
         />
@@ -366,7 +447,11 @@ export default function EventForm({
           id="eventLocation"
           type="text"
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value
+            setLocation(value)
+            clearFieldError('location', getLocationError(value))
+          }}
           required
           disabled={submitting || readOnly}
           aria-invalid={errors.location ? 'true' : undefined}
@@ -403,28 +488,43 @@ export default function EventForm({
       <div className="form-group">
         <label htmlFor="eventImage">Imagen del evento</label>
         {!readOnly ? (
-          <ImageDropzone
-            preview={imagePreview}
-            disabled={submitting}
-            onSelect={handleImageSelect}
-            onClear={handleImageClear}
-            onReject={handleImageReject}
-          />
+          <>
+            <ImageDropzone
+              preview={imagePreview}
+              disabled={submitting}
+              error={imageError}
+              onSelect={handleImageSelect}
+              onClear={handleImageClear}
+              onReject={handleImageReject}
+            />
+            {imagePreview && (
+              <ImageCropPreviews
+                src={imagePreview}
+                alt={name.trim() || 'Imagen del evento'}
+              />
+            )}
+          </>
         ) : (
           imagePreview && (
-            <div style={{ marginTop: '8px' }}>
-              <img
+            <>
+              <div style={{ marginTop: '8px' }}>
+                <img
+                  src={imagePreview}
+                  alt="Vista previa"
+                  style={{
+                    maxWidth: '200px',
+                    maxHeight: '150px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    objectFit: 'cover',
+                  }}
+                />
+              </div>
+              <ImageCropPreviews
                 src={imagePreview}
-                alt="Vista previa"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '150px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border)',
-                  objectFit: 'cover',
-                }}
+                alt={name.trim() || 'Imagen del evento'}
               />
-            </div>
+            </>
           )
         )}
       </div>
@@ -595,7 +695,7 @@ export default function EventForm({
         <div className="form-actions">
           <button
             type="submit"
-            className="button-primary"
+            className="button-accent"
             disabled={submitting}
           >
             {submitting

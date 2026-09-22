@@ -56,8 +56,9 @@ public class MercadoPagoClient : IMercadoPagoClient
             } : null,
             notification_url = request.NotificationUrl,
             // auto_return ("approved") redirects the buyer back to the success
-            // back_url after payment. It requires publicly-accessible back_urls,
-            // so it is only effective in production/staging, not localhost.
+            // back_url after payment. Mercado Pago REJECTS the whole preference
+            // when it is set and the success URL is not public (e.g. localhost),
+            // so PaymentService only sends it for https frontend URLs.
             auto_return = string.IsNullOrEmpty(request.AutoReturn) ? null : request.AutoReturn
         };
 

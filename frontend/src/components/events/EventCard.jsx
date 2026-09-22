@@ -92,7 +92,7 @@ export default function EventCard({ event }) {
           flattened and each face can flip in real 3D. The whole ticket turns. */}
       <div
         data-testid="event-card-ticket"
-        className="relative aspect-[16/10] [transform-style:preserve-3d] will-change-transform transition-transform duration-600 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+        className="relative aspect-video [transform-style:preserve-3d] will-change-transform transition-transform duration-600 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
         style={{ transform: revealBack ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
       >
         {/* Front face: the whole ticket with image-led view */}
@@ -116,7 +116,7 @@ export default function EventCard({ event }) {
                 alt={event.name}
                 loading="lazy"
                 width="640"
-                height="400"
+                height="360"
                 className="absolute inset-0 h-full w-full object-cover"
               />
             ) : (

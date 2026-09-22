@@ -152,14 +152,22 @@ public class PaymentService : IPaymentService
             NotificationUrl = string.IsNullOrEmpty(_options.WebhookBaseUrl) ? null : $"{_options.WebhookBaseUrl}/api/payments/webhook",
             BackUrls = new MercadoPagoBackUrls
             {
-                Success = $"{_options.FrontendUrl}/checkout/success?preference_id={{preference_id}}",
-                Failure = $"{_options.FrontendUrl}/checkout/return?status=failure",
-                Pending = $"{_options.FrontendUrl}/checkout/return?status=pending"
+                // MP appends its own params on redirect — payment_id, status,
+                // external_reference ("Return URLs Response" docs) — so no back URL
+                // may seed `status`: a literal first occurrence would shadow MP's
+                // real value. The pending URL carries `origin=pending` instead, a
+                // non-colliding marker the return page only uses as a fallback when
+                // MP sends no status at all (flow abandoned before completion).
+                Success = $"{_options.FrontendUrl}/checkout/success",
+                Failure = $"{_options.FrontendUrl}/checkout/return?event={reservation.EventId}",
+                Pending = $"{_options.FrontendUrl}/checkout/return?origin=pending"
             },
             // Auto-return the buyer to /checkout/success a few seconds after an
-            // approved payment instead of leaving them on the MP screen. Only
-            // effective with publicly-accessible back_urls (production/staging).
-            AutoReturn = "approved"
+            // approved payment. Mercado Pago REJECTS the whole preference (400
+            // invalid_auto_return, "back_url.success must be defined") when the
+            // success back URL is not publicly reachable — e.g. http://localhost
+            // in local dev — so only request it for https frontends.
+            AutoReturn = _options.FrontendUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? "approved" : null
         };
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);

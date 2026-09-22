@@ -21,12 +21,12 @@ export default function NotFound() {
       </motion.h1>
 
       <p className="text-xl text-text-2 mb-8 max-w-md">
-        The page you're looking for doesn't exist or has been moved.
+        La página que buscás no existe o fue movida.
       </p>
 
       <Link to="/">
-        <Button variant="gradient" size="lg">
-          Go Home
+        <Button variant="accent" size="lg">
+          Volver al inicio
         </Button>
       </Link>
     </motion.div>

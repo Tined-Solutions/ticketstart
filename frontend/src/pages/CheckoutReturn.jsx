@@ -22,8 +22,6 @@ const statusConfig = {
     message: 'Si la compra fue exitosa, recibirás un email con tus entradas en la casilla indicada.',
     badgeVariant: 'success',
     badgeLabel: 'Exitoso',
-    linkTo: '/events',
-    linkLabel: '← Volver al catálogo',
   },
   pending: {
     icon: (
@@ -43,8 +41,6 @@ const statusConfig = {
     message: 'Te avisaremos cuando se confirme.',
     badgeVariant: 'warning',
     badgeLabel: 'Pendiente',
-    linkTo: '/events',
-    linkLabel: '← Volver al catálogo',
   },
   error: {
     icon: (
@@ -65,10 +61,8 @@ const statusConfig = {
     message: 'El pago fue rechazado. Intenta nuevamente.',
     badgeVariant: 'error',
     badgeLabel: 'Rechazado',
-    linkTo: '/events',
-    linkLabel: '← Volver al catálogo',
   },
-  unknown: {
+  incomplete: {
     icon: (
       <motion.svg
         className="w-16 h-16 text-text-muted"
@@ -83,87 +77,110 @@ const statusConfig = {
         <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </motion.svg>
     ),
-    title: 'Resultado del pago',
-    message: 'No pudimos determinar el estado del pago. Si ya pagaste, tus entradas serán enviadas a tu email en los próximos minutos.',
+    title: 'No completaste el pago',
+    message: (
+      <>
+        No se realizó ningún cobro.{' '}
+        <br />
+        Podés intentar de nuevo cuando quieras.
+      </>
+    ),
     badgeVariant: 'info',
-    badgeLabel: 'Desconocido',
-    linkTo: '/events',
-    linkLabel: '← Volver al catálogo',
+    badgeLabel: 'No completado',
   },
 }
 
-function resolveStatus(searchParams) {
-  const raw = searchParams.get('status')
-  const normalized = (raw || '').toLowerCase()
+// Mercado Pago may append a literal "null" (or nothing at all) to the back
+// URL. Both mean "absent", not a payment result, so they must not be read as
+// a rejection.
+function normalizeParam(value) {
+  const normalized = (value || '').trim().toLowerCase()
+  return normalized === 'null' ? '' : normalized
+}
 
-  if (normalized === 'approved' || normalized === 'success') return 'success'
-  if (normalized === 'pending' || normalized === 'in_process') return 'pending'
-  if (normalized === 'failure' || normalized === 'rejected') return 'error'
-  return 'unknown'
+function resolveStatus(searchParams) {
+  // MP's status is the primary signal on every back URL: approved/success →
+  // success, pending/in_process → pending, rejected → error. A failure return
+  // WITHOUT status intentionally falls through to `incomplete`: MP only omits
+  // it when the flow was not completed (cancel/abandonment), while a real
+  // rejection always arrives as status=rejected.
+  const status = normalizeParam(searchParams.get('status'))
+
+  if (status === 'approved' || status === 'success') return 'success'
+  if (status === 'pending' || status === 'in_process') return 'pending'
+  if (status === 'rejected') return 'error'
+
+  // MP may omit status entirely (e.g. abandoned flow). The origin marker is
+  // our own param and only used as a fallback — it never shadows MP's status.
+  const origin = normalizeParam(searchParams.get('origin'))
+  if (origin === 'pending') return 'pending'
+
+  return 'incomplete'
 }
 
 export default function CheckoutReturn() {
   const [searchParams] = useSearchParams()
   const status = resolveStatus(searchParams)
-  const paymentId = searchParams.get('payment_id')
-  const externalReference = searchParams.get('external_reference')
-
+  const eventId = normalizeParam(searchParams.get('event')) || null
   const config = statusConfig[status]
+  const canRetry = status === 'error' || status === 'incomplete'
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="max-w-md mx-auto px-4 py-16"
-    >
-      <GlassCard className="text-center py-10">
-        <motion.div
-          className="flex justify-center mb-6"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: [0, 0.6, 0.2, 1] }}
-        >
-          {config.icon}
-        </motion.div>
+    <div className="flex min-h-[calc(100svh-56px)] items-center justify-center bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15 px-4 py-12">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        className="w-full max-w-md"
+      >
+        <GlassCard className="text-center py-10">
+          <motion.div
+            className="flex justify-center mb-6"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0, 0.6, 0.2, 1] }}
+          >
+            {config.icon}
+          </motion.div>
 
-        <div role="status">
-          <div className="mb-3">
-            <Badge variant={config.badgeVariant}>
-              {config.badgeLabel}
-            </Badge>
+          <div role="status">
+            <div className="mb-3">
+              <Badge variant={config.badgeVariant}>
+                {config.badgeLabel}
+              </Badge>
+            </div>
+
+            <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
+              {config.title}
+            </h1>
+
+            <p className="text-text-2 mb-6 max-w-sm mx-auto text-sm leading-relaxed">
+              {config.message}
+            </p>
           </div>
 
-          <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
-            {config.title}
-          </h1>
+          {status === 'success' && (
+            <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
+              Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
+            </p>
+          )}
 
-          <p className="text-text-2 mb-6 max-w-sm mx-auto text-sm leading-relaxed">
-            {config.message}
-          </p>
-        </div>
-
-        {paymentId && (
-          <p className="text-text-muted text-xs mb-1 font-mono">
-            ID de pago: <code>{paymentId}</code>
-          </p>
-        )}
-        {externalReference && (
-          <p className="text-text-muted text-xs mb-4 font-mono">
-            Referencia: <code>{externalReference}</code>
-          </p>
-        )}
-
-        <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
-          Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
-        </p>
-
-        <Link to={config.linkTo}>
-          <Button variant={status === 'success' ? 'gradient' : 'secondary'}>
-            {config.linkLabel}
-          </Button>
-        </Link>
-      </GlassCard>
-    </motion.div>
+          <div className="flex flex-col gap-3 items-center">
+            {canRetry && eventId && (
+              <Link to={`/events/${eventId}`}>
+                <Button variant="accent">
+                  Reintentar pago
+                </Button>
+              </Link>
+            )}
+            <Link to="/events">
+              <Button variant="glass" size={canRetry ? 'sm' : 'md'}>
+                Volver al catálogo
+              </Button>
+            </Link>
+          </div>
+        </GlassCard>
+      </motion.div>
+    </div>
   )
 }

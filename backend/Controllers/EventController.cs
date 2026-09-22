@@ -53,6 +53,7 @@ public class EventController : TicketeraControllerBase
 
     /// <summary>
     /// Scannable event list for the staff scan chooser (EHE-007): future events
+    /// starting within the 7-day lookahead (EventService.ScanChooserWindowDays)
     /// plus events ended within the 24h QR validation window. Role-gated:
     /// Staff/Organizador/Admin (organizers scan as staff).
     /// </summary>

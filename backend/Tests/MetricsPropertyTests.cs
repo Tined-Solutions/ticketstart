@@ -1,15 +1,22 @@
+using FsCheck;
+using FsCheck.Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Models;
 using TicketeraOnline.Api.Services;
 using Xunit;
+using ArbStatic = FsCheck.Fluent.Arb;
+using GenStatic = FsCheck.Fluent.Gen;
+using PropStatic = FsCheck.Fluent.Prop;
 
 namespace TicketeraOnline.Api.Tests;
 
 /// <summary>
 /// Property-based tests for organizer dashboard metrics.
-/// Validates Requirements 11.2, 11.3, 11.4, 11.5, 11.6
+/// Validates Requirements 11.2, 11.3, 11.4, 11.5, 11.6 and APR-017
+/// (money-based revenue = Σ charged transactions − Σ recorded refunds).
 /// </summary>
 public class MetricsPropertyTests : IDisposable
 {
@@ -193,12 +200,14 @@ public class MetricsPropertyTests : IDisposable
     #region Property 35: Revenue Calculation Correctness
 
     /// <summary>
-    /// Property 35: Revenue Calculation Correctness
-    /// For any event, the displayed total revenue SHALL equal the sum of (ticket price × quantity) for all confirmed tickets.
-    /// **Validates: Requirements 11.4**
+    /// Property 35 (APR-017): Revenue Calculation Correctness
+    /// For any event with no recorded refunds, the displayed total revenue SHALL equal
+    /// the sum of the charged transaction amounts (Approved ∪ Refunded) of its
+    /// confirmed reservations — the money-based formula, NOT TicketType.Price × tickets.
+    /// **Validates: Requirements 11.4, APR-017**
     /// </summary>
     [Fact]
-    public async Task GetEventMetrics_TotalRevenue_MatchesSumOfTicketPrices()
+    public async Task GetEventMetrics_TotalRevenue_MatchesSumOfChargedAmounts()
     {
         // Arrange
         var organizerId = Guid.NewGuid();
@@ -236,45 +245,19 @@ public class MetricsPropertyTests : IDisposable
         _context.Events.Add(eventEntity);
         await _context.SaveChangesAsync();
 
-        // Sell 5 VIP tickets and 12 General tickets
-        for (int i = 0; i < 5; i++)
-        {
-            _context.Tickets.Add(new Ticket
-            {
-                Id = Guid.NewGuid(),
-                EventId = eventEntity.Id,
-                TicketTypeId = vipType.Id,
-                PurchaserEmail = $"vip{i}@example.com",
-                PurchaserDNI = $"VIP{i}",
-                QRCodeData = $"QR-VIP-{Guid.NewGuid()}",
-                IsUsed = false,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        for (int i = 0; i < 12; i++)
-        {
-            _context.Tickets.Add(new Ticket
-            {
-                Id = Guid.NewGuid(),
-                EventId = eventEntity.Id,
-                TicketTypeId = generalType.Id,
-                PurchaserEmail = $"general{i}@example.com",
-                PurchaserDNI = $"GEN{i}",
-                QRCodeData = $"QR-GEN-{Guid.NewGuid()}",
-                IsUsed = false,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
+        // Two confirmed purchases, no refunds: 5 VIP at 200 and 12 General at 100.
+        SeedConfirmedPurchase(_context, eventEntity.Id, vipType.Id, quantity: 5, unitPrice: 200m);
+        SeedConfirmedPurchase(_context, eventEntity.Id, generalType.Id, quantity: 12, unitPrice: 100m);
         await _context.SaveChangesAsync();
 
         // Act
         var metrics = await _metricsService.GetEventMetricsAsync(eventEntity.Id);
 
-        // Assert
+        // Assert — with no refunds, charged amounts equal the historical price sum
         Assert.NotNull(metrics);
         var expectedRevenue = (5 * vipType.Price) + (12 * generalType.Price);
         Assert.Equal(expectedRevenue, metrics.TotalRevenue);
+        Assert.Equal(17, metrics.TicketsSold);
     }
 
     /// <summary>
@@ -701,23 +684,18 @@ public class MetricsPropertyTests : IDisposable
         };
     }
 
-    #region Refunded tickets excluded (APR-005)
+    #region Refunded tickets excluded (APR-005) + money-based revenue (APR-017)
 
+    /// <summary>
+    /// APR-005 + APR-017: refunded tickets stop counting as sold; revenue is
+    /// charged (250) − recorded refunds (50) = 200, NOT price × non-refunded tickets.
+    /// </summary>
     [Fact]
     public async Task GetEventMetrics_RefundedTickets_ExcludedFromSoldAndRevenue()
     {
-        // Arrange — 5 tickets, 2 used, 1 refunded (APR-005: refunded stops counting)
+        // Arrange — one confirmed purchase of 5 tickets (250 charged), 2 used,
+        // 1 refunded with a 50 Refunds ledger row.
         var organizerId = Guid.NewGuid();
-        var organizer = new User
-        {
-            Id = organizerId,
-            Email = "organizer@example.com",
-            PasswordHash = "dummy-hash",
-            Role = UserRole.Organizador,
-            CreatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(organizer);
-
         var eventEntity = CreateEvent(organizerId, "Refunded Event");
         var ticketType = new TicketType
         {
@@ -730,35 +708,186 @@ public class MetricsPropertyTests : IDisposable
         };
         eventEntity.TicketTypes.Add(ticketType);
         _context.Events.Add(eventEntity);
+        await _context.SaveChangesAsync();
 
-        for (var i = 0; i < 5; i++)
-        {
-            _context.Tickets.Add(new Ticket
-            {
-                Id = Guid.NewGuid(),
-                EventId = eventEntity.Id,
-                TicketTypeId = ticketType.Id,
-                PurchaserEmail = $"buyer{i}@example.com",
-                PurchaserDNI = $"DNI{i}",
-                QRCodeData = $"QR-{Guid.NewGuid()}",
-                IsUsed = i < 2,
-                IsRefunded = i == 4,
-                RefundedAt = i == 4 ? DateTime.UtcNow.AddDays(-1) : null,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
+        SeedConfirmedPurchase(_context, eventEntity.Id, ticketType.Id, quantity: 5,
+            unitPrice: 50m, usedTickets: 2, refundedTickets: 1, refundAmount: 50m);
         await _context.SaveChangesAsync();
 
         // Act
         var metrics = await _metricsService.GetEventMetricsAsync(eventEntity.Id);
 
-        // Assert — sold = 4 (refunded excluded), revenue = 4 × 50, scanned = 2 (unchanged)
+        // Assert — sold = 4 (refunded excluded), revenue = 250 − 50, scanned = 2
         Assert.NotNull(metrics);
         Assert.Equal(4, metrics.TicketsSold);
         Assert.Equal(200m, metrics.TotalRevenue);
         Assert.Equal(2, metrics.TicketsScanned);
-        // 100 inventory - 4 sold - 0 reservations = 96 remaining
+        // 100 inventory − 4 sold − 0 reservations = 96 remaining
         Assert.Equal(96, metrics.RemainingInventory);
+    }
+
+    #endregion
+
+    #region APR-017 property — revenue = charged − Σ refunds, always ≥ 0
+
+    private const decimal PropertyUnitPrice = 100m;
+    private const int PropertyUnitPriceCents = 10000;   // PropertyUnitPrice × 100
+
+    /// <summary>
+    /// Arbitrary VALID single-op refund: N ∈ [1,4] tickets at 100, K ∈ [1,N], amount
+    /// in integer cents ∈ [1, 100 × K] → 0 &lt; amount ≤ unit price × K (≤ 2 decimals).
+    /// </summary>
+    private static Gen<(int N, int K, decimal Amount)> ValidRefundGen() =>
+        from n in GenStatic.Choose(1, 4)
+        from k in GenStatic.Choose(1, n)
+        from amountCents in GenStatic.Choose(1, PropertyUnitPriceCents * k)
+        select (n, k, amountCents / 100m);
+
+    /// <summary>
+    /// APR-017: for arbitrary valid (K, amount) refunds, both the single-event and the
+    /// organizer paths MUST return revenue == charged (N × unit price) − Σ refunds and
+    /// revenue ≥ 0. The transaction flips to Refunded when K == N (D2), so the
+    /// full-refund case also proves the flipped row is counted exactly once.
+    /// </summary>
+    [Property]
+    public Property GetMetrics_RevenueEqualsChargedMinusRefunds_ForArbitraryValidRefunds()
+    {
+        return PropStatic.ForAll(ArbStatic.From(ValidRefundGen()), scenario =>
+        {
+            var (n, k, amount) = scenario;
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+                .Options;
+            using var context = new ApplicationDbContext(options);
+            try
+            {
+                var organizerId = Guid.NewGuid();
+                var eventEntity = CreateEvent(organizerId, "Property Refund Event");
+                context.Events.Add(eventEntity);
+
+                var ticketType = new TicketType
+                {
+                    Id = Guid.NewGuid(),
+                    EventId = eventEntity.Id,
+                    Name = "General",
+                    Price = PropertyUnitPrice,
+                    Quantity = 100,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.TicketTypes.Add(ticketType);
+
+                SeedConfirmedPurchase(context, eventEntity.Id, ticketType.Id, quantity: n,
+                    unitPrice: PropertyUnitPrice, refundedTickets: k, refundAmount: amount);
+                context.SaveChanges();
+
+                var service = new MetricsService(context, NullLogger<MetricsService>.Instance);
+                var single = service.GetEventMetricsAsync(eventEntity.Id).GetAwaiter().GetResult();
+                var organizer = service.GetOrganizerMetricsAsync(organizerId).GetAwaiter().GetResult().Single();
+
+                var expected = n * PropertyUnitPrice - amount;
+
+                return single != null
+                    && single.TotalRevenue == expected
+                    && single.TotalRevenue >= 0m
+                    && organizer.TotalRevenue == expected
+                    && organizer.TotalRevenue >= 0m;
+            }
+            finally
+            {
+                context.Database.EnsureDeleted();
+            }
+        });
+    }
+
+    #endregion
+
+    #region APR-017 fixture helper
+
+    /// <summary>
+    /// Seeds one Confirmed reservation with its tickets and a single transaction.
+    /// The transaction flips to Refunded only when every ticket is refunded (D2),
+    /// mirroring AdminPurchaseService. Callers persist with SaveChanges.
+    /// </summary>
+    private static void SeedConfirmedPurchase(
+        ApplicationDbContext context,
+        Guid eventId,
+        Guid ticketTypeId,
+        int quantity,
+        decimal unitPrice,
+        int usedTickets = 0,
+        int refundedTickets = 0,
+        decimal refundAmount = 0m)
+    {
+        var now = DateTime.UtcNow;
+        var reservationId = Guid.NewGuid();
+
+        context.Reservations.Add(new Reservation
+        {
+            Id = reservationId,
+            EventId = eventId,
+            TicketTypeId = ticketTypeId,
+            Quantity = quantity,
+            PurchaserDNI = "31234561",
+            PurchaserEmail = "buyer@example.com",
+            ExpiresAt = now.AddMinutes(10),
+            Status = ReservationStatus.Confirmed,
+            CreatedAt = now.AddDays(-5)
+        });
+
+        var refundedTicketIds = new List<Guid>();
+        for (var i = 0; i < quantity; i++)
+        {
+            var ticketId = Guid.NewGuid();
+            // Refunded tickets are the LAST K and used tickets the FIRST U, so a
+            // ticket is never both used and refunded (the refund flow blocks that).
+            var isRefunded = i >= quantity - refundedTickets;
+            if (isRefunded)
+            {
+                refundedTicketIds.Add(ticketId);
+            }
+
+            context.Tickets.Add(new Ticket
+            {
+                Id = ticketId,
+                EventId = eventId,
+                TicketTypeId = ticketTypeId,
+                ReservationId = reservationId,
+                PurchaserEmail = "buyer@example.com",
+                PurchaserDNI = "31234561",
+                QRCodeData = $"qr-{Guid.NewGuid():N}",
+                IsUsed = i < usedTickets,
+                UsedAt = i < usedTickets ? now : null,
+                IsRefunded = isRefunded,
+                RefundedAt = isRefunded ? now : null,
+                CreatedAt = now.AddSeconds(i)
+            });
+        }
+
+        context.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = reservationId,
+            MercadoPagoId = $"mp-{Guid.NewGuid():N}",
+            Amount = unitPrice * quantity,
+            Status = refundedTickets >= quantity ? TransactionStatus.Refunded : TransactionStatus.Approved,
+            CreatedAt = now.AddDays(-5),
+            UpdatedAt = now.AddDays(-5)
+        });
+
+        if (refundedTickets > 0 && refundAmount > 0m)
+        {
+            context.Refunds.Add(new Refund
+            {
+                Id = Guid.NewGuid(),
+                ReservationId = reservationId,
+                TicketIds = refundedTicketIds.ToArray(),
+                Quantity = refundedTickets,
+                Amount = refundAmount,
+                AdminId = Guid.NewGuid(),
+                CreatedAt = now
+            });
+        }
     }
 
     #endregion

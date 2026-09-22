@@ -42,6 +42,11 @@ describe('EventCard', () => {
     )
   })
 
+  it('uses the standard 16:9 frame for the ticket', () => {
+    renderCard()
+    expect(screen.getByTestId('event-card-ticket').className).toContain('aspect-video')
+  })
+
   it('renders the starting price in the ticket stub', () => {
     renderCard()
     const flipButton = screen.getByRole('button', {
