@@ -3,6 +3,10 @@ import { screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Checkout from './Checkout.jsx'
 import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
+import {
+  CHECKOUT_RESERVATION_KEY,
+  buildCartSignature,
+} from '../lib/checkoutReservationStorage.js'
 
 const mockNavigate = vi.fn()
 const mockPost = vi.fn()
@@ -50,6 +54,36 @@ function buildReservation(overrides = {}) {
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     ...overrides,
   }
+}
+
+const cartSignature = buildCartSignature({
+  eventId: cart.eventId,
+  ticketTypeId: cart.selection.ticketTypeId,
+  quantity: cart.selection.quantity,
+})
+
+function buildStoredEntry(overrides = {}) {
+  return {
+    signature: cartSignature,
+    id: 'reservation-restored',
+    token: 'restored-token',
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    quantity: 2,
+    purchaserName: 'Ana Restaurada',
+    purchaserEmail: 'ana@test.com',
+    purchaserDNI: '30111222',
+    documentCountry: 'AR',
+    ...overrides,
+  }
+}
+
+function storeEntry(entry) {
+  sessionStorage.setItem(CHECKOUT_RESERVATION_KEY, JSON.stringify(entry))
+}
+
+function readStoredEntry() {
+  const raw = sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)
+  return raw ? JSON.parse(raw) : null
 }
 
 async function fillPurchaserForm(
@@ -110,6 +144,7 @@ describe('Checkout', () => {
     mockNavigate.mockReset()
     mockLocationState.mockReset()
     mockLocationState.mockReturnValue(cart)
+    sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -903,5 +938,364 @@ describe('Checkout', () => {
 
     expect(screen.getByRole('timer')).toHaveTextContent('00:25')
     expect(screen.getByText(/quedan pocos segundos/i)).toBeInTheDocument()
+  })
+
+  // -- reservation persistence across remounts (back/forward) ---------------
+
+  it('restores an active reservation from sessionStorage without creating a new one', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    storeEntry(
+      buildStoredEntry({
+        expiresAt: new Date('2026-07-13T12:05:00Z').toISOString(),
+      })
+    )
+
+    renderWithQueryClient(<Checkout />)
+
+    expect(
+      screen.getByRole('heading', { name: /confirma tu reserva/i })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('timer')).toHaveTextContent('05:00')
+    expect(screen.getByText('Ana Restaurada')).toBeInTheDocument()
+    expect(screen.getByText('ana@test.com')).toBeInTheDocument()
+    expect(screen.getByText('30111222')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /reserva tus entradas/i })
+    ).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('ignores a stored reservation whose signature belongs to a different cart', () => {
+    storeEntry(
+      buildStoredEntry({ signature: `${cartSignature}|otra-compra` })
+    )
+
+    renderWithQueryClient(<Checkout />)
+
+    expect(
+      screen.getByRole('heading', { name: /reserva tus entradas/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /confirma tu reserva/i })
+    ).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('ignores an expired stored reservation and removes it', () => {
+    storeEntry(
+      buildStoredEntry({
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      })
+    )
+
+    renderWithQueryClient(<Checkout />)
+
+    expect(
+      screen.getByRole('heading', { name: /reserva tus entradas/i })
+    ).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('persists the created reservation to sessionStorage', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(readStoredEntry()).toEqual({
+      signature: cartSignature,
+      id: reservation.id,
+      token: reservation.token,
+      expiresAt: reservation.expiresAt,
+      quantity: reservation.quantity,
+      purchaserName: 'Juan Perez',
+      purchaserEmail: 'juan@example.com',
+      purchaserDNI: '12345678',
+      documentCountry: 'AR',
+    })
+  })
+
+  it('updates the stored reservation purchaser fields after editing data', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire({
+      name: 'Original Name',
+      email: 'original@test.com',
+      dni: '12345678',
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /editar datos/i }))
+      await Promise.resolve()
+    })
+
+    fireEvent.change(screen.getByLabelText(/nombre completo/i), {
+      target: { value: 'Nombre Editado' },
+    })
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'editado@test.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirmar email'), {
+      target: { value: 'editado@test.com' },
+    })
+    fireEvent.change(screen.getByLabelText(/^dni$/i), {
+      target: { value: '87654321' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirmar DNI'), {
+      target: { value: '87654321' },
+    })
+
+    mockPatch.mockResolvedValueOnce({ data: reservation })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }))
+      await Promise.resolve()
+    })
+
+    expect(readStoredEntry()).toEqual({
+      signature: cartSignature,
+      id: reservation.id,
+      token: reservation.token,
+      expiresAt: reservation.expiresAt,
+      quantity: reservation.quantity,
+      purchaserName: 'Nombre Editado',
+      purchaserEmail: 'editado@test.com',
+      purchaserDNI: '87654321',
+      documentCountry: 'AR',
+    })
+  })
+
+  it('clears the stored reservation when the hold expires', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(readStoredEntry()).not.toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(10 * 60 * 1000)
+    })
+
+    expect(
+      screen.getByRole('heading', { name: /reserva expirada/i })
+    ).toBeInTheDocument()
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  // -- return from Mercado Pago (WI7) ----------------------------------------
+
+  it('persists the preference id in the stored reservation when paying', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    const checkoutUrl = 'https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=abc123'
+
+    mockPost
+      .mockResolvedValueOnce({ data: reservation })
+      .mockResolvedValueOnce({ data: { checkoutUrl, preferenceId: 'pref-abc123' } })
+
+    const mockLocation = { href: window.location.href }
+    const mockedWindow = new Proxy(window, {
+      get(target, prop) {
+        return prop === 'location' ? mockLocation : target[prop]
+      },
+    })
+    vi.stubGlobal('window', mockedWindow)
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /confirmar y proceder al pago/i }))
+      await Promise.resolve()
+    })
+
+    expect(readStoredEntry()?.preferenceId).toBe('pref-abc123')
+    expect(mockLocation.href).toBe(checkoutUrl)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('verifies a stored payment on mount and shows the confirmed panel', async () => {
+    storeEntry(buildStoredEntry({ preferenceId: 'pref-stored' }))
+    mockPost.mockResolvedValueOnce({ data: { status: 'confirmed' } })
+
+    renderWithQueryClient(<Checkout />)
+
+    expect(screen.getByText(/verificando el estado de tu pago/i)).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
+    })
+
+    expect(mockPost).toHaveBeenCalledWith('/payments/confirm', {
+      preferenceId: 'pref-stored',
+    })
+    expect(screen.getByText(/tus entradas fueron enviadas a tu email/i)).toBeInTheDocument()
+    expect(screen.getByText(/revisá tu casilla de correo/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /buscar mis entradas/i })
+    ).toHaveAttribute('href', '/tickets/lookup')
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('shows the pending panel without a pay button and re-verifies on demand', async () => {
+    storeEntry(buildStoredEntry({ preferenceId: 'pref-pending' }))
+    mockPost
+      .mockResolvedValueOnce({ data: { status: 'pending', reason: 'payment_pending' } })
+      .mockResolvedValueOnce({ data: { status: 'pending', reason: 'payment_pending' } })
+
+    renderWithQueryClient(<Checkout />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+    })
+
+    expect(screen.getByText(/no hace falta que pagues de nuevo/i)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /confirmar y proceder al pago/i })
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /verificar de nuevo/i }))
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledTimes(2)
+    })
+    expect(mockPost).toHaveBeenLastCalledWith('/payments/confirm', {
+      preferenceId: 'pref-pending',
+    })
+  })
+
+  it('returns to phase 2 with a notice when no payment was registered', async () => {
+    storeEntry(buildStoredEntry({ preferenceId: 'pref-nopay' }))
+    mockPost.mockResolvedValueOnce({ data: { status: 'pending', reason: 'no_payment' } })
+
+    renderWithQueryClient(<Checkout />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/no registramos un pago todavía/i)).toBeInTheDocument()
+    })
+
+    expect(
+      screen.getByRole('button', { name: /confirmar y proceder al pago/i })
+    ).toBeEnabled()
+  })
+
+  it('shows the unverified panel when the confirm request fails', async () => {
+    storeEntry(buildStoredEntry({ preferenceId: 'pref-error' }))
+    mockPost.mockRejectedValueOnce(new Error('Network error'))
+
+    renderWithQueryClient(<Checkout />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /no pudimos verificar tu pago/i })
+      ).toBeInTheDocument()
+    })
+
+    expect(screen.getByText(/reintentá en unos segundos/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /verificar de nuevo/i })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /confirmar y proceder al pago/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('resets the pay button and re-verifies on a bfcache pageshow', async () => {
+    const reservation = buildReservation()
+    mockPost
+      .mockResolvedValueOnce({ data: reservation })
+      .mockResolvedValueOnce({
+        data: { checkoutUrl: 'https://mp.test/checkout', preferenceId: 'pref-bfc' },
+      })
+      .mockResolvedValueOnce({ data: { status: 'pending', reason: 'no_payment' } })
+
+    const mockLocation = { href: window.location.href }
+    const mockedWindow = new Proxy(window, {
+      get(target, prop) {
+        return prop === 'location' ? mockLocation : target[prop]
+      },
+    })
+    vi.stubGlobal('window', mockedWindow)
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /confirmar y proceder al pago/i }))
+      await Promise.resolve()
+    })
+
+    // The redirect never happens in jsdom, so payLoading stays true: the button
+    // is stuck on "Preparando pago…", exactly like a bfcache-frozen checkout.
+    expect(screen.getByRole('button', { name: /preparando pago…/i })).toBeDisabled()
+
+    await act(async () => {
+      const pageShow = new Event('pageshow')
+      Object.defineProperty(pageShow, 'persisted', { value: true })
+      window.dispatchEvent(pageShow)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/no registramos un pago todavía/i)).toBeInTheDocument()
+    })
+
+    expect(
+      screen.getByRole('button', { name: /confirmar y proceder al pago/i })
+    ).toBeEnabled()
+    expect(mockPost).toHaveBeenLastCalledWith('/payments/confirm', {
+      preferenceId: 'pref-bfc',
+    })
+
+    vi.unstubAllGlobals()
   })
 })

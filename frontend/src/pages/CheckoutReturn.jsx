@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import { clearCheckoutReservation } from '../lib/checkoutReservationStorage.js'
 
 const statusConfig = {
   success: {
@@ -120,6 +122,14 @@ function resolveStatus(searchParams) {
 
 export default function CheckoutReturn() {
   const [searchParams] = useSearchParams()
+
+  // Any return from Mercado Pago (success, failure or pending) ends the local
+  // checkout session: the reservation may already be paid or have a payment in
+  // flight, so the stored copy must never be resurrected (double-payment risk).
+  useEffect(() => {
+    clearCheckoutReservation()
+  }, [])
+
   const status = resolveStatus(searchParams)
   const eventId = normalizeParam(searchParams.get('event')) || null
   const config = statusConfig[status]

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
@@ -12,11 +12,37 @@ import Badge from '../components/ui/Badge.jsx'
 import EventSummaryTicket from '../components/events/EventSummaryTicket.jsx'
 import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
 import { validateDocument, cleanDocument, formatDocument } from '../utils/identityValidation.js'
+import {
+  buildCartSignature,
+  CHECKOUT_RESERVATION_KEY,
+  clearCheckoutReservation,
+  loadCheckoutReservation,
+  saveCheckoutReservation,
+  updateCheckoutReservation,
+} from '../lib/checkoutReservationStorage.js'
 
 function formatCountdown(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+/**
+ * Reads the raw stored entry's preferenceId, deliberately skipping the
+ * expiry/signature validation of `loadCheckoutReservation`: when the buyer
+ * returns from Mercado Pago the 10-minute hold may already have lapsed while
+ * the payment is still in flight, and that is exactly when re-verifying
+ * matters most. Silent null when there is no entry or storage fails.
+ */
+function readStoredPreferenceId() {
+  try {
+    const raw = sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)
+    if (!raw) return null
+    const entry = JSON.parse(raw)
+    return entry && typeof entry === 'object' ? (entry.preferenceId ?? null) : null
+  } catch {
+    return null
+  }
 }
 
 const shakeAnim = {
@@ -45,15 +71,58 @@ export default function Checkout() {
     }
   }, [cart, navigate])
 
-  const [purchaserName, setPurchaserName] = useState(user?.name || '')
-  const [purchaserEmail, setPurchaserEmail] = useState(user?.email || '')
-  const [confirmEmail, setConfirmEmail] = useState('')
-  const [purchaserDNI, setPurchaserDNI] = useState('')
-  const [confirmDNI, setConfirmDNI] = useState('')
+  // A reservation persisted before a history navigation (Back/Forward remounts
+  // this component and would otherwise lose the hold). The lazy initializer is
+  // idempotent: the storage helper discards mismatched/expired/corrupt entries
+  // itself, so a re-run (StrictMode) resolves to the same value.
+  const [storedReservation] = useState(() =>
+    cart?.selection
+      ? loadCheckoutReservation({
+          eventId: cart.eventId,
+          ticketTypeId: cart.selection.ticketTypeId,
+          quantity: cart.selection.quantity,
+        })
+      : null
+  )
+
+  // Return-from-Mercado-Pago verification state. Initialized to 'verifying'
+  // when the restored entry already carries a preferenceId: a bfcache restore
+  // or reload must never render an actionable pay button before re-checking
+  // whether the payment went through (double-charge window).
+  const [paymentReturn, setPaymentReturn] = useState(() =>
+    storedReservation?.preferenceId ? 'verifying' : null
+  )
+
+  const [purchaserName, setPurchaserName] = useState(
+    () => storedReservation?.purchaserName || user?.name || ''
+  )
+  const [purchaserEmail, setPurchaserEmail] = useState(
+    () => storedReservation?.purchaserEmail || user?.email || ''
+  )
+  const [confirmEmail, setConfirmEmail] = useState(
+    () => storedReservation?.purchaserEmail || ''
+  )
+  const [purchaserDNI, setPurchaserDNI] = useState(
+    () => storedReservation?.purchaserDNI || ''
+  )
+  const [confirmDNI, setConfirmDNI] = useState(
+    () => storedReservation?.purchaserDNI || ''
+  )
   const [confirmDNIFocused, setConfirmDNIFocused] = useState(false)
-  const [documentCountry, setDocumentCountry] = useState('AR')
+  const [documentCountry, setDocumentCountry] = useState(
+    () => storedReservation?.documentCountry || 'AR'
+  )
   const [isEditing, setIsEditing] = useState(false)
-  const [reservation, setReservation] = useState(null)
+  const [reservation, setReservation] = useState(() =>
+    storedReservation
+      ? {
+          id: storedReservation.id,
+          token: storedReservation.token,
+          expiresAt: storedReservation.expiresAt,
+          quantity: storedReservation.quantity,
+        }
+      : null
+  )
   const [loading, setLoading] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [error, setError] = useState('')
@@ -82,11 +151,93 @@ export default function Checkout() {
   const isExpired = reservation && remainingSeconds <= 0
 
   useEffect(() => {
-    if (isExpired && timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
+    if (isExpired) {
+      // The hold is gone server-side → drop the persisted copy so a remount
+      // cannot restore a dead reservation.
+      clearCheckoutReservation()
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [isExpired])
+
+  // ─── Return-from-Mercado-Pago verification ──────────────────────────────
+  // The pay button navigates away to Mercado Pago; on return (bfcache restore
+  // or a reload that restores the stored hold) the payment must be re-checked
+  // before the buyer can pay again.
+
+  const mountVerifiedRef = useRef(false)
+
+  const verifyPayment = useCallback(
+    async (preferenceId) => {
+      if (!preferenceId) return
+
+      try {
+        const response = await apiClient.post('/payments/confirm', { preferenceId })
+        const { status, reason } = response.data || {}
+
+        if (status === 'confirmed') {
+          setPaymentReturn('confirmed')
+          // Tickets were sold → availability changed. The affected event id is
+          // unknown from the preference, so invalidate every event detail plus
+          // the catalog list (mirrors CheckoutSuccess).
+          clearCheckoutReservation()
+          queryClient.invalidateQueries({ queryKey: queryKeys.events })
+          queryClient.invalidateQueries({ queryKey: ['event'] })
+        } else if (status === 'pending' && reason === 'payment_pending') {
+          setPaymentReturn('pending')
+        } else if (status === 'pending' && reason === 'no_payment') {
+          setPaymentReturn('no_payment')
+        } else {
+          setPaymentReturn('unverified')
+        }
+      } catch {
+        setPaymentReturn('unverified')
+      }
+    },
+    [queryClient]
+  )
+
+  useEffect(() => {
+    // One-shot on mount (StrictMode runs effects twice in dev). A stored
+    // preferenceId means a payment attempt may already exist — verify before
+    // offering the pay button again. `paymentReturn` already starts as
+    // 'verifying' from the lazy initializer, so no sync setState here.
+    if (mountVerifiedRef.current) return
+    if (!storedReservation?.preferenceId) return
+    mountVerifiedRef.current = true
+    // One-time external-system sync on mount: state only changes after the
+    // request resolves (same pattern as CheckoutSuccess).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    verifyPayment(storedReservation.preferenceId)
+  }, [storedReservation, verifyPayment])
+
+  useEffect(() => {
+    const handlePageShow = (event) => {
+      // bfcache restore: React state is frozen from before the redirect to
+      // Mercado Pago, so the pay button may still be stuck on "Preparando
+      // pago…" (payLoading frozen true). Reset it and re-verify the payment.
+      if (!event.persisted) return
+      setPayLoading(false)
+      const preferenceId = readStoredPreferenceId()
+      if (preferenceId) {
+        setPaymentReturn('verifying')
+        verifyPayment(preferenceId)
+      }
+    }
+
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [verifyPayment])
+
+  const handleVerifyAgain = () => {
+    const preferenceId = readStoredPreferenceId()
+    if (preferenceId) {
+      setPaymentReturn('verifying')
+      verifyPayment(preferenceId)
+    }
+  }
 
   const clearFieldErrors = (...fields) => {
     setFieldErrors((prev) => {
@@ -156,6 +307,28 @@ export default function Checkout() {
 
   const selection = cart.selection
 
+  // Persist the hold so a Back/Forward remount can restore phase 2 instead of
+  // creating a second reservation. Used by both create (POST) and edit (PATCH):
+  // the edit only refreshes the purchaser fields, id/token/expiresAt are the
+  // same reservation response in both cases.
+  const persistReservation = (reservationData, purchaser) => {
+    saveCheckoutReservation({
+      signature: buildCartSignature({
+        eventId: cart.eventId,
+        ticketTypeId: selection.ticketTypeId,
+        quantity: selection.quantity,
+      }),
+      id: reservationData.id,
+      token: reservationData.token,
+      expiresAt: reservationData.expiresAt,
+      quantity: reservationData.quantity,
+      purchaserName: purchaser.name,
+      purchaserEmail: purchaser.email,
+      purchaserDNI: purchaser.dni,
+      documentCountry: purchaser.country,
+    })
+  }
+
   const handleCreateReservation = async (event) => {
     event.preventDefault()
     setError('')
@@ -193,6 +366,12 @@ export default function Checkout() {
           })
       setReservation(response.data)
       setIsEditing(false)
+      persistReservation(response.data, {
+        name: purchaserName.trim(),
+        email,
+        dni,
+        country: documentCountry,
+      })
 
       // A new reservation holds stock → availability changed. Only invalidate
       // on create (PATCH only updates purchaser data, not stock).
@@ -218,7 +397,13 @@ export default function Checkout() {
         reservationId: reservation.id,
         token: reservation.token,
       })
-      const { checkoutUrl } = response.data
+      const { checkoutUrl, preferenceId } = response.data
+      if (preferenceId) {
+        // Persist BEFORE navigating: on return (bfcache or F5) the page can
+        // re-verify this payment instead of offering a second one while the
+        // first may already be approved (double-charge window).
+        updateCheckoutReservation({ preferenceId })
+      }
       window.location.href = checkoutUrl
     } catch (error) {
       setError(getErrorMessage(error))
@@ -231,10 +416,96 @@ export default function Checkout() {
 	  }
 
   const handleRestart = () => {
+    clearCheckoutReservation()
     // Reservation expired → held stock was released → availability changed.
     queryClient.invalidateQueries({ queryKey: queryKeys.events })
     queryClient.invalidateQueries({ queryKey: queryKeys.event(cart.eventId) })
     navigate('/events', { replace: true })
+  }
+
+  // ─── Payment return panels (verifying / confirmed / pending / unverified) ─
+
+  // Rendered before the expired panel: a payment may be in flight — or already
+  // approved — even when the 10-minute hold has lapsed.
+  if (paymentReturn && paymentReturn !== 'no_payment') {
+    const panel = {
+      verifying: {
+        badgeVariant: 'info',
+        badgeLabel: 'Verificando',
+        title: 'Verificando el estado de tu pago…',
+        message: 'Espera un momento mientras consultamos Mercado Pago.',
+      },
+      confirmed: {
+        badgeVariant: 'success',
+        badgeLabel: 'Confirmado',
+        title: '¡Pago confirmado!',
+        message: 'Tus entradas fueron enviadas a tu email.',
+        muted:
+          'Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.',
+      },
+      pending: {
+        badgeVariant: 'warning',
+        badgeLabel: 'Pendiente',
+        title: 'Pago pendiente',
+        message: 'Tu pago está siendo procesado. Te notificaremos por email.',
+        muted: 'No hace falta que pagues de nuevo.',
+      },
+      unverified: {
+        badgeVariant: 'error',
+        badgeLabel: 'Error',
+        title: 'No pudimos verificar tu pago',
+        message: 'No pudimos consultar el estado de tu pago. Reintentá en unos segundos.',
+      },
+    }[paymentReturn]
+
+    const canRetry = paymentReturn === 'pending' || paymentReturn === 'unverified'
+
+    return (
+      <div className="relative -mt-16 bg-gradient-to-b from-cian/10 via-canvas to-amarillo/10">
+        {/* Full-bleed gradient background like the FAQ / ticket lookup pages. It
+            starts behind the translucent fixed navbar (-mt-16 + pt-28) so there
+            is no white gap between the navbar and the page background. */}
+        <div className="mx-auto flex min-h-[100svh] w-full max-w-lg flex-col items-center justify-center px-4 pb-16 pt-28 text-center sm:px-6">
+          <GlassCard className="w-full px-6 py-10 sm:px-8">
+            <div role="status">
+              <div className="mb-3">
+                <Badge variant={panel.badgeVariant}>{panel.badgeLabel}</Badge>
+              </div>
+              <h1 className="text-2xl font-display font-bold text-text-1 mb-3">{panel.title}</h1>
+              <p className="text-text-2 mb-4 max-w-sm mx-auto text-sm leading-relaxed">
+                {panel.message}
+              </p>
+              {panel.muted && (
+                <p className="text-text-muted text-xs mb-4 max-w-xs mx-auto">{panel.muted}</p>
+              )}
+            </div>
+
+            {canRetry && (
+              <div className="mb-5 flex flex-col items-center">
+                <Button variant="accent" onClick={handleVerifyAgain}>
+                  Verificar de nuevo
+                </Button>
+              </div>
+            )}
+
+            {paymentReturn !== 'verifying' && (
+              <div className="flex flex-col gap-3 items-center">
+                <Link to="/events">
+                  <Button variant={paymentReturn === 'confirmed' ? 'accent' : 'glass'}>
+                    Volver al catálogo
+                  </Button>
+                </Link>
+                <Link to="/tickets/lookup">
+                  <Button variant="ghost" size="sm">
+                    Buscar mis entradas
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </GlassCard>
+        </div>
+      </div>
+    )
   }
 
   // ─── Expired state ──────────────────────────────────────────────────────
@@ -562,6 +833,15 @@ export default function Checkout() {
 
           {/* Right column: single glass card — countdown + purchaser data + actions */}
           <GlassCard className="flex flex-col p-5">
+            {paymentReturn === 'no_payment' && (
+              <div
+                role="status"
+                className="mb-4 rounded-lg bg-cian/15 px-4 py-2 text-sm text-cian-dark"
+              >
+                No registramos un pago todavía. Si no completaste el pago en Mercado Pago,
+                podés intentarlo de nuevo.
+              </div>
+            )}
             {/* Countdown */}
             <div className="flex flex-col items-center">
               <p className="text-sm text-text-2">Tiempo restante</p>

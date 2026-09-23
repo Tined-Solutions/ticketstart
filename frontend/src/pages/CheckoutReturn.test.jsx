@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import CheckoutReturn from './CheckoutReturn.jsx'
+import { CHECKOUT_RESERVATION_KEY } from '../lib/checkoutReservationStorage.js'
 
 const mockGetSearchParam = vi.fn()
 
@@ -17,6 +18,7 @@ describe('CheckoutReturn', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetSearchParam.mockReset()
+    sessionStorage.clear()
   })
 
   it('renders success confirmation for approved payment', () => {
@@ -236,5 +238,29 @@ describe('CheckoutReturn', () => {
     expect(
       screen.queryByRole('heading', { name: /no completaste el pago/i })
     ).not.toBeInTheDocument()
+  })
+
+  it('clears the stored checkout reservation on mount after a successful return', () => {
+    setSearchParams({ status: 'approved' })
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({ signature: 'event-1|tt-1|2', id: 'reservation-1' })
+    )
+
+    render(<CheckoutReturn />)
+
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('clears the stored checkout reservation on mount after a failed return', () => {
+    setSearchParams({ status: 'rejected' })
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({ signature: 'event-1|tt-1|2', id: 'reservation-1' })
+    )
+
+    render(<CheckoutReturn />)
+
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
   })
 })
