@@ -443,6 +443,50 @@ describe('Checkout', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
+  it('accepts a confirm email that differs only by case', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-13T12:00:00Z'))
+
+    const reservation = buildReservation()
+    mockPost.mockResolvedValueOnce({ data: reservation })
+
+    renderWithQueryClient(<Checkout />)
+
+    fillPurchaserFormFire({ email: 'Foo@Bar.com', confirmEmail: 'foo@bar.com' })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+      await Promise.resolve()
+    })
+
+    expect(mockPost).toHaveBeenCalledWith('/reservations', {
+      eventId: cart.eventId,
+      ticketTypeId: cart.selection.ticketTypeId,
+      quantity: cart.selection.quantity,
+      purchaserName: 'Juan Perez',
+      purchaserEmail: 'Foo@Bar.com',
+      confirmEmail: 'foo@bar.com',
+      purchaserDNI: '12345678',
+    })
+    expect(screen.queryByText(/los emails no coinciden/i)).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /confirma tu reserva/i })
+    ).toBeInTheDocument()
+  })
+
+  it('still shows the mismatch error when the confirm email is genuinely different', async () => {
+    renderWithQueryClient(<Checkout />)
+
+    await fillPurchaserForm(userEvent.setup(), {
+      email: 'foo@bar.com',
+      confirmEmail: 'foo@baz.com',
+    })
+    await userEvent.click(screen.getByRole('button', { name: /reservar entradas/i }))
+
+    expect(screen.getByText(/los emails no coinciden/i)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('shows both email fields in the form with correct labels', () => {
     renderWithQueryClient(<Checkout />)
 

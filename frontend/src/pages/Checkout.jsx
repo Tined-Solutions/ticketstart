@@ -117,7 +117,7 @@ export default function Checkout() {
     if (email) {
       if (!confirmEmailValue) {
         errors.confirmEmail = 'El email es obligatorio'
-      } else if (email !== confirmEmailValue) {
+      } else if (email.toLowerCase() !== confirmEmailValue.toLowerCase()) {
         errors.confirmEmail = 'Los emails no coinciden'
       }
     }

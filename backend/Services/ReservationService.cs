@@ -48,6 +48,10 @@ public class ReservationService : IReservationService
     /// </summary>
     public async Task<Reservation> CreateReservationAsync(Guid? userId, Guid eventId, Guid ticketTypeId, int quantity, string purchaserDNI, string? purchaserEmail = null, string? purchaserName = null)
     {
+        // Normalize the purchaser email ONCE at the write boundary so persistence,
+        // lookup and comparison paths all see the same canonical value.
+        purchaserEmail = purchaserEmail?.Trim().ToLowerInvariant();
+
         _logger.LogInformation("Creating reservation for user {UserId}, event {EventId}, ticketType {TicketTypeId}, quantity {Quantity}",
             userId, eventId, ticketTypeId, quantity);
 
@@ -439,7 +443,7 @@ public class ReservationService : IReservationService
 
         // Update only the editable fields — stock and ticket selection remain untouched
         reservation.PurchaserDNI = request.PurchaserDNI.Trim();
-        reservation.PurchaserEmail = request.PurchaserEmail?.Trim();
+        reservation.PurchaserEmail = request.PurchaserEmail?.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(request.PurchaserName))
         {
             reservation.PurchaserName = request.PurchaserName;
