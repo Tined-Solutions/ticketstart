@@ -36,9 +36,10 @@ public class ReservationController : ControllerBase
             return BadRequest(new { error = "Request body is required" });
         }
 
-        // Validate email confirmation match (Batch 4 B4.3)
-        if (!string.IsNullOrEmpty(request.PurchaserEmail) && 
-            !string.Equals(request.PurchaserEmail, request.ConfirmEmail, StringComparison.OrdinalIgnoreCase))
+        // Validate email confirmation match (Batch 4 B4.3).
+        // Trim both sides so a whitespace-only difference is not treated as a mismatch.
+        if (!string.IsNullOrEmpty(request.PurchaserEmail) &&
+            !string.Equals(request.PurchaserEmail.Trim(), request.ConfirmEmail?.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new { error = "PurchaserEmail and ConfirmEmail do not match" });
         }

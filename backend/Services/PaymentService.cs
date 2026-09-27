@@ -499,8 +499,33 @@ public class PaymentService : IPaymentService
 
             if (approvedPayment == null)
             {
-                _logger.LogWarning("No approved payment found for reservation {ReservationId}", reservationId);
-                return new WebhookResult { Success = false, Error = "No approved payment found" };
+                // Distinguish "a payment is still in flight" from "the buyer never
+                // paid": the frontend must offer to wait in the first case and may
+                // offer to re-pay in the second (WI7). Only non-terminal statuses
+                // count as pending — a rejected/cancelled/refunded payment is final.
+                var hasPendingPayment = payments.Any(p =>
+                    p.Status.Equals("pending", StringComparison.OrdinalIgnoreCase) ||
+                    p.Status.Equals("in_process", StringComparison.OrdinalIgnoreCase) ||
+                    p.Status.Equals("authorized", StringComparison.OrdinalIgnoreCase));
+
+                if (hasPendingPayment)
+                {
+                    _logger.LogWarning("A payment is still pending for reservation {ReservationId}", reservationId);
+                    return new WebhookResult
+                    {
+                        Success = false,
+                        Error = "A payment is still pending for this preference",
+                        ConfirmReason = "payment_pending"
+                    };
+                }
+
+                _logger.LogWarning("No payment found for reservation {ReservationId}", reservationId);
+                return new WebhookResult
+                {
+                    Success = false,
+                    Error = "No payment found for this preference",
+                    ConfirmReason = "no_payment"
+                };
             }
 
             var existingTransaction = await _context.Transactions

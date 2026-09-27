@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { fadeInScale, microTransition, useReducedMotion } from '../../lib/motion.js'
 import { useAuth } from '../../context/auth.js'
 
 export default function Navbar() {
@@ -11,6 +13,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const prefersReducedMotion = useReducedMotion()
 
   // ── Scroll-linked reveal: the navbar unfolds proportionally to how far the
   //    hero has been scrolled, so it slides down in sync with the scroll
@@ -42,16 +45,39 @@ export default function Navbar() {
   // On non-home pages the navbar is always fully visible.
   const translateY = isHome ? `${(progress - 1) * 100}%` : '0%'
 
-  // ── Close dropdown on outside click ──
+  // ── Close dropdown on outside click or Escape ──
   useEffect(() => {
-    const handler = (e) => {
+    const handleMouseDown = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
+
+  // ── Close the profile dropdown when scrolling up: the navbar slides away on
+  //    upward scroll, so an open menu would pop back stale when the navbar
+  //    returns. The 8px threshold ignores sub-pixel jitter while still
+  //    catching slow scrolls, because it measures against the highest point
+  //    seen since the menu opened. ──
+  useEffect(() => {
+    if (!dropdownOpen) return
+    let peakY = window.scrollY
+    const handler = () => {
+      peakY = Math.max(peakY, window.scrollY)
+      if (window.scrollY < peakY - 8) setDropdownOpen(false)
+    }
+    window.addEventListener('scroll', handler, { passive: true })
+    return () => window.removeEventListener('scroll', handler)
+  }, [dropdownOpen])
 
   // ── NavLink class resolver ──
   const navLinkClass = ({ isActive }) =>
@@ -139,36 +165,68 @@ export default function Navbar() {
                   <button
                     type="button"
                     onClick={() => setDropdownOpen((prev) => !prev)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
+                    className="group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
                       text-text-1 hover:bg-surface-elevated transition-colors
-                      duration-(--dur-micro)"
+                      duration-(--dur-micro) motion-reduce:transition-none"
                     aria-expanded={dropdownOpen}
                     aria-haspopup="true"
                   >
-                    <span className="w-7 h-7 rounded-full bg-brand-1/20 flex items-center justify-center text-xs font-medium text-brand-1">
+                    <span className="w-7 h-7 rounded-full bg-brand-1/20 flex items-center justify-center text-xs font-medium text-brand-1
+                      transition-transform duration-(--dur-micro) group-hover:scale-105 motion-reduce:transition-none">
                       {user?.name?.[0]?.toUpperCase() || 'U'}
                     </span>
                     <span className="hidden lg:inline">{user?.name}</span>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className={`text-text-2 transition-transform duration-(--dur-micro) motion-reduce:transition-none ${
+                        dropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
                   </button>
 
-                  {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 glass-surface rounded-lg shadow-xl py-1 border border-glass-border">
-                      <div className="px-4 py-2 text-sm text-text-2 border-b border-glass-border">
-                        {user?.email}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          logout()
-                          setDropdownOpen(false)
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-text-1
-                          hover:bg-white/10 transition-colors duration-(--dur-micro)"
+                  {/* Entrance/exit are animated with framer-motion: a CSS-only
+                      entrance popped the panel out abruptly on close, which is
+                      especially visible when the navbar slides away on upward
+                      scroll. */}
+                  <AnimatePresence>
+                    {dropdownOpen && (
+                      <motion.div
+                        key="profile-menu"
+                        initial={prefersReducedMotion ? false : fadeInScale.initial}
+                        animate={fadeInScale.animate}
+                        exit={prefersReducedMotion ? undefined : fadeInScale.exit}
+                        transition={prefersReducedMotion ? { duration: 0 } : microTransition}
+                        className="absolute right-0 mt-2 w-64 origin-top-right rounded-xl border border-glass-border
+                          bg-surface py-1.5 shadow-xl"
                       >
-                        Cerrar sesión
-                      </button>
-                    </div>
-                  )}
+                        <div className="break-words px-4 py-2 text-sm text-text-2 border-b border-glass-border">
+                          {user?.email}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            logout()
+                            setDropdownOpen(false)
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-text-1
+                            hover:bg-black/5 active:bg-black/10 transition-colors
+                            duration-(--dur-micro) motion-reduce:transition-none"
+                        >
+                          Cerrar sesión
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
             </div>
@@ -271,7 +329,7 @@ export default function Navbar() {
               {isAuthenticated && (
                 <>
                   <hr className="border-glass-border my-2" />
-                  <div className="px-3 py-2 text-sm text-text-2">
+                  <div className="break-words px-3 py-2 text-sm text-text-2">
                     {user?.email}
                   </div>
                   <button

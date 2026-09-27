@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import apiClient from '../api/client.js'
 import { queryKeys } from '../lib/queryKeys.js'
+import { clearCheckoutReservation } from '../lib/checkoutReservationStorage.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -118,6 +119,15 @@ export default function CheckoutSuccess() {
   }, [preferenceId, queryClient])
 
   useEffect(() => {
+    // This page is Mercado Pago's `back_url.success` (PaymentService.cs:161):
+    // the buyer already returned from checkout, so the in-progress checkout
+    // session is over. The stored reservation must never be resurrected — it
+    // may already be paid (or have a payment pending) and reviving it risks a
+    // double payment. This also covers the "clear on confirmed payment" rule.
+    clearCheckoutReservation()
+  }, [])
+
+  useEffect(() => {
     // Confirming the payment is a one-time side effect on mount that only
     // updates state after the async request resolves (not synchronously), so
     // the effect is a legitimate external-system sync.
@@ -173,10 +183,10 @@ export default function CheckoutSuccess() {
           </p>
         )}
 
-        {state === 'error' && (
+        {(state === 'error' || state === 'pending') && (
           <div className="mb-5 flex flex-col gap-3 items-center">
             <Button variant="secondary" onClick={handleRetry}>
-              Reintentar
+              {state === 'pending' ? 'Verificar de nuevo' : 'Reintentar'}
             </Button>
           </div>
         )}

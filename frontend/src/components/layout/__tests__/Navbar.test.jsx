@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import Navbar from '../Navbar.jsx'
@@ -9,6 +9,23 @@ vi.mock('../../../context/auth.js', () => ({
 }))
 
 import { useAuth } from '../../../context/auth.js'
+
+// jsdom has no matchMedia; framer-motion's useReducedMotion() reads it.
+function stubMatchMedia(reducedMotion) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockImplementation((query) => ({
+      matches: reducedMotion && query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+  )
+}
 
 function renderNavbar() {
   return render(
@@ -20,11 +37,16 @@ function renderNavbar() {
 
 describe('Navbar', () => {
   beforeEach(() => {
+    stubMatchMedia(false)
     useAuth.mockReturnValue({
       user: null,
       isAuthenticated: false,
       logout: vi.fn(),
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('does not render a login link when unauthenticated', () => {
@@ -75,7 +97,70 @@ describe('Navbar', () => {
     expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
 
     await userEvent.click(document.body)
-    expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
+    // The panel exits through AnimatePresence — wait for the exit to finish.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('closes the dropdown on Escape', async () => {
+    useAuth.mockReturnValue({
+      user: { email: 'test@example.com', name: 'Test User', role: 'Comun' },
+      isAuthenticated: true,
+      logout: vi.fn(),
+    })
+    renderNavbar()
+
+    await userEvent.click(screen.getByRole('button', { name: /test user/i }))
+    expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('keeps the panel mounted during its exit animation on close', async () => {
+    useAuth.mockReturnValue({
+      user: { email: 'test@example.com', name: 'Test User', role: 'Comun' },
+      isAuthenticated: true,
+      logout: vi.fn(),
+    })
+    renderNavbar()
+
+    await userEvent.click(screen.getByRole('button', { name: /test user/i }))
+    // fireEvent (not userEvent) so the close is flushed synchronously and the
+    // assertion below cannot race the exit animation.
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    // AnimatePresence holds the panel while the exit animation runs.
+    expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('closes the dropdown when scrolling up, keeping it open while scrolling down', async () => {
+    useAuth.mockReturnValue({
+      user: { email: 'test@example.com', name: 'Test User', role: 'Comun' },
+      isAuthenticated: true,
+      logout: vi.fn(),
+    })
+    Object.defineProperty(window, 'scrollY', { value: 200, writable: true, configurable: true })
+    renderNavbar()
+
+    await userEvent.click(screen.getByRole('button', { name: /test user/i }))
+    expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
+
+    Object.defineProperty(window, 'scrollY', { value: 260, writable: true, configurable: true })
+    fireEvent.scroll(window)
+    expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
+
+    Object.defineProperty(window, 'scrollY', { value: 120, writable: true, configurable: true })
+    fireEvent.scroll(window)
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /cerrar sesión/i })).not.toBeInTheDocument()
+    })
   })
 
   it('toggles scroll shadow class based on window.scrollY', () => {

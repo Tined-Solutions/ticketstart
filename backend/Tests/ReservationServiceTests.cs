@@ -156,6 +156,32 @@ public class ReservationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateReservationAsync_WithMixedCaseAndPaddedEmail_PersistsNormalizedEmail()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var reservation = await _reservationService.CreateReservationAsync(
+            null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI, "original@test.com");
+        var request = new UpdateReservationRequest
+        {
+            PurchaserDNI = TestPurchaserDNI,
+            PurchaserEmail = "  Updated.Buyer@TEST.com  ",
+            Token = _reservationService.GenerateReservationToken(reservation.Id)
+        };
+
+        // Act
+        var result = await _reservationService.UpdateReservationAsync(reservation.Id, request);
+
+        // Assert - the update path applies the same normalization as creation
+        Assert.Equal("updated.buyer@test.com", result.PurchaserEmail);
+
+        var persisted = await _context.Reservations
+            .AsNoTracking()
+            .FirstAsync(r => r.Id == reservation.Id);
+        Assert.Equal("updated.buyer@test.com", persisted.PurchaserEmail);
+    }
+
+    [Fact]
     public async Task CreateReservationAsync_WithValidData_CreatesReservationWith10MinuteExpiration()
     {
         // Arrange - Validates Requirement 4.1
@@ -197,6 +223,25 @@ public class ReservationServiceTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.Equal(purchaserDNI, result.PurchaserDNI);
+    }
+
+    [Fact]
+    public async Task CreateReservationAsync_WithMixedCaseAndPaddedEmail_PersistsNormalizedEmail()
+    {
+        // Arrange - email is normalized ONCE at the write boundary
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+
+        // Act
+        var result = await _reservationService.CreateReservationAsync(
+            null, eventEntity.Id, ticketType.Id, 1, TestPurchaserDNI, "  Buyer@Test.com  ");
+
+        // Assert - persisted value is trimmed and lowercased
+        Assert.Equal("buyer@test.com", result.PurchaserEmail);
+
+        var persisted = await _context.Reservations
+            .AsNoTracking()
+            .FirstAsync(r => r.Id == result.Id);
+        Assert.Equal("buyer@test.com", persisted.PurchaserEmail);
     }
 
     [Fact]

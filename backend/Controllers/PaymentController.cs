@@ -219,7 +219,7 @@ public class PaymentController : TicketeraControllerBase
 
             if (!result.Success)
             {
-                return Ok(new { status = "pending", error = result.Error });
+                return Ok(new { status = "pending", reason = result.ConfirmReason, error = result.Error });
             }
 
             return Ok(new { status = "confirmed", paymentId = result.PaymentId });

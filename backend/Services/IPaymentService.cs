@@ -82,6 +82,14 @@ public class WebhookResult
     public string? Error { get; set; }
     public string PaymentId { get; set; } = string.Empty;
     public WebhookFailureType FailureType { get; set; } = WebhookFailureType.None;
+
+    /// <summary>
+    /// Machine-readable reason for a non-approved payment in the confirm flow:
+    /// "payment_pending" when a non-terminal payment exists for the preference,
+    /// "no_payment" when no payment was registered at all. Null on every other
+    /// result path (approved, idempotent, reservation not found, errors).
+    /// </summary>
+    public string? ConfirmReason { get; set; }
 }
 
 /// <summary>

@@ -228,6 +228,48 @@ public class PaymentControllerTests
         Assert.Equal(200, okResult.StatusCode);
     }
 
+    #region WI7 — confirm endpoint exposes the service reason
+
+    [Fact]
+    public async Task ConfirmPayment_NotConfirmed_ReturnsPendingStatusWithReason()
+    {
+        _mockPaymentService
+            .Setup(s => s.ConfirmPaymentAsync("pref-123"))
+            .ReturnsAsync(new WebhookResult
+            {
+                Success = false,
+                Error = "A payment is still pending for this preference",
+                ConfirmReason = "payment_pending"
+            });
+
+        var result = await _controller.ConfirmPayment(new ConfirmPaymentRequest { PreferenceId = "pref-123" });
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        dynamic? value = okResult.Value as dynamic;
+        Assert.NotNull(value);
+        Assert.Equal("pending", value!.status);
+        Assert.Equal("payment_pending", value.reason);
+        Assert.Equal("A payment is still pending for this preference", value.error);
+    }
+
+    [Fact]
+    public async Task ConfirmPayment_Confirmed_ReturnsConfirmedStatusWithoutReason()
+    {
+        _mockPaymentService
+            .Setup(s => s.ConfirmPaymentAsync("pref-123"))
+            .ReturnsAsync(new WebhookResult { Success = true, PaymentId = "pay-1" });
+
+        var result = await _controller.ConfirmPayment(new ConfirmPaymentRequest { PreferenceId = "pref-123" });
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        dynamic? value = okResult.Value as dynamic;
+        Assert.NotNull(value);
+        Assert.Equal("confirmed", value!.status);
+        Assert.Equal("pay-1", value.paymentId);
+    }
+
+    #endregion
+
     #region Batch 4: Payment Pipeline Tests
 
     [Fact]

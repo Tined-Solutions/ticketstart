@@ -443,5 +443,71 @@ public class ReservationControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
     }
 
+    [Theory]
+    [InlineData("  Buyer@Test.com  ", "buyer@test.com")]
+    [InlineData("buyer@test.com", "  BUYER@TEST.COM  ")]
+    public async Task Batch4_CreateReservation_EmailDiffersOnlyByCaseOrWhitespace_Returns201(
+        string purchaserEmail, string confirmEmail)
+    {
+        // Arrange - comparison is trimmed + case-insensitive
+        var request = new CreateReservationRequest
+        {
+            EventId = Guid.NewGuid(),
+            TicketTypeId = Guid.NewGuid(),
+            Quantity = 1,
+            PurchaserDNI = "12345678",
+            PurchaserEmail = purchaserEmail,
+            ConfirmEmail = confirmEmail
+        };
+
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(),
+            EventId = request.EventId,
+            TicketTypeId = request.TicketTypeId,
+            Quantity = request.Quantity,
+            PurchaserDNI = request.PurchaserDNI,
+            PurchaserEmail = purchaserEmail,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _mockReservationService
+            .Setup(s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI, purchaserEmail, It.IsAny<string?>()))
+            .ReturnsAsync(reservation);
+
+        // Act
+        var result = await _controller.CreateReservation(request);
+
+        // Assert - accepted, and the original values reach the service (normalization belongs to the service)
+        Assert.IsType<CreatedResult>(result);
+        _mockReservationService.Verify(
+            s => s.CreateReservationAsync(null, request.EventId, request.TicketTypeId, request.Quantity, request.PurchaserDNI, purchaserEmail, It.IsAny<string?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Batch4_CreateReservation_EmailMismatchWithPadding_Returns400()
+    {
+        var request = new CreateReservationRequest
+        {
+            EventId = Guid.NewGuid(),
+            TicketTypeId = Guid.NewGuid(),
+            Quantity = 1,
+            PurchaserDNI = "12345678",
+            PurchaserEmail = "buyer@test.com",
+            ConfirmEmail = "  different@test.com  "
+        };
+
+        var result = await _controller.CreateReservation(request);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, badRequestResult.StatusCode);
+        _mockReservationService.Verify(
+            s => s.CreateReservationAsync(It.IsAny<Guid?>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            Times.Never);
+    }
+
     #endregion
 }
