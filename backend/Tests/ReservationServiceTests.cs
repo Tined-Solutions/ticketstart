@@ -963,6 +963,47 @@ public class ReservationServiceTests : IDisposable
             await _reservationService.CancelReservationAsync(confirmedReservation.Id));
     }
 
+    [Fact]
+    public async Task CancelReservationAsync_WithValidToken_CancelsReservation()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 10, TestPurchaserDNI);
+        var token = _reservationService.GenerateReservationToken(reservation.Id);
+
+        // Act
+        var result = await _reservationService.CancelReservationAsync(reservation.Id, token);
+
+        // Assert
+        Assert.Equal(ReservationStatus.Cancelled, result.Status);
+    }
+
+    [Fact]
+    public async Task CancelReservationAsync_WithInvalidToken_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 10, TestPurchaserDNI);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await _reservationService.CancelReservationAsync(reservation.Id, "not-a-valid-token"));
+    }
+
+    [Fact]
+    public async Task CancelReservationAsync_WithTokenForAnotherReservation_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var (eventEntity, ticketType) = await CreateTestEventWithTickets(100);
+        var reservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 10, TestPurchaserDNI);
+        var otherReservation = await _reservationService.CreateReservationAsync(Guid.NewGuid(), eventEntity.Id, ticketType.Id, 5, TestPurchaserDNI);
+        var otherToken = _reservationService.GenerateReservationToken(otherReservation.Id);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await _reservationService.CancelReservationAsync(reservation.Id, otherToken));
+    }
+
     #endregion
 
     #region GetReservationByIdAsync Tests

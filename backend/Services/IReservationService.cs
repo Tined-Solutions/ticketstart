@@ -65,6 +65,20 @@ public interface IReservationService
     Task<Reservation> CancelReservationAsync(Guid reservationId);
 
     /// <summary>
+    /// Cancels an active reservation after verifying the caller holds its token
+    /// (buyer releasing the hold when abandoning the purchase from the payment
+    /// return page). The held tickets are released immediately — availability is
+    /// computed over active unexpired reservations only.
+    /// </summary>
+    /// <param name="reservationId">Reservation identifier</param>
+    /// <param name="token">Reservation token proving ownership of the hold</param>
+    /// <returns>Updated reservation</returns>
+    /// <exception cref="UnauthorizedAccessException">Thrown when the token is invalid or bound to another reservation</exception>
+    /// <exception cref="KeyNotFoundException">Thrown when reservation not found</exception>
+    /// <exception cref="InvalidOperationException">Thrown when reservation cannot be cancelled</exception>
+    Task<Reservation> CancelReservationAsync(Guid reservationId, string token);
+
+    /// <summary>
     /// Retrieves a reservation by identifier.
     /// </summary>
     /// <param name="reservationId">Reservation identifier</param>
@@ -127,6 +141,14 @@ public class UpdateReservationRequest
     public string PurchaserDNI { get; set; } = string.Empty;
     public string? PurchaserEmail { get; set; }
     public string? PurchaserName { get; set; }
+    public string Token { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request model for cancelling an active reservation (buyer releasing the hold).
+/// </summary>
+public class CancelReservationRequest
+{
     public string Token { get; set; } = string.Empty;
 }
 

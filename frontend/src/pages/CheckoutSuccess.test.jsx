@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import CheckoutSuccess from './CheckoutSuccess.jsx'
+import CheckoutSuccess, {
+  AUTO_RECHECK_DELAY_MS,
+  MAX_AUTO_RECHECKS,
+} from './CheckoutSuccess.jsx'
 import { renderWithQueryClient } from '../test/queryClientUtils.jsx'
 import { CHECKOUT_RESERVATION_KEY } from '../lib/checkoutReservationStorage.js'
 
@@ -73,15 +76,27 @@ describe('CheckoutSuccess', () => {
     )
   })
 
-  it('shows the pending state when the API responds with a non-confirmed status', async () => {
+  it('shows the pending feedback and never leaks the backend error message', async () => {
     setSearchParams({ preference_id: 'pref-123' })
-    mockPost.mockResolvedValue({ data: { status: 'in_process' } })
+    mockPost.mockResolvedValue({
+      data: {
+        status: 'pending',
+        reason: 'payment_pending',
+        error: 'A payment is still pending for this preference',
+      },
+    })
 
     renderWithQueryClient(<CheckoutSuccess />)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /confirmando tu pago/i })
+      ).toBeInTheDocument()
     })
+    expect(screen.getByText(/no cierres esta página ni pagues de nuevo/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/a payment is still pending for this preference/i)
+    ).not.toBeInTheDocument()
   })
 
   it('retries the confirmation when the user clicks the retry button', async () => {
@@ -113,7 +128,9 @@ describe('CheckoutSuccess', () => {
     renderWithQueryClient(<CheckoutSuccess />)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /confirmando tu pago/i })
+      ).toBeInTheDocument()
     })
 
     const verifyButton = screen.getByRole('button', { name: /verificar de nuevo/i })
@@ -142,5 +159,76 @@ describe('CheckoutSuccess', () => {
     renderWithQueryClient(<CheckoutSuccess />)
 
     expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('re-checks automatically and confirms without user action', async () => {
+    vi.useFakeTimers()
+    try {
+      setSearchParams({ preference_id: 'pref-123' })
+      mockPost
+        .mockResolvedValueOnce({ data: { status: 'pending', reason: 'payment_pending' } })
+        .mockResolvedValueOnce({ data: { status: 'confirmed' } })
+
+      renderWithQueryClient(<CheckoutSuccess />)
+
+      // Wait for the pending feedback (unique text: the heading is shared with
+      // the initial confirming state, which would resolve this wait too early).
+      await vi.waitFor(() => {
+        expect(
+          screen.getByText(/no cierres esta página ni pagues de nuevo/i)
+        ).toBeInTheDocument()
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTO_RECHECK_DELAY_MS)
+      })
+
+      await vi.waitFor(() => {
+        expect(screen.getByRole('heading', { name: /pago confirmado/i })).toBeInTheDocument()
+      })
+      expect(mockPost).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops auto re-checking after the attempt budget and offers manual verification', async () => {
+    vi.useFakeTimers()
+    try {
+      setSearchParams({ preference_id: 'pref-123' })
+      mockPost.mockResolvedValue({ data: { status: 'pending', reason: 'payment_pending' } })
+
+      renderWithQueryClient(<CheckoutSuccess />)
+
+      // Wait for the pending feedback (unique text: the heading is shared with
+      // the initial confirming state, which would resolve this wait too early).
+      await vi.waitFor(() => {
+        expect(
+          screen.getByText(/no cierres esta página ni pagues de nuevo/i)
+        ).toBeInTheDocument()
+      })
+
+      for (let i = 0; i < MAX_AUTO_RECHECKS + 2; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(AUTO_RECHECK_DELAY_MS)
+        })
+      }
+
+      await vi.waitFor(() => {
+        expect(screen.getByRole('heading', { name: /pago pendiente/i })).toBeInTheDocument()
+      })
+
+      // The auto re-check budget is capped: no more calls than the initial
+      // check plus MAX_AUTO_RECHECKS, even though extra time keeps passing.
+      const callsWhenExhausted = mockPost.mock.calls.length
+      expect(callsWhenExhausted).toBeLessThanOrEqual(MAX_AUTO_RECHECKS + 1)
+
+      await vi.advanceTimersByTimeAsync(AUTO_RECHECK_DELAY_MS * 5)
+      expect(mockPost).toHaveBeenCalledTimes(callsWhenExhausted)
+
+      expect(screen.getByRole('button', { name: /verificar de nuevo/i })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

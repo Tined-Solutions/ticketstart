@@ -1,10 +1,14 @@
-import { useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Button from '../components/Button.jsx'
 import Badge from '../components/ui/Badge.jsx'
-import { clearCheckoutReservation } from '../lib/checkoutReservationStorage.js'
+import apiClient from '../api/client.js'
+import {
+  clearCheckoutReservation,
+  loadActiveCheckoutReservation,
+} from '../lib/checkoutReservationStorage.js'
 
 const statusConfig = {
   success: {
@@ -122,18 +126,54 @@ function resolveStatus(searchParams) {
 
 export default function CheckoutReturn() {
   const [searchParams] = useSearchParams()
-
-  // Any return from Mercado Pago (success, failure or pending) ends the local
-  // checkout session: the reservation may already be paid or have a payment in
-  // flight, so the stored copy must never be resurrected (double-payment risk).
-  useEffect(() => {
-    clearCheckoutReservation()
-  }, [])
+  const navigate = useNavigate()
 
   const status = resolveStatus(searchParams)
   const eventId = normalizeParam(searchParams.get('event')) || null
   const config = statusConfig[status]
   const canRetry = status === 'error' || status === 'incomplete'
+
+  // A success return (tickets issued or about to be) and a pending return (a
+  // payment may still be in flight) both end the local checkout session. An
+  // error/incomplete return keeps the stored hold: the retry action needs it to
+  // restore the interrupted purchase.
+  useEffect(() => {
+    if (!canRetry) clearCheckoutReservation()
+  }, [canRetry])
+
+  // Read once so the retry action can render immediately; the click handler
+  // re-reads, so a hold that lapsed while this page was open is never restored.
+  const [storedPurchase] = useState(() =>
+    canRetry ? loadActiveCheckoutReservation() : null
+  )
+  const canRestorePurchase = Boolean(storedPurchase?.cart?.selection)
+
+  const handleRetry = () => {
+    const stored = loadActiveCheckoutReservation()
+    if (stored?.cart?.selection) {
+      // Same landing state as a browser-back return from Mercado Pago: the
+      // checkout restores the hold (and re-verifies any in-flight payment)
+      // instead of starting a fresh purchase on the event page.
+      navigate('/checkout', { state: stored.cart })
+      return
+    }
+    if (eventId) navigate(`/events/${eventId}`)
+  }
+
+  const handleBackToCatalog = () => {
+    // Leaving the interrupted purchase: release the held tickets immediately
+    // instead of waiting for the hold to lapse. Best effort and not awaited —
+    // navigating away must never depend on the network; a failed release simply
+    // falls back to the natural expiration.
+    const stored = loadActiveCheckoutReservation()
+    if (stored?.id && stored?.token) {
+      apiClient
+        .post(`/reservations/${stored.id}/cancel`, { token: stored.token })
+        .catch(() => {})
+    }
+    clearCheckoutReservation()
+    navigate('/events')
+  }
 
   return (
     <div className="flex min-h-[calc(100svh-56px)] items-center justify-center bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15 px-4 py-12">
@@ -176,18 +216,18 @@ export default function CheckoutReturn() {
           )}
 
           <div className="flex flex-col gap-3 items-center">
-            {canRetry && eventId && (
-              <Link to={`/events/${eventId}`}>
-                <Button variant="accent">
-                  Reintentar pago
-                </Button>
-              </Link>
-            )}
-            <Link to="/events">
-              <Button variant="glass" size={canRetry ? 'sm' : 'md'}>
-                Volver al catálogo
+            {canRetry && (canRestorePurchase || eventId) && (
+              <Button variant="accent" onClick={handleRetry}>
+                Reintentar pago
               </Button>
-            </Link>
+            )}
+            <Button
+              variant="glass"
+              size={canRetry ? 'sm' : 'md'}
+              onClick={handleBackToCatalog}
+            >
+              Volver al catálogo
+            </Button>
           </div>
         </GlassCard>
       </motion.div>

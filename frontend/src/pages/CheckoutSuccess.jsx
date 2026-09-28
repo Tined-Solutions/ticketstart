@@ -57,6 +57,13 @@ function ErrorIcon() {
   )
 }
 
+// Bounded auto re-verification while the payment is pending: Mercado Pago's
+// auto-return fires seconds after approval, often before the webhook has
+// processed the payment, and the page must resolve on its own instead of
+// parking the buyer in "pending" forever.
+export const AUTO_RECHECK_DELAY_MS = 5000
+export const MAX_AUTO_RECHECKS = 12
+
 const stateConfig = {
   confirming: {
     icon: <ClockIcon />,
@@ -72,8 +79,17 @@ const stateConfig = {
   },
   pending: {
     icon: <ClockIcon />,
+    title: 'Confirmando tu pago…',
+    message:
+      'Estamos verificando el pago con Mercado Pago. Esto puede demorar unos segundos; no cierres esta página ni pagues de nuevo.',
+    badgeVariant: 'info',
+    badgeLabel: 'Verificando',
+  },
+  pendingExhausted: {
+    icon: <ClockIcon />,
     title: 'Pago pendiente',
-    message: 'Tu pago esta siendo procesado. Te notificaremos por email.',
+    message:
+      'Tu pago está siendo procesado. Te enviaremos las entradas por email cuando se acredite.',
     badgeVariant: 'warning',
     badgeLabel: 'Pendiente',
   },
@@ -92,11 +108,11 @@ export default function CheckoutSuccess() {
   const preferenceId = searchParams.get('preference_id')
   const [state, setState] = useState(preferenceId ? 'confirming' : 'error')
   const [errorMsg, setErrorMsg] = useState('')
-  const calledRef = useRef(false)
+  const [autoRechecks, setAutoRechecks] = useState(0)
+  const initialCheckRef = useRef(false)
 
   const confirmPayment = useCallback(async () => {
-    if (!preferenceId || calledRef.current) return
-    calledRef.current = true
+    if (!preferenceId) return
 
     try {
       const response = await apiClient.post('/payments/confirm', { preferenceId })
@@ -109,8 +125,10 @@ export default function CheckoutSuccess() {
         queryClient.invalidateQueries({ queryKey: queryKeys.events })
         queryClient.invalidateQueries({ queryKey: ['event'] })
       } else {
+        // Never surface the backend's raw (developer-facing, English) error to
+        // the buyer: the pending copy already explains both "payment in flight"
+        // and "not visible yet" while the auto re-checks run.
         setState('pending')
-        setErrorMsg(response.data?.error || '')
       }
     } catch {
       setState('error')
@@ -128,88 +146,105 @@ export default function CheckoutSuccess() {
   }, [])
 
   useEffect(() => {
-    // Confirming the payment is a one-time side effect on mount that only
-    // updates state after the async request resolves (not synchronously), so
-    // the effect is a legitimate external-system sync.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // One-shot mount check: the ref keeps it single under StrictMode's double
+    // effect invocation; state only changes after the request resolves, so the
+    // effect is a legitimate external-system sync.
+    if (initialCheckRef.current) return
+    initialCheckRef.current = true
     confirmPayment()
   }, [confirmPayment])
 
+  useEffect(() => {
+    // Bounded auto re-verification while the payment is pending: the webhook
+    // may land seconds after the buyer returns from Mercado Pago. Stops once
+    // the state resolves or the attempt budget is exhausted.
+    if (state !== 'pending' || autoRechecks >= MAX_AUTO_RECHECKS) return undefined
+
+    const timer = setTimeout(() => {
+      setAutoRechecks((count) => count + 1)
+      confirmPayment()
+    }, AUTO_RECHECK_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [state, autoRechecks, confirmPayment])
+
   const handleRetry = () => {
-    calledRef.current = false
     setState('confirming')
     setErrorMsg('')
     confirmPayment()
   }
 
-  const config = stateConfig[state]
+  const isPendingExhausted = state === 'pending' && autoRechecks >= MAX_AUTO_RECHECKS
+  const config = isPendingExhausted ? stateConfig.pendingExhausted : stateConfig[state]
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="max-w-md mx-auto px-4 py-16"
-    >
-      <GlassCard className="text-center py-10">
-        <motion.div
-          className="flex justify-center mb-6"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: [0, 0.6, 0.2, 1] }}
-        >
-          {config.icon}
-        </motion.div>
+    <div className="flex min-h-[calc(100svh-56px)] items-center justify-center bg-gradient-to-b from-purpura/15 via-transparent to-naranja/15 px-4 py-12">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        className="w-full max-w-md"
+      >
+        <GlassCard className="text-center py-10">
+          <motion.div
+            className="flex justify-center mb-6"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0, 0.6, 0.2, 1] }}
+          >
+            {config.icon}
+          </motion.div>
 
-        <div role="status">
-          {config.badgeVariant && (
-            <div className="mb-3">
-              <Badge variant={config.badgeVariant}>{config.badgeLabel}</Badge>
+          <div role="status">
+            {config.badgeVariant && (
+              <div className="mb-3">
+                <Badge variant={config.badgeVariant}>{config.badgeLabel}</Badge>
+              </div>
+            )}
+
+            <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
+              {config.title}
+            </h1>
+
+            <p className="text-text-2 mb-4 max-w-sm mx-auto text-sm leading-relaxed">
+              {config.message}
+            </p>
+          </div>
+
+          {errorMsg && (
+            <p role="alert" className="text-text-muted text-xs mb-4 max-w-xs mx-auto">
+              {errorMsg}
+            </p>
+          )}
+
+          {(state === 'error' || state === 'pending') && (
+            <div className="mb-5 flex flex-col gap-3 items-center">
+              <Button variant="accent" onClick={handleRetry}>
+                {state === 'pending' ? 'Verificar de nuevo' : 'Reintentar'}
+              </Button>
             </div>
           )}
 
-          <h1 className="text-2xl font-display font-bold text-text-1 mb-3">
-            {config.title}
-          </h1>
+          {state === 'confirmed' && (
+            <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
+              Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
+            </p>
+          )}
 
-          <p className="text-text-2 mb-4 max-w-sm mx-auto text-sm leading-relaxed">
-            {config.message}
-          </p>
-        </div>
-
-        {errorMsg && (
-          <p role="alert" className="text-text-muted text-xs mb-4 max-w-xs mx-auto">
-            {errorMsg}
-          </p>
-        )}
-
-        {(state === 'error' || state === 'pending') && (
-          <div className="mb-5 flex flex-col gap-3 items-center">
-            <Button variant="secondary" onClick={handleRetry}>
-              {state === 'pending' ? 'Verificar de nuevo' : 'Reintentar'}
-            </Button>
+          <div className="flex flex-col gap-3 items-center">
+            <Link to="/events">
+              <Button variant={state === 'confirmed' ? 'accent' : 'glass'}>
+                Volver al catálogo
+              </Button>
+            </Link>
+            <Link to="/tickets/lookup">
+              <Button variant="ghost" size="sm">
+                Buscar mis entradas
+              </Button>
+            </Link>
           </div>
-        )}
-
-        {state === 'confirmed' && (
-          <p className="text-text-muted text-xs mb-6 max-w-xs mx-auto">
-            Revisá tu casilla de correo (incluyendo spam) para encontrar tus entradas con los códigos QR.
-          </p>
-        )}
-
-        <div className="flex flex-col gap-3 items-center">
-          <Link to="/events">
-            <Button variant={state === 'confirmed' ? 'accent' : 'secondary'}>
-              Volver al catálogo
-            </Button>
-          </Link>
-          <Link to="/tickets/lookup">
-            <Button variant="ghost" size="sm">
-              Buscar mis entradas
-            </Button>
-          </Link>
-        </div>
-      </GlassCard>
-    </motion.div>
+        </GlassCard>
+      </motion.div>
+    </div>
   )
 }

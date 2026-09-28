@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import CheckoutReturn from './CheckoutReturn.jsx'
 import { CHECKOUT_RESERVATION_KEY } from '../lib/checkoutReservationStorage.js'
 
 const mockGetSearchParam = vi.fn()
+const mockNavigate = vi.fn()
+const mockPost = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   Link: ({ to, children }) => <a href={to}>{children}</a>,
+  useNavigate: () => mockNavigate,
   useSearchParams: () => [{ get: (key) => mockGetSearchParam(key) }, vi.fn()],
+}))
+
+vi.mock('../api/client.js', () => ({
+  default: { post: (...args) => mockPost(...args) },
 }))
 
 function setSearchParams(values) {
@@ -18,6 +26,8 @@ describe('CheckoutReturn', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetSearchParam.mockReset()
+    mockPost.mockReset()
+    mockPost.mockResolvedValue({ data: {} })
     sessionStorage.clear()
   })
 
@@ -31,12 +41,9 @@ describe('CheckoutReturn', () => {
       screen.getByText(/si la compra fue exitosa, recibir[aá]s un email con tus entradas en la casilla indicada/i)
     ).toBeInTheDocument()
     expect(screen.getByText(/revisá tu casilla de correo/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /volver al cat[aá]logo/i })).toHaveAttribute(
-      'href',
-      '/events'
-    )
+    expect(screen.getByRole('button', { name: /volver al cat[aá]logo/i })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reintentar pago/i })).not.toBeInTheDocument()
   })
 
   it('renders success confirmation for success status alias', () => {
@@ -135,28 +142,27 @@ describe('CheckoutReturn', () => {
     expect(screen.queryByText(/referencia:/i)).not.toBeInTheDocument()
   })
 
-  it('offers retry and catalog actions for a rejected payment with event id', () => {
+  it('offers retry and catalog actions for a rejected payment with event id', async () => {
+    const user = userEvent.setup()
     setSearchParams({ status: 'rejected', event: 'evt-1' })
 
     render(<CheckoutReturn />)
 
-    expect(screen.getByRole('link', { name: /reintentar pago/i })).toHaveAttribute(
-      'href',
-      '/events/evt-1'
-    )
+    const retry = screen.getByRole('button', { name: /reintentar pago/i })
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /volver al cat[aá]logo/i })).toHaveAttribute(
-      'href',
-      '/events'
-    )
+    expect(screen.getByRole('button', { name: /volver al cat[aá]logo/i })).toBeInTheDocument()
+
+    // No stored hold to restore → the retry falls back to the event page.
+    await user.click(retry)
+    expect(mockNavigate).toHaveBeenCalledWith('/events/evt-1')
   })
 
-  it('omits the retry action for a rejected payment without event id', () => {
+  it('omits the retry action for a rejected payment without event id and stored hold', () => {
     setSearchParams({ status: 'rejected' })
 
     render(<CheckoutReturn />)
 
-    expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reintentar pago/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
   })
 
@@ -166,10 +172,7 @@ describe('CheckoutReturn', () => {
     render(<CheckoutReturn />)
 
     expect(screen.getByRole('heading', { name: /no completaste el pago/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /reintentar pago/i })).toHaveAttribute(
-      'href',
-      '/events/evt-2'
-    )
+    expect(screen.getByRole('button', { name: /reintentar pago/i })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
   })
 
@@ -178,7 +181,7 @@ describe('CheckoutReturn', () => {
 
     render(<CheckoutReturn />)
 
-    expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reintentar pago/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /buscar mis entradas/i })).not.toBeInTheDocument()
   })
 
@@ -189,10 +192,7 @@ describe('CheckoutReturn', () => {
     render(<CheckoutReturn />)
 
     expect(screen.getByRole('heading', { name: /no completaste el pago/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /reintentar pago/i })).toHaveAttribute(
-      'href',
-      '/events/evt-3'
-    )
+    expect(screen.getByRole('button', { name: /reintentar pago/i })).toBeInTheDocument()
   })
 
   it('shows rejection when MP reports the real rejected status', () => {
@@ -201,7 +201,7 @@ describe('CheckoutReturn', () => {
     render(<CheckoutReturn />)
 
     expect(screen.getByRole('heading', { name: /pago rechazado/i })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /reintentar pago/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reintentar pago/i })).not.toBeInTheDocument()
   })
 
   it('treats a literal null status as incomplete, not rejected', () => {
@@ -252,15 +252,114 @@ describe('CheckoutReturn', () => {
     expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
   })
 
-  it('clears the stored checkout reservation on mount after a failed return', () => {
+  it('keeps the stored checkout reservation after a failed return so retry can restore the purchase', () => {
     setSearchParams({ status: 'rejected' })
     sessionStorage.setItem(
       CHECKOUT_RESERVATION_KEY,
-      JSON.stringify({ signature: 'event-1|tt-1|2', id: 'reservation-1' })
+      JSON.stringify({
+        signature: 'event-1|tt-1|2',
+        id: 'reservation-1',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      })
     )
 
     render(<CheckoutReturn />)
 
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).not.toBeNull()
+  })
+
+  it('restores the interrupted purchase when the buyer retries', async () => {
+    const user = userEvent.setup()
+    setSearchParams({ status: 'rejected', event: 'evt-1' })
+    const cart = {
+      eventId: 'evt-1',
+      eventName: 'Recital',
+      selection: { ticketTypeId: 'tt-1', name: 'Platea', price: 15000, quantity: 2 },
+      totalPrice: 30000,
+    }
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({
+        signature: 'evt-1|tt-1|2',
+        id: 'reservation-1',
+        token: 'tok-1',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        cart,
+      })
+    )
+
+    render(<CheckoutReturn />)
+
+    await user.click(screen.getByRole('button', { name: /reintentar pago/i }))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/checkout', { state: cart })
+  })
+
+  it('falls back to the event page when the stored hold already lapsed', async () => {
+    const user = userEvent.setup()
+    setSearchParams({ status: 'rejected', event: 'evt-1' })
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({
+        signature: 'evt-1|tt-1|2',
+        id: 'reservation-1',
+        expiresAt: new Date(Date.now() - 60 * 1000).toISOString(),
+        cart: { eventId: 'evt-1', selection: { ticketTypeId: 'tt-1', quantity: 2 } },
+      })
+    )
+
+    render(<CheckoutReturn />)
+
+    await user.click(screen.getByRole('button', { name: /reintentar pago/i }))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/events/evt-1')
+    // A lapsed hold is discarded, never restored.
     expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+  })
+
+  it('releases the held tickets immediately when leaving to the catalog', async () => {
+    const user = userEvent.setup()
+    setSearchParams({ status: 'rejected', event: 'evt-1' })
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({
+        signature: 'evt-1|tt-1|2',
+        id: 'reservation-1',
+        token: 'tok-1',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        cart: { eventId: 'evt-1', selection: { ticketTypeId: 'tt-1', quantity: 2 } },
+      })
+    )
+
+    render(<CheckoutReturn />)
+
+    await user.click(screen.getByRole('button', { name: /volver al cat[aá]logo/i }))
+
+    expect(mockPost).toHaveBeenCalledWith('/reservations/reservation-1/cancel', {
+      token: 'tok-1',
+    })
+    expect(sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)).toBeNull()
+    expect(mockNavigate).toHaveBeenCalledWith('/events')
+  })
+
+  it('does not release anything when leaving from a successful return', async () => {
+    const user = userEvent.setup()
+    setSearchParams({ status: 'approved' })
+    sessionStorage.setItem(
+      CHECKOUT_RESERVATION_KEY,
+      JSON.stringify({
+        signature: 'evt-1|tt-1|2',
+        id: 'reservation-1',
+        token: 'tok-1',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      })
+    )
+
+    render(<CheckoutReturn />)
+
+    await user.click(screen.getByRole('button', { name: /volver al cat[aá]logo/i }))
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockNavigate).toHaveBeenCalledWith('/events')
   })
 })

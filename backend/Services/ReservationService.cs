@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.RegularExpressions;
 using TicketeraOnline.Api.Data;
 using TicketeraOnline.Api.Helpers;
 using TicketeraOnline.Api.Models;
@@ -23,6 +24,10 @@ public class ReservationService : IReservationService
 
     // Reservation expiration time: 10 minutes
     private const int ReservationExpirationMinutes = 10;
+
+    // Purchaser names accept Unicode letters, combining marks (decomposed accents)
+    // and plain spaces only: no digits, symbols, hyphens or apostrophes.
+    private static readonly Regex PurchaserNamePattern = new(@"^[\p{L}\p{M} ]+$", RegexOptions.Compiled);
 
     public ReservationService(
         ApplicationDbContext context,
@@ -73,6 +78,24 @@ public class ReservationService : IReservationService
         {
             _logger.LogWarning("Purchaser DNI exceeds maximum length of 50 characters");
             throw new ArgumentException("Purchaser DNI must not exceed 50 characters", nameof(purchaserDNI));
+        }
+
+        // Validate purchaser name (optional): letters, combining marks and spaces only.
+        if (!string.IsNullOrWhiteSpace(purchaserName))
+        {
+            var trimmedName = purchaserName.Trim();
+
+            if (trimmedName.Length > 200)
+            {
+                _logger.LogWarning("Purchaser name exceeds maximum length of 200 characters");
+                throw new ArgumentException("Purchaser name must not exceed 200 characters", nameof(purchaserName));
+            }
+
+            if (!PurchaserNamePattern.IsMatch(trimmedName))
+            {
+                _logger.LogWarning("Purchaser name contains invalid characters");
+                throw new ArgumentException("Purchaser name can only contain letters and spaces", nameof(purchaserName));
+            }
         }
 
         // Route to transaction-based creation. Both relational (PostgreSQL/SQLite) and
@@ -371,6 +394,25 @@ public class ReservationService : IReservationService
     }
 
     /// <summary>
+    /// Cancels an active reservation after verifying the caller holds its token.
+    /// Used when the buyer abandons the purchase from the payment return page:
+    /// the held tickets are released immediately instead of waiting for the hold
+    /// to lapse naturally.
+    /// </summary>
+    public async Task<Reservation> CancelReservationAsync(Guid reservationId, string token)
+    {
+        // Validate reservation token (proves the caller owns this reservation)
+        if (!ValidateReservationToken(token, out var tokenReservationId) ||
+            tokenReservationId != reservationId)
+        {
+            _logger.LogWarning("Invalid reservation token for cancellation of reservation {ReservationId}", reservationId);
+            throw new UnauthorizedAccessException("Invalid reservation token");
+        }
+
+        return await CancelReservationAsync(reservationId);
+    }
+
+    /// <summary>
     /// Retrieves a reservation by identifier.
     /// </summary>
     public async Task<Reservation?> GetReservationByIdAsync(Guid reservationId)
@@ -441,12 +483,30 @@ public class ReservationService : IReservationService
             throw new ArgumentException("Purchaser DNI must not exceed 50 characters", nameof(request.PurchaserDNI));
         }
 
+        // Validate purchaser name (optional): letters, combining marks and spaces only.
+        if (!string.IsNullOrWhiteSpace(request.PurchaserName))
+        {
+            var trimmedName = request.PurchaserName.Trim();
+
+            if (trimmedName.Length > 200)
+            {
+                _logger.LogWarning("Purchaser name exceeds maximum length of 200 characters");
+                throw new ArgumentException("Purchaser name must not exceed 200 characters", nameof(request.PurchaserName));
+            }
+
+            if (!PurchaserNamePattern.IsMatch(trimmedName))
+            {
+                _logger.LogWarning("Purchaser name contains invalid characters");
+                throw new ArgumentException("Purchaser name can only contain letters and spaces", nameof(request.PurchaserName));
+            }
+        }
+
         // Update only the editable fields — stock and ticket selection remain untouched
         reservation.PurchaserDNI = request.PurchaserDNI.Trim();
         reservation.PurchaserEmail = request.PurchaserEmail?.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(request.PurchaserName))
         {
-            reservation.PurchaserName = request.PurchaserName;
+            reservation.PurchaserName = request.PurchaserName.Trim();
         }
 
         await _context.SaveChangesAsync();
