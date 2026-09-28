@@ -107,9 +107,15 @@ public class MercadoPagoClient : IMercadoPagoClient
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         var document = JsonDocument.Parse(responseJson);
 
+        // The refunds API returns `id` as a JSON number — normalize it to string
+        // instead of calling GetString() on it (same handling as GetPaymentByIdAsync).
+        var refundIdElement = document.RootElement.GetProperty("id");
+
         return new MercadoPagoRefundResponse
         {
-            Id = document.RootElement.GetProperty("id").GetString() ?? string.Empty,
+            Id = refundIdElement.ValueKind == JsonValueKind.Number
+                ? refundIdElement.GetInt64().ToString()
+                : refundIdElement.GetString() ?? string.Empty,
             PaymentId = paymentId,
             Amount = amount,
             Status = document.RootElement.TryGetProperty("status", out var status) ? status.GetString() ?? "approved" : "approved"
@@ -150,9 +156,16 @@ public class MercadoPagoClient : IMercadoPagoClient
         var payments = new List<MercadoPagoPaymentInfo>();
         foreach (var r in results.EnumerateArray())
         {
+            // The payments search API returns `id` as a JSON number, not a string:
+            // calling GetString() on it throws, and the confirm flow then reported
+            // "pending" forever even for approved payments. Normalize like
+            // GetPaymentByIdAsync does.
+            var idElement = r.GetProperty("id");
             payments.Add(new MercadoPagoPaymentInfo
             {
-                Id = r.GetProperty("id").GetString() ?? "",
+                Id = idElement.ValueKind == JsonValueKind.Number
+                    ? idElement.GetInt64().ToString()
+                    : idElement.GetString() ?? "",
                 Status = r.GetProperty("status").GetString() ?? ""
             });
         }
