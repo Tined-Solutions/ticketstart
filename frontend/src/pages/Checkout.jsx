@@ -12,6 +12,7 @@ import Badge from '../components/ui/Badge.jsx'
 import EventSummaryTicket from '../components/events/EventSummaryTicket.jsx'
 import IdentityDocumentInput from '../components/ui/IdentityDocumentInput.jsx'
 import { validateDocument, cleanDocument, formatDocument } from '../utils/identityValidation.js'
+import { sanitizeName, isValidName } from '../utils/nameValidation.js'
 import {
   buildCartSignature,
   CHECKOUT_RESERVATION_KEY,
@@ -257,6 +258,8 @@ export default function Checkout() {
 
     if (!name) {
       errors.purchaserName = 'El nombre es obligatorio'
+    } else if (!isValidName(name)) {
+      errors.purchaserName = 'El nombre solo puede contener letras y espacios'
     }
 
     if (!email) {
@@ -326,6 +329,9 @@ export default function Checkout() {
       purchaserEmail: purchaser.email,
       purchaserDNI: purchaser.dni,
       documentCountry: purchaser.country,
+      // Cart snapshot so the Mercado Pago return page can restore this exact
+      // purchase (same event and selection) on "Reintentar pago".
+      cart,
     })
   }
 
@@ -604,9 +610,10 @@ export default function Checkout() {
                     type="text"
                     value={purchaserName}
                     onChange={(e) => {
-                      setPurchaserName(e.target.value)
+                      setPurchaserName(sanitizeName(e.target.value))
                       clearFieldErrors('purchaserName')
                     }}
+                    maxLength={200}
                     required
                     autoComplete="name"
                     aria-invalid={fieldErrors.purchaserName ? 'true' : undefined}

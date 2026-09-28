@@ -1026,6 +1026,7 @@ describe('Checkout', () => {
       purchaserEmail: 'juan@example.com',
       purchaserDNI: '12345678',
       documentCountry: 'AR',
+      cart,
     })
   })
 
@@ -1087,6 +1088,7 @@ describe('Checkout', () => {
       purchaserEmail: 'editado@test.com',
       purchaserDNI: '87654321',
       documentCountry: 'AR',
+      cart,
     })
   })
 

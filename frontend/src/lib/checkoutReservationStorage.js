@@ -16,6 +16,10 @@
  * An entry may additionally carry an optional `preferenceId` — the Mercado
  * Pago preference created for the hold once the buyer starts paying — so the
  * page can re-verify the payment after returning from the checkout.
+ *
+ * An entry also carries a `cart` snapshot of the purchase (event and selection)
+ * so the Mercado Pago return page can restore the interrupted checkout on
+ * "Reintentar pago" instead of starting a new purchase.
  */
 
 export const CHECKOUT_RESERVATION_KEY = 'ticketstart.checkout.reservation'
@@ -68,6 +72,38 @@ export function loadCheckoutReservation({ eventId, ticketTypeId, quantity }) {
   const matchesCart =
     entry && typeof entry === 'object' && entry.signature === signature
   if (!matchesCart || !isFutureTimestamp(entry.expiresAt)) {
+    removeEntry()
+    return null
+  }
+
+  return entry
+}
+
+/**
+ * Returns the stored reservation whenever its hold is still active, without
+ * matching it against a cart signature: the Mercado Pago return page has no
+ * cart to compare against and needs the entry to restore the interrupted
+ * purchase. A corrupt or expired entry is discarded (removed) and treated as
+ * absent, like loadCheckoutReservation.
+ */
+export function loadActiveCheckoutReservation() {
+  let raw
+  try {
+    raw = sessionStorage.getItem(CHECKOUT_RESERVATION_KEY)
+  } catch {
+    return null
+  }
+  if (!raw) return null
+
+  let entry
+  try {
+    entry = JSON.parse(raw)
+  } catch {
+    removeEntry()
+    return null
+  }
+
+  if (!entry || typeof entry !== 'object' || !isFutureTimestamp(entry.expiresAt)) {
     removeEntry()
     return null
   }
