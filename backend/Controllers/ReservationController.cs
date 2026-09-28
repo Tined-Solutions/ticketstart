@@ -190,6 +190,55 @@ public class ReservationController : ControllerBase
     }
 
     /// <summary>
+    /// Cancels an active reservation (releases the held tickets immediately).
+    /// Public endpoint; requires the reservation token (proves the caller owns
+    /// the hold). Used when the buyer abandons the purchase from the payment
+    /// return page instead of waiting for the 10-minute hold to lapse.
+    /// </summary>
+    /// <param name="id">Reservation identifier</param>
+    /// <param name="request">Cancel request carrying the reservation token</param>
+    /// <returns>204 No Content when the hold is released</returns>
+    [HttpPost("{id}/cancel")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CancelReservation(Guid id, [FromBody] CancelReservationRequest request)
+    {
+        if (request == null || string.IsNullOrEmpty(request.Token))
+        {
+            return BadRequest(new { error = "Reservation token is required" });
+        }
+
+        try
+        {
+            await _reservationService.CancelReservationAsync(id, request.Token);
+
+            _logger.LogInformation("Reservation {ReservationId} cancelled by buyer", id);
+
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Reservation {ReservationId} not found for cancellation", id);
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Reservation {ReservationId} cannot be cancelled", id);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Invalid token cancelling reservation {ReservationId}", id);
+            return Unauthorized(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error cancelling reservation {ReservationId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An unexpected error occurred while cancelling the reservation" });
+        }
+    }
+
+    /// <summary>
     /// Extracts user identifier from JWT claims if authenticated.
     /// Returns null for guest users (unauthenticated).
     /// </summary>
