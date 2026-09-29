@@ -280,6 +280,90 @@ public class MetricsControllerTests
 
     #endregion
 
+    #region GET /api/metrics/admin
+
+    [Fact]
+    public async Task GetAdminMonetaryMetrics_ReturnsOkWithMetricsAndPassesFilters()
+    {
+        // Arrange
+        var adminId = Guid.NewGuid();
+        var expected = new AdminMonetaryMetrics
+        {
+            Charged = 1000m,
+            Refunded = 250m,
+            Net = 750m,
+            TicketsSold = 12,
+            RefundOperations = 3
+        };
+        AdminMetricsFilter? captured = null;
+        SetAuthenticatedUser(adminId, UserRole.Admin);
+        _mockMetricsService
+            .Setup(s => s.GetAdminMonetaryMetricsAsync(It.IsAny<AdminMetricsFilter>()))
+            .Callback<AdminMetricsFilter>(f => captured = f)
+            .ReturnsAsync(expected);
+
+        var from = new DateTime(2026, 9, 1, 3, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 9, 30, 2, 59, 59, DateTimeKind.Utc);
+
+        // Act
+        var result = await _controller.GetAdminMonetaryMetrics(from, to, "past");
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(expected, okResult.Value);
+        Assert.NotNull(captured);
+        Assert.Equal(from, captured!.From);
+        Assert.Equal(to, captured.To);
+        Assert.Equal("past", captured.EventState);
+    }
+
+    [Fact]
+    public async Task GetAdminMonetaryMetrics_FromAfterTo_ReturnsBadRequest()
+    {
+        // Arrange
+        SetAuthenticatedUser(Guid.NewGuid(), UserRole.Admin);
+
+        // Act
+        var result = await _controller.GetAdminMonetaryMetrics(DateTime.UtcNow, DateTime.UtcNow.AddDays(-1), null);
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result);
+        _mockMetricsService.Verify(s => s.GetAdminMonetaryMetricsAsync(It.IsAny<AdminMetricsFilter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAdminMonetaryMetrics_UnknownEventState_ReturnsBadRequest()
+    {
+        // Arrange
+        SetAuthenticatedUser(Guid.NewGuid(), UserRole.Admin);
+
+        // Act
+        var result = await _controller.GetAdminMonetaryMetrics(null, null, "someday");
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result);
+        _mockMetricsService.Verify(s => s.GetAdminMonetaryMetricsAsync(It.IsAny<AdminMetricsFilter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAdminMonetaryMetrics_ServiceThrows_ReturnsInternalServerError()
+    {
+        // Arrange
+        SetAuthenticatedUser(Guid.NewGuid(), UserRole.Admin);
+        _mockMetricsService
+            .Setup(s => s.GetAdminMonetaryMetricsAsync(It.IsAny<AdminMetricsFilter>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var result = await _controller.GetAdminMonetaryMetrics(null, null, null);
+
+        // Assert
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, statusCodeResult.StatusCode);
+    }
+
+    #endregion
+
     private void SetAuthenticatedUser(Guid userId, UserRole role)
     {
         var claims = new List<Claim>

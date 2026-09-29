@@ -195,6 +195,172 @@ public class MetricsService : IMetricsService
     }
 
     /// <summary>
+    /// Calculates admin-wide monetary metrics across ALL events (APR-017
+    /// money-based semantics): Σ charged − Σ refunded, windowed by charge /
+    /// refund / ticket-creation dates and optionally filtered by event
+    /// lifecycle. Uses the exact same filters as GetOrganizerMetricsAsync so
+    /// the admin figure equals the organizer revenue for the same window.
+    /// </summary>
+    public async Task<AdminMonetaryMetrics> GetAdminMonetaryMetricsAsync(AdminMetricsFilter filter)
+    {
+        var now = DateTime.UtcNow;
+        _logger.LogInformation(
+            "Calculating admin monetary metrics (from {From}, to {To}, event state {EventState})",
+            filter.From, filter.To, filter.EventState);
+
+        var eventsQuery = _context.Events.AsNoTracking().AsQueryable();
+        if (filter.EventState == "upcoming")
+        {
+            eventsQuery = eventsQuery.Where(e => e.Date >= now);
+        }
+        else if (filter.EventState == "past")
+        {
+            eventsQuery = eventsQuery.Where(e => e.Date < now);
+        }
+
+        var events = await eventsQuery.OrderBy(e => e.Date).ToListAsync();
+        if (events.Count == 0)
+        {
+            return new AdminMonetaryMetrics();
+        }
+
+        var eventIds = events.Select(e => e.Id).ToList();
+
+        // Charged money: Σ Transaction.Amount for Approved|Refunded transactions
+        // of Confirmed reservations, windowed by the charge date.
+        var chargedQuery = _context.Transactions
+            .AsNoTracking()
+            .Join(
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => eventIds.Contains(r.EventId) && r.Status == ReservationStatus.Confirmed),
+                t => t.ReservationId,
+                r => r.Id,
+                (t, r) => new { r.EventId, t.Amount, t.Status, t.CreatedAt })
+            .Where(x => x.Status == TransactionStatus.Approved || x.Status == TransactionStatus.Refunded);
+
+        if (filter.From.HasValue)
+        {
+            chargedQuery = chargedQuery.Where(x => x.CreatedAt >= filter.From.Value);
+        }
+
+        if (filter.To.HasValue)
+        {
+            chargedQuery = chargedQuery.Where(x => x.CreatedAt <= filter.To.Value);
+        }
+
+        var chargedAggregates = await chargedQuery
+            .GroupBy(x => x.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                Charged = g.Sum(x => (decimal?)x.Amount) ?? 0m
+            })
+            .ToListAsync();
+
+        // Refunded money: Σ Refunds.Amount (the recorded ledger), windowed by
+        // the refund date; the row count is the operation count.
+        var refundedQuery = _context.Refunds
+            .AsNoTracking()
+            .Join(
+                _context.Reservations
+                    .AsNoTracking()
+                    .Where(r => eventIds.Contains(r.EventId) && r.Status == ReservationStatus.Confirmed),
+                rf => rf.ReservationId,
+                r => r.Id,
+                (rf, r) => new { r.EventId, rf.Amount, rf.CreatedAt });
+
+        if (filter.From.HasValue)
+        {
+            refundedQuery = refundedQuery.Where(x => x.CreatedAt >= filter.From.Value);
+        }
+
+        if (filter.To.HasValue)
+        {
+            refundedQuery = refundedQuery.Where(x => x.CreatedAt <= filter.To.Value);
+        }
+
+        var refundedAggregates = await refundedQuery
+            .GroupBy(x => x.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                Refunded = g.Sum(x => (decimal?)x.Amount) ?? 0m,
+                Operations = g.Count()
+            })
+            .ToListAsync();
+
+        // Tickets sold: non-refunded tickets created inside the same window
+        // (APR-005: refunded tickets never count as sold).
+        var ticketsQuery = _context.Tickets
+            .AsNoTracking()
+            .Where(t => eventIds.Contains(t.EventId) && !t.IsRefunded);
+
+        if (filter.From.HasValue)
+        {
+            ticketsQuery = ticketsQuery.Where(t => t.CreatedAt >= filter.From.Value);
+        }
+
+        if (filter.To.HasValue)
+        {
+            ticketsQuery = ticketsQuery.Where(t => t.CreatedAt <= filter.To.Value);
+        }
+
+        var ticketAggregates = await ticketsQuery
+            .GroupBy(t => t.EventId)
+            .Select(g => new { EventId = g.Key, TicketsSold = g.Count() })
+            .ToListAsync();
+
+        // Merge results: O(events) with O(1) lookups (dictionaries).
+        var chargedLookup = chargedAggregates.ToDictionary(a => a.EventId);
+        var refundedLookup = refundedAggregates.ToDictionary(a => a.EventId);
+        var ticketLookup = ticketAggregates.ToDictionary(a => a.EventId);
+
+        var rows = events
+            .Select(e =>
+            {
+                chargedLookup.TryGetValue(e.Id, out var charged);
+                refundedLookup.TryGetValue(e.Id, out var refunded);
+                ticketLookup.TryGetValue(e.Id, out var tickets);
+
+                var chargedAmount = charged?.Charged ?? 0m;
+                var refundedAmount = refunded?.Refunded ?? 0m;
+
+                return new AdminEventMonetaryMetrics
+                {
+                    EventId = e.Id,
+                    EventName = e.Name,
+                    EventDate = e.Date,
+                    IsPast = e.Date < now,
+                    TicketsSold = tickets?.TicketsSold ?? 0,
+                    Charged = chargedAmount,
+                    Refunded = refundedAmount,
+                    Net = chargedAmount - refundedAmount
+                };
+            })
+            // Money view: biggest net first, ties by name for stable pagination.
+            .OrderByDescending(r => r.Net)
+            .ThenBy(r => r.EventName)
+            .ToList();
+
+        var result = new AdminMonetaryMetrics
+        {
+            Charged = rows.Sum(r => r.Charged),
+            Refunded = rows.Sum(r => r.Refunded),
+            Net = rows.Sum(r => r.Net),
+            TicketsSold = rows.Sum(r => r.TicketsSold),
+            RefundOperations = refundedAggregates.Sum(a => a.Operations),
+            Events = rows
+        };
+
+        _logger.LogInformation(
+            "Admin monetary metrics calculated: {EventCount} events, charged {Charged}, refunded {Refunded}, net {Net}",
+            rows.Count, result.Charged, result.Refunded, result.Net);
+
+        return result;
+    }
+
+    /// <summary>
     /// Calculates metrics for a single event entity.
     /// </summary>
     private async Task<EventMetrics> CalculateMetricsAsync(Event eventEntity)

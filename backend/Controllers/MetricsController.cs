@@ -79,4 +79,48 @@ public class MetricsController : TicketeraControllerBase
                 new { error = "An error occurred while retrieving organizer metrics" });
         }
     }
+
+    /// <summary>
+    /// Gets admin-wide monetary metrics (charged, refunded, net) with optional
+    /// charge/refund date range and event lifecycle filters.
+    /// Requires Admin role.
+    /// </summary>
+    /// <param name="from">Inclusive lower bound on charge/refund/ticket dates (ISO 8601)</param>
+    /// <param name="to">Inclusive upper bound on charge/refund/ticket dates (ISO 8601)</param>
+    /// <param name="eventState">"upcoming", "past" or omitted for both</param>
+    [HttpGet("admin")]
+    [Authorize(Policy = "RequireAdminRole")]
+    public async Task<IActionResult> GetAdminMonetaryMetrics(
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] string? eventState = null)
+    {
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+        {
+            return BadRequest(new { error = "`from` must not be after `to`" });
+        }
+
+        if (eventState is not null && eventState != "upcoming" && eventState != "past")
+        {
+            return BadRequest(new { error = "`eventState` must be 'upcoming' or 'past'" });
+        }
+
+        try
+        {
+            var metrics = await _metricsService.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter
+            {
+                From = from,
+                To = to,
+                EventState = eventState
+            });
+
+            return Ok(metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving admin monetary metrics");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "An error occurred while retrieving admin metrics" });
+        }
+    }
 }
