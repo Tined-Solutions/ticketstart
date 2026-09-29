@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, X, Eye, TicketPlus, TicketCheck, ShoppingCart, Pencil, Trash2, KeyRound } from 'lucide-react'
+import { Check, X, Eye, TicketPlus, TicketCheck, ShoppingCart, Pencil, Trash2, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { statusBadgeVariant, statusLabel } from '../lib/eventStatus.js'
@@ -18,6 +18,7 @@ import EditTicketsModal from '../components/EditTicketsModal.jsx'
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog.jsx'
 import RoleEditModal from '../components/RoleEditModal.jsx'
 import ResetPasswordModal from '../components/ResetPasswordModal.jsx'
+import AdminMetricsTab from '../components/admin/AdminMetricsTab.jsx'
 import { fadeIn } from '../lib/motion.js'
 
 // Shared hover treatment for the events action buttons: grow a soft shadow on
@@ -45,6 +46,7 @@ function useIsMobile() {
   return isMobile
 }
 
+const EVENTS_PER_PAGE = 10
 const USERS_PER_PAGE = 10
 
 function formatDate(dateString) {
@@ -119,10 +121,11 @@ export default function AdminPanel() {
   const [userRole, setUserRole] = useState('')
   const [userPage, setUserPage] = useState(1)
 
-  // Events section: client-side filter over the fetched `events` array
-  // (same pattern as the Users filter: free-text search + approval status).
+  // Events section: client-side filter + pagination over the fetched `events`
+  // array (same pattern as the Users filter: free-text search + approval status).
   const [eventSearch, setEventSearch] = useState('')
   const [eventStatus, setEventStatus] = useState('')
+  const [eventPage, setEventPage] = useState(1)
 
   // Toggles the create-user form inside the Users section (list ⇄ form).
   const [showCreateUser, setShowCreateUser] = useState(false)
@@ -366,6 +369,30 @@ export default function AdminPanel() {
   const sortedEvents = [...upcoming, ...past]
   const pendingCount = events.filter((e) => e.status === 'Pending').length
 
+  // Events section: paginate the SORTED display list (upcoming first, then
+  // past) — 10 rows per page, same client-side pattern as the Users table.
+  // The row markup itself is untouched: only which slice renders changes.
+  const totalEventPages = Math.max(1, Math.ceil(sortedEvents.length / EVENTS_PER_PAGE))
+  const safeEventPage = Math.min(Math.max(1, eventPage), totalEventPages)
+  const pageEvents = sortedEvents.slice(
+    (safeEventPage - 1) * EVENTS_PER_PAGE,
+    safeEventPage * EVENTS_PER_PAGE
+  )
+
+  const handleEventSearchChange = (e) => {
+    setEventSearch(e.target.value)
+    setEventPage(1)
+  }
+
+  const handleEventStatusChange = (e) => {
+    setEventStatus(e.target.value)
+    setEventPage(1)
+  }
+
+  const goToEventPage = (page) => {
+    setEventPage(Math.min(Math.max(1, page), totalEventPages))
+  }
+
   // Users section: filter + paginate the fetched `users` array client-side.
   const filteredUsers = users.filter((u) => {
     const matchesRole = userRole === '' || u.role === userRole
@@ -487,6 +514,21 @@ export default function AdminPanel() {
               >
                 Usuarios
               </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-metricas"
+                aria-selected={activeSection === 'metricas'}
+                aria-controls="panel-metricas"
+                onClick={() => setActiveSection('metricas')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  activeSection === 'metricas'
+                    ? 'bg-purpura/15 text-purpura-dark border border-purpura/30'
+                    : 'text-text-2 hover:bg-gris-oscuro/5 border border-transparent'
+                }`}
+              >
+                Métricas
+              </button>
             </div>
 
             {activeSection === 'eventos' ? (
@@ -509,7 +551,7 @@ export default function AdminPanel() {
                       id="event-search"
                       type="search"
                       value={eventSearch}
-                      onChange={(e) => setEventSearch(e.target.value)}
+                      onChange={handleEventSearchChange}
                       placeholder="Buscar…"
                       aria-label="Buscar eventos"
                       className="w-44 bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
@@ -520,7 +562,7 @@ export default function AdminPanel() {
                     <select
                       id="event-status"
                       value={eventStatus}
-                      onChange={(e) => setEventStatus(e.target.value)}
+                      onChange={handleEventStatusChange}
                       aria-label="Filtrar por estado"
                       className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
                     >
@@ -547,14 +589,14 @@ export default function AdminPanel() {
                   </p>
                 ) : (
                   <div className="flex flex-col">
-                    {sortedEvents.map((event, index) => {
+                    {pageEvents.map((event, index) => {
                       // D-7: past events are immutable (PEM-002) — computed per row
                       // in UTC (event.date is an ISO UTC DateTime; new Date() is
                       // UTC-based). Backend guard is authoritative (EHE-010); this
                       // only disables the mutation affordances (cosmetic defense).
                       const isPast = new Date(event.date) < new Date()
                       const readonlyTitle = 'Evento finalizado — solo lectura'
-                      const isLast = index === sortedEvents.length - 1
+                      const isLast = index === pageEvents.length - 1
 
                       // Single source of truth for a row's actions (icon + label),
                       // reused by the desktop inline buttons AND the mobile kebab.
@@ -755,8 +797,36 @@ export default function AdminPanel() {
                     })}
                   </div>
                 )}
+
+                {totalEventPages > 1 && (
+                  <div className="flex items-center justify-between gap-2 mt-4">
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => goToEventPage(safeEventPage - 1)}
+                      disabled={safeEventPage <= 1}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4 sm:hidden" aria-hidden="true" />
+                      <span className="hidden sm:inline">Anterior</span>
+                    </Button>
+                    <span className="text-sm text-text-2 whitespace-nowrap">
+                      Página {safeEventPage} de {totalEventPages}
+                    </span>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => goToEventPage(safeEventPage + 1)}
+                      disabled={safeEventPage >= totalEventPages}
+                      aria-label="Página siguiente"
+                    >
+                      <ChevronRight className="h-4 w-4 sm:hidden" aria-hidden="true" />
+                      <span className="hidden sm:inline">Siguiente</span>
+                    </Button>
+                  </div>
+                )}
               </div>
-            ) : (
+            ) : activeSection === 'usuarios' ? (
               <div role="tabpanel" id="panel-usuarios" aria-labelledby="tab-usuarios">
                 {/* ── Users section (list ⇄ create-user) ─────────── */}
                 {showCreateUser ? (
@@ -994,7 +1064,7 @@ export default function AdminPanel() {
                         </div>
 
                         {totalUserPages > 1 && (
-                          <div className="flex items-center justify-between mt-4">
+                          <div className="flex items-center justify-between gap-2 mt-4">
                             <Button
                               variant="glass"
                               size="sm"
@@ -1002,9 +1072,10 @@ export default function AdminPanel() {
                               disabled={safeUserPage <= 1}
                               aria-label="Página anterior"
                             >
-                              Anterior
+                              <ChevronLeft className="h-4 w-4 sm:hidden" aria-hidden="true" />
+                              <span className="hidden sm:inline">Anterior</span>
                             </Button>
-                            <span className="text-sm text-text-2">
+                            <span className="text-sm text-text-2 whitespace-nowrap">
                               Página {safeUserPage} de {totalUserPages}
                             </span>
                             <Button
@@ -1014,7 +1085,8 @@ export default function AdminPanel() {
                               disabled={safeUserPage >= totalUserPages}
                               aria-label="Página siguiente"
                             >
-                              Siguiente
+                              <ChevronRight className="h-4 w-4 sm:hidden" aria-hidden="true" />
+                              <span className="hidden sm:inline">Siguiente</span>
                             </Button>
                           </div>
                         )}
@@ -1022,6 +1094,10 @@ export default function AdminPanel() {
                     )}
                   </>
                 )}
+              </div>
+            ) : (
+              <div role="tabpanel" id="panel-metricas" aria-labelledby="tab-metricas">
+                <AdminMetricsTab />
               </div>
             )}
           </div>
