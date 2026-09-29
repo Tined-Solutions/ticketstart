@@ -7,11 +7,16 @@ import { prefersReducedMotion } from '../../lib/motion.js'
 import Button from '../Button.jsx'
 
 /**
- * DateTimePicker — custom date + time picker for the event form.
+ * DateTimePicker — custom date (+ time) picker for the event form and
+ * date-only admin filters.
  *
- * Contract (kept identical to the native datetime-local input it replaces):
- * `value` is a local wall-clock string "YYYY-MM-DDTHH:mm"; `onChange` receives
- * the same shape. The parent owns the conversion to an ISO instant.
+ * Modes:
+ * - `mode="datetime"` (default): value contract "YYYY-MM-DDTHH:mm" (local
+ *   wall-clock) with hour/minute selects; past days disabled — the event form
+ *   contract, kept identical to the native datetime-local input it replaces.
+ * - `mode="date"`: value contract "YYYY-MM-DD", no time controls. With
+ *   `allowPast` the picker admits history (metrics filters) over a sane
+ *   navigable window; without it, past days stay disabled.
  *
  * Built on DayPicker/`@daypicker/react` v10 with Tailwind classNames mapped to
  * the app tokens (no structural style.css import: all slots are mapped here so
@@ -19,6 +24,7 @@ import Button from '../Button.jsx'
  */
 
 const VALUE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/
+const DATE_VALUE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 const HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'))
 // Minutes in 5-minute steps; an existing off-grid value is appended
@@ -96,8 +102,19 @@ const CALENDAR_CLASSNAMES = {
   range_end: '',
 }
 
-/** Parses "YYYY-MM-DDTHH:mm" (local wall time) into a draft { day, hours, minutes }. */
-function parseValue(value) {
+/** Parses the committed value (per mode) into a draft { day, hours, minutes }. */
+function parseValue(value, mode) {
+  if (mode === 'date') {
+    const match = typeof value === 'string' ? DATE_VALUE_PATTERN.exec(value) : null
+    if (!match) return { day: undefined, hours: '00', minutes: '00' }
+    const [, year, month, day] = match
+    return {
+      day: new Date(Number(year), Number(month) - 1, Number(day)),
+      hours: '00',
+      minutes: '00',
+    }
+  }
+
   const match = typeof value === 'string' ? VALUE_PATTERN.exec(value) : null
   if (!match) return { day: undefined, hours: '00', minutes: '00' }
   const [, year, month, day, hours, minutes] = match
@@ -108,10 +125,11 @@ function parseValue(value) {
   }
 }
 
-/** Human-readable es-AR label for the trigger (e.g. "vie, 25 de diciembre de 2026 · 20:00"). */
-function formatDisplayValue(value) {
-  const { day, hours, minutes } = parseValue(value)
+/** Human-readable es-AR label for the trigger ("vie, 25 de diciembre de 2026 · 20:00", date-only in date mode). */
+function formatDisplayValue(value, mode) {
+  const { day, hours, minutes } = parseValue(value, mode)
   if (!day) return ''
+  if (mode === 'date') return ES_DATE.format(day)
   const local = new Date(
     day.getFullYear(),
     day.getMonth(),
@@ -122,13 +140,11 @@ function formatDisplayValue(value) {
   return `${ES_DATE.format(local)} · ${ES_TIME.format(local)}`
 }
 
-/** Builds "YYYY-MM-DDTHH:mm" from a local Date + zero-padded strings (no timezone math). */
-function buildValue(day, hours, minutes) {
+/** Builds the committed value per mode from a local Date + zero-padded strings (no timezone math). */
+function buildValue(day, hours, minutes, mode) {
   const pad = (part) => String(part).padStart(2, '0')
-  return (
-    `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}` +
-    `T${hours}:${minutes}`
-  )
+  const datePart = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`
+  return mode === 'date' ? datePart : `${datePart}T${hours}:${minutes}`
 }
 
 export default function DateTimePicker({
@@ -138,9 +154,12 @@ export default function DateTimePicker({
   disabled = false,
   readOnly = false,
   className = '',
+  mode = 'datetime',
+  allowPast = false,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
 }) {
+  const isDateMode = mode === 'date'
   const generatedId = useId()
   const baseId = id || generatedId
   const panelId = `${baseId}-panel`
@@ -148,7 +167,7 @@ export default function DateTimePicker({
   const minutesId = `${baseId}-minutes`
 
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState(() => parseValue(value))
+  const [draft, setDraft] = useState(() => parseValue(value, mode))
 
   const triggerRef = useRef(null)
   const wasOpenRef = useRef(false)
@@ -161,16 +180,25 @@ export default function DateTimePicker({
     autoFocus: false,
   })
 
-  const { today, startMonth, endMonth } = useMemo(() => {
+  const { minSelectable, startMonth, endMonth } = useMemo(() => {
     const now = new Date()
+    if (allowPast) {
+      // Filters need history (completed events): keep a sane navigable window
+      // and leave every past day selectable.
+      return {
+        minSelectable: null,
+        startMonth: new Date(now.getFullYear() - 3, 0, 1),
+        endMonth: new Date(now.getFullYear() + 6, 11, 31),
+      }
+    }
     return {
       // Local midnight today: days before it are never selectable, and past
       // months are outside the navigable range entirely.
-      today: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+      minSelectable: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
       startMonth: new Date(now.getFullYear(), now.getMonth(), 1),
       endMonth: new Date(now.getFullYear() + 6, 11, 31),
     }
-  }, [])
+  }, [allowPast])
 
   // Return focus to the trigger when the popover closes (not on first render).
   // useDialog-restored focus would land nowhere here: DayPicker's autoFocus
@@ -220,17 +248,17 @@ export default function DateTimePicker({
     }
     // Re-sync the draft from the committed value: opening without changes must
     // never emit, and a closed picker never keeps a stale draft.
-    setDraft(parseValue(value))
+    setDraft(parseValue(value, mode))
     setOpen(true)
   }
 
   function handleConfirm() {
     if (!draft.day) return
-    onChange?.(buildValue(draft.day, draft.hours, draft.minutes))
+    onChange?.(buildValue(draft.day, draft.hours, draft.minutes, mode))
     setOpen(false)
   }
 
-  const displayValue = formatDisplayValue(value)
+  const displayValue = formatDisplayValue(value, mode)
   const isDisabled = disabled || readOnly
   // 5-minute grid, plus the current value if it sits off-grid (existing events
   // may carry any minute), so editing never loses the time.
@@ -255,7 +283,7 @@ export default function DateTimePicker({
       >
         <CalendarDays className="h-5 w-5 shrink-0 text-brand-1" aria-hidden="true" />
         <span className={`min-w-0 flex-1 truncate ${displayValue ? '' : 'text-text-muted'}`}>
-          {displayValue || 'Seleccioná fecha y hora'}
+          {displayValue || (isDateMode ? 'Seleccioná una fecha' : 'Seleccioná fecha y hora')}
         </span>
       </button>
 
@@ -265,8 +293,10 @@ export default function DateTimePicker({
           id={panelId}
           role="dialog"
           aria-modal="true"
-          aria-label="Seleccionar fecha y hora"
-          className="absolute left-0 top-full z-50 mt-2 w-[min(92vw,18rem)] max-w-full rounded-2xl border border-gris-oscuro/15 bg-white/95 p-2.5 shadow-xl backdrop-blur sm:w-[25rem]"
+          aria-label={isDateMode ? 'Seleccionar fecha' : 'Seleccionar fecha y hora'}
+          className={`absolute left-0 top-full z-50 mt-2 w-[min(92vw,18rem)] max-w-full rounded-2xl border border-gris-oscuro/15 bg-white/95 p-2.5 shadow-xl backdrop-blur ${
+            isDateMode ? 'sm:w-[20rem]' : 'sm:w-[25rem]'
+          }`}
         >
           <div className="sm:flex sm:items-start sm:gap-3">
             <div className="min-w-0 sm:flex-1">
@@ -282,61 +312,75 @@ export default function DateTimePicker({
                 navLayout="after"
                 startMonth={startMonth}
                 endMonth={endMonth}
-                disabled={{ before: today }}
+                disabled={minSelectable ? { before: minSelectable } : undefined}
                 autoFocus
                 labels={DAYPICKER_LABELS}
                 classNames={CALENDAR_CLASSNAMES}
               />
+              {isDateMode && (
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    variant="accent"
+                    onClick={handleConfirm}
+                    disabled={!draft.day}
+                    className="min-h-10"
+                  >
+                    Listo
+                  </Button>
+                </div>
+              )}
             </div>
 
-            <div className="sm:w-[6.5rem]">
-              <div className="mt-3 flex items-end gap-2 sm:mt-0 sm:flex-col sm:items-stretch sm:gap-1.5">
-                <label htmlFor={hoursId} className="min-w-0 flex-1">
-                  <span className="mb-0.5 block text-[12px] font-medium text-text-muted">Hora</span>
-                  <select
-                    id={hoursId}
-                    value={draft.hours}
-                    onChange={(event) =>
-                      setDraft((prev) => ({ ...prev, hours: event.target.value }))
-                    }
-                    className="w-full min-h-10"
-                  >
-                    {HOURS.map((hour) => (
-                      <option key={hour} value={hour}>
-                        {hour}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+            {!isDateMode && (
+              <div className="sm:w-[6.5rem]">
+                <div className="mt-3 flex items-end gap-2 sm:mt-0 sm:flex-col sm:items-stretch sm:gap-1.5">
+                  <label htmlFor={hoursId} className="min-w-0 flex-1">
+                    <span className="mb-0.5 block text-[12px] font-medium text-text-muted">Hora</span>
+                    <select
+                      id={hoursId}
+                      value={draft.hours}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, hours: event.target.value }))
+                      }
+                      className="w-full min-h-10"
+                    >
+                      {HOURS.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                <label htmlFor={minutesId} className="min-w-0 flex-1">
-                  <span className="mb-0.5 block text-[12px] font-medium text-text-muted">Minutos</span>
-                  <select
-                    id={minutesId}
-                    value={draft.minutes}
-                    onChange={(event) =>
-                      setDraft((prev) => ({ ...prev, minutes: event.target.value }))
-                    }
-                    className="w-full min-h-10"
-                  >
-                    {minuteOptions.map((minute) => (
-                      <option key={minute} value={minute}>
-                        {minute}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <label htmlFor={minutesId} className="min-w-0 flex-1">
+                    <span className="mb-0.5 block text-[12px] font-medium text-text-muted">Minutos</span>
+                    <select
+                      id={minutesId}
+                      value={draft.minutes}
+                      onChange={(event) =>
+                        setDraft((prev) => ({ ...prev, minutes: event.target.value }))
+                      }
+                      className="w-full min-h-10"
+                    >
+                      {minuteOptions.map((minute) => (
+                        <option key={minute} value={minute}>
+                          {minute}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <Button
+                  variant="accent"
+                  onClick={handleConfirm}
+                  disabled={!draft.day}
+                  className="mt-3 min-h-10 w-full sm:mt-1.5"
+                >
+                  Listo
+                </Button>
               </div>
-
-              <Button
-                variant="accent"
-                onClick={handleConfirm}
-                disabled={!draft.day}
-                className="mt-3 min-h-10 w-full sm:mt-1.5"
-              >
-                Listo
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       )}
