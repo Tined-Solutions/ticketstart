@@ -22,11 +22,18 @@ export default function DropdownMenu({
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') close()
     }
+    // Any scroll — page or an inner scroll container, caught in the capture
+    // phase — closes the menu: on mobile it must not stay open while it drifts
+    // off-screen or slides over the fixed navbar.
+    const handleScroll = () => close()
+
     document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
     return () => {
       document.removeEventListener('mousedown', handleMouseDown)
       document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScroll, { capture: true })
     }
   }, [open])
 
@@ -40,7 +47,7 @@ export default function DropdownMenu({
   return (
     <div
       ref={containerRef}
-      className={`relative ${open ? 'z-50' : ''} ${className}`}
+      className={`relative ${open ? 'z-40' : ''} ${className}`}
       {...rest}
     >
       <button
@@ -57,7 +64,7 @@ export default function DropdownMenu({
       {open && (
         <div
           role="menu"
-          className={`absolute ${alignClass} mt-2 w-48 rounded-lg glass-surface shadow-xl p-1 z-50`}
+          className={`absolute ${alignClass} mt-2 w-48 rounded-lg bg-surface border border-glass-border shadow-xl p-1 z-50`}
         >
           {items.map((item, i) => (
             <button

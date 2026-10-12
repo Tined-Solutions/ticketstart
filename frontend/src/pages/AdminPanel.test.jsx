@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AdminPanel from './AdminPanel.jsx'
 
@@ -1157,6 +1157,102 @@ describe('AdminPanel', () => {
     expect(menu).toBeInTheDocument()
     // The panel carries a high z-index so it paints above sibling rows
     expect(menu.className).toContain('z-50')
+  })
+
+  it('closes the kebab menu on scroll (mobile: never drifts off-screen)', async () => {
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    const row = eventRow('recital de rock nacional')
+    await userEvent.click(within(row).getByRole('button', { name: /^acciones/i }))
+
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+
+    fireEvent.scroll(window)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+  })
+
+  it('paginates events 10 per page (same row layout as before)', async () => {
+    const manyEvents = Array.from({ length: 12 }, (_, i) => ({
+      id: `ev-${i}`,
+      name: `Evento ${i}`,
+      // All future dates → the upcoming block, sorted soonest-first.
+      date: new Date(Date.now() + (i + 1) * 24 * 60 * 60 * 1000).toISOString(),
+      location: `Lugar ${i}`,
+      organizerEmail: `org${i}@example.com`,
+      status: 'Approved',
+    }))
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: manyEvents, total: 12, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pageSize: 2500 } })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Eventos (12)')).toBeInTheDocument()
+    })
+
+    const countRows = () => screen.getAllByRole('heading', { level: 3 }).length
+
+    expect(countRows()).toBe(10)
+    expect(screen.getByText('Página 1 de 2')).toBeInTheDocument()
+    expect(screen.getByText('Evento 0')).toBeInTheDocument()
+    expect(screen.queryByText('Evento 11')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /página siguiente/i }))
+
+    expect(countRows()).toBe(2)
+    expect(screen.getByText('Página 2 de 2')).toBeInTheDocument()
+    expect(screen.getByText('Evento 11')).toBeInTheDocument()
+    expect(screen.queryByText('Evento 0')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /página anterior/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /página siguiente/i })).toBeDisabled()
+  })
+
+  it('renders the metrics tab and fetches admin monetary metrics', async () => {
+    mockGet.mockImplementation((url) => {
+      if (url === '/admin/events') {
+        return Promise.resolve({ data: { items: mockEvents, total: 3, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/admin/users') {
+        return Promise.resolve({ data: { items: mockUsers, total: 3, page: 1, pageSize: 2500 } })
+      }
+      if (url === '/metrics/admin') {
+        return Promise.resolve({
+          data: { charged: 1000, refunded: 250, net: 750, ticketsSold: 5, refundOperations: 1, events: [] },
+        })
+      }
+      return Promise.reject(new Error('Unknown endpoint'))
+    })
+
+    render(<AdminPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/recital de rock nacional/i)).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('tab', { name: /métricas/i }))
+
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(
+        '/metrics/admin',
+        expect.objectContaining({ params: expect.anything() })
+      )
+    })
+    expect(await screen.findByText('Neto percibido')).toBeInTheDocument()
+    expect(screen.getByText('$ 750')).toBeInTheDocument()
   })
 })
 

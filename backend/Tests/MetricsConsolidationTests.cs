@@ -547,4 +547,107 @@ public class MetricsConsolidationTests : IDisposable
     }
 
     #endregion
+
+    #region Admin monetary metrics (admin-wide, APR-017 parity)
+
+    [Fact]
+    public async Task GetAdminMonetaryMetricsAsync_AggregatesChargedRefundedAndNetPerEvent()
+    {
+        // Arrange: one past and one upcoming event; a confirmed purchase each,
+        // with a partial refund on the past one.
+        var organizerId = Guid.NewGuid();
+        var pastEvent = SeedEvent(organizerId, "Past Festival");
+        pastEvent.Date = DateTime.UtcNow.AddDays(-10);
+        var upcomingEvent = SeedEvent(organizerId, "Upcoming Show");
+        var pastTt = SeedTicketType(pastEvent.Id, 100m);
+        var upcomingTt = SeedTicketType(upcomingEvent.Id, 50m);
+        SeedConfirmedPurchase(pastEvent.Id, pastTt.Id, quantity: 3, unitPrice: 100m, refundedTickets: 1, refundAmount: 40m);
+        SeedConfirmedPurchase(upcomingEvent.Id, upcomingTt.Id, quantity: 2, unitPrice: 50m);
+        await _context.SaveChangesAsync();
+        var service = new MetricsService(_context, _logger);
+
+        // Act
+        var metrics = await service.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter());
+
+        // Assert: money-based totals (charged − refunded).
+        Assert.Equal(400m, metrics.Charged); // 300 + 100
+        Assert.Equal(40m, metrics.Refunded);
+        Assert.Equal(360m, metrics.Net);
+        Assert.Equal(1, metrics.RefundOperations);
+        Assert.Equal(4, metrics.TicketsSold); // 2 + 2 (the refunded ticket is excluded)
+        Assert.Equal(2, metrics.Events.Count);
+
+        var pastRow = metrics.Events.Single(e => e.EventId == pastEvent.Id);
+        Assert.Equal(300m, pastRow.Charged);
+        Assert.Equal(40m, pastRow.Refunded);
+        Assert.Equal(260m, pastRow.Net);
+        Assert.Equal(2, pastRow.TicketsSold); // 3 tickets − 1 refunded
+        Assert.True(pastRow.IsPast);
+
+        var upcomingRow = metrics.Events.Single(e => e.EventId == upcomingEvent.Id);
+        Assert.Equal(100m, upcomingRow.Charged);
+        Assert.Equal(0m, upcomingRow.Refunded);
+        Assert.False(upcomingRow.IsPast);
+
+        // Money view ordering: biggest net first.
+        Assert.Equal(pastEvent.Id, metrics.Events[0].EventId);
+    }
+
+    [Fact]
+    public async Task GetAdminMonetaryMetricsAsync_DateRange_WindowsChargesAndRefunds()
+    {
+        // Arrange: helper stages the charge 5 days ago and the refund today.
+        var organizerId = Guid.NewGuid();
+        var eventEntity = SeedEvent(organizerId, "Windowed Event");
+        var tt = SeedTicketType(eventEntity.Id, 100m);
+        SeedConfirmedPurchase(eventEntity.Id, tt.Id, quantity: 2, unitPrice: 100m, refundedTickets: 1, refundAmount: 50m);
+        await _context.SaveChangesAsync();
+        var service = new MetricsService(_context, _logger);
+
+        // Act: window covering only today → charge out, refund in.
+        var today = await service.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter
+        {
+            From = DateTime.UtcNow.AddDays(-1)
+        });
+
+        // Assert
+        Assert.Equal(0m, today.Charged);
+        Assert.Equal(50m, today.Refunded);
+        Assert.Equal(-50m, today.Net);
+        Assert.Equal(1, today.RefundOperations);
+
+        // The unbounded window still sees both sides of the ledger.
+        var full = await service.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter());
+        Assert.Equal(200m, full.Charged);
+        Assert.Equal(50m, full.Refunded);
+        Assert.Equal(150m, full.Net);
+    }
+
+    [Fact]
+    public async Task GetAdminMonetaryMetricsAsync_EventStateFilter_SplitsPastAndUpcoming()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var pastEvent = SeedEvent(organizerId, "Old Show");
+        pastEvent.Date = DateTime.UtcNow.AddDays(-2);
+        var upcomingEvent = SeedEvent(organizerId, "New Show");
+        var pastTt = SeedTicketType(pastEvent.Id, 100m);
+        var upcomingTt = SeedTicketType(upcomingEvent.Id, 100m);
+        SeedConfirmedPurchase(pastEvent.Id, pastTt.Id, quantity: 1, unitPrice: 100m);
+        SeedConfirmedPurchase(upcomingEvent.Id, upcomingTt.Id, quantity: 1, unitPrice: 100m);
+        await _context.SaveChangesAsync();
+        var service = new MetricsService(_context, _logger);
+
+        // Act
+        var past = await service.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter { EventState = "past" });
+        var upcoming = await service.GetAdminMonetaryMetricsAsync(new AdminMetricsFilter { EventState = "upcoming" });
+
+        // Assert: each lifecycle slice contains exactly its own event.
+        Assert.Equal(pastEvent.Id, past.Events.Single().EventId);
+        Assert.True(past.Events.Single().IsPast);
+        Assert.Equal(upcomingEvent.Id, upcoming.Events.Single().EventId);
+        Assert.False(upcoming.Events.Single().IsPast);
+    }
+
+    #endregion
 }
