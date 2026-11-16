@@ -123,7 +123,7 @@ public class EventServiceImmutabilityTests : IDisposable
         // WHEN an update is attempted with a valid future request
         // THEN it throws EventFinalizedException (guard before SaveChanges)
         await Assert.ThrowsAsync<EventFinalizedException>(() =>
-            service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Organizador));
+            service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Admin));
 
         // PEM-003: no row change…
         var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
@@ -141,7 +141,7 @@ public class EventServiceImmutabilityTests : IDisposable
         var service = CreateService(new HideExpiredEventsOptions { Enabled = false });
 
         await Assert.ThrowsAsync<EventFinalizedException>(() =>
-            service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Organizador));
+            service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Admin));
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class EventServiceImmutabilityTests : IDisposable
         await _context.SaveChangesAsync();
         var service = CreateService();
 
-        var result = await service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Organizador);
+        var result = await service.UpdateEventAsync(evt.Id, ValidUpdateRequest(), _organizerId, UserRole.Admin);
 
         Assert.Equal("Updated Name", result.Name);
         var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
@@ -176,19 +176,30 @@ public class EventServiceImmutabilityTests : IDisposable
     #region PEM-002/003 — DeleteEventAsync
 
     [Fact]
-    public async Task DeleteEventAsync_PastEvent_Organizer_ThrowsUnauthorizedAccessException_EventStillPresent()
+    public async Task DeleteEventAsync_PastApprovedEvent_Organizer_ThrowsEventAlreadyApproved_EventStillPresent()
     {
-        // ED-001 precedence: the Admin-only delete guard runs BEFORE the finalized
-        // guard — an organizer gets 403 (UnauthorizedAccessException) on a past
-        // event, NEVER 409. (Inverted former owner-delete 409 behavior; the admin
-        // variant below keeps the PEM-002 409 contract.)
-        // GIVEN a past event owned by the caller
+        // For an organizer, "already approved" is decided BEFORE the finalized guard:
+        // they learn the real reason (only an Admin can delete it once approved).
         var evt = await SeedPastEvent();
         var service = CreateService();
 
-        // WHEN deletion is attempted by the organizer
-        // THEN it throws UnauthorizedAccessException (403, not 409) and the row is NOT removed
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<EventAlreadyApprovedException>(() =>
+            service.DeleteEventAsync(evt.Id, _organizerId, UserRole.Organizador));
+
+        Assert.True(await _context.Events.AnyAsync(e => e.Id == evt.Id));
+    }
+
+    [Fact]
+    public async Task DeleteEventAsync_PastPendingEvent_Organizer_ThrowsEventFinalized_EventStillPresent()
+    {
+        // A never-approved event that already happened is still immutable (PEM-001).
+        var evt = await SeedPastEvent();
+        evt.Status = EventStatus.Pending;
+        await _context.SaveChangesAsync();
+        _context.ChangeTracker.Clear();
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<EventFinalizedException>(() =>
             service.DeleteEventAsync(evt.Id, _organizerId, UserRole.Organizador));
 
         Assert.True(await _context.Events.AnyAsync(e => e.Id == evt.Id));
@@ -229,7 +240,7 @@ public class EventServiceImmutabilityTests : IDisposable
         request.ImageUrl = "https://test.r2.dev/events/new.jpg";
 
         await Assert.ThrowsAsync<EventFinalizedException>(() =>
-            service.UpdateEventAsync(evt.Id, request, _organizerId, UserRole.Organizador));
+            service.UpdateEventAsync(evt.Id, request, _organizerId, UserRole.Admin));
 
         // PEM-003: no save and no cleanup side-effect
         var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);

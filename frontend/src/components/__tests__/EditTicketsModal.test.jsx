@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EditTicketsModal from '../EditTicketsModal.jsx'
 import { queryKeys } from '../../lib/queryKeys.js'
@@ -88,10 +88,10 @@ describe('EditTicketsModal', () => {
     await userEvent.clear(qty1)
     await userEvent.type(qty1, '80')
 
-    // Add a new type with a $0 price (ATE-009: mirrors price >= 0)
+    // Add a new type (prices are natural numbers: whole pesos >= 1)
     await userEvent.click(screen.getByRole('button', { name: /agregar tipo de entrada/i }))
     await userEvent.type(screen.getByLabelText('Nombre de la entrada 3'), 'VIP Gold')
-    await userEvent.type(screen.getByLabelText('Precio de la entrada 3'), '0')
+    await userEvent.type(screen.getByLabelText('Precio de la entrada 3'), '500')
     await userEvent.type(screen.getByLabelText('Cantidad de la entrada 3'), '5')
 
     // Delete row 2
@@ -103,7 +103,7 @@ describe('EditTicketsModal', () => {
       expect(mockPut).toHaveBeenCalledWith('/admin/events/event-1/ticket-types', {
         ticketTypes: [
           { id: 'tt-1', name: 'General Nuevo', price: 2000, quantity: 80 },
-          { name: 'VIP Gold', price: 0, quantity: 5 },
+          { name: 'VIP Gold', price: 500, quantity: 5 },
         ],
       })
     })
@@ -142,6 +142,22 @@ describe('EditTicketsModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/cantidad/i)
+    expect(mockPut).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['0', 'El precio debe ser mayor a 0'],
+    ['1.5', 'El precio debe ser un número entero, sin decimales'],
+  ])('rejects the price %s without calling the API', async (price, message) => {
+    loadEvent()
+    renderModal()
+
+    const price1 = await screen.findByLabelText('Precio de la entrada 1')
+    fireEvent.change(price1, { target: { value: price } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
     expect(mockPut).not.toHaveBeenCalled()
   })
 

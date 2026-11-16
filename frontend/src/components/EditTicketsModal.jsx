@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { queryKeys } from '../lib/queryKeys.js'
+import { getTicketPriceError, ticketPriceInputProps } from '../lib/ticketPrice.js'
 import { useManagementEvent } from '../hooks/useManagementEvent.js'
 import { useDialog } from '../hooks/useDialog.js'
 import Button from './Button.jsx'
@@ -90,7 +91,6 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
 
     rows.forEach((row, index) => {
       const name = row.name.trim()
-      const price = Number(row.price)
       const quantity = Number(row.quantity)
 
       if (!name) {
@@ -99,8 +99,9 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
         errors[`name-${index}`] = `El nombre no puede superar los ${MAX_NAME_LENGTH} caracteres`
       }
 
-      if (row.price === '' || !Number.isFinite(price) || price < 0) {
-        errors[`price-${index}`] = 'El precio debe ser mayor o igual a 0'
+      const priceError = getTicketPriceError(row.price)
+      if (priceError) {
+        errors[`price-${index}`] = priceError
       }
 
       if (
@@ -234,10 +235,8 @@ export default function EditTicketsModal({ eventId, eventName, onClose, onSucces
                     <label htmlFor={fieldId('price', index)}>Precio ($)</label>
                     <input
                       id={fieldId('price', index)}
-                      type="number"
+                      {...ticketPriceInputProps}
                       className="w-full"
-                      min="0"
-                      step="0.01"
                       value={row.price}
                       aria-label={`Precio de la entrada ${index + 1}`}
                       onChange={(e) => updateRow(index, 'price', e.target.value)}

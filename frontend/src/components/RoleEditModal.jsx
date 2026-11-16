@@ -3,15 +3,14 @@ import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import Modal from './Modal.jsx'
 import Button from './Button.jsx'
+import { ROLE_LABELS } from '../lib/roles.js'
 
 // All UserRole values the role-edit modal MUST offer (AUM-005). The value is
 // the enum name the API expects; the label is the display copy.
-const ROLE_OPTIONS = [
-  { value: 'Organizador', label: 'Organizador' },
-  { value: 'Staff', label: 'Staff' },
-  { value: 'Admin', label: 'Admin' },
-  { value: 'SinAcceso', label: 'Sin acceso' },
-]
+const ROLE_OPTIONS = ['Organizador', 'Staff', 'Admin', 'SinAcceso'].map((value) => ({
+  value,
+  label: ROLE_LABELS[value],
+}))
 
 /**
  * Role-edit modal (AUM-001 / AUM-005, D13): offers every UserRole value and

@@ -63,7 +63,8 @@ public class PendingEmailRetryTests : IDisposable
             _mockEmailService.Object,
             _mockLogger.Object,
             TimeProvider.System,
-            Options.Create(new HideExpiredEventsOptions()));
+            Options.Create(new HideExpiredEventsOptions()),
+            Options.Create(new ServiceFeeOptions()));
     }
 
     public void Dispose()
@@ -164,6 +165,70 @@ public class PendingEmailRetryTests : IDisposable
     }
 
     [Fact]
+    public async Task RetryPendingEmailsAsync_SendsAmountsActuallyPaid()
+    {
+        // Paid 1 × 50 + 5 fee; the price was raised to 80 before the retry ran.
+        var reservationId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+
+        _context.Events.Add(new Event
+        {
+            Id = eventId, Name = "Test", Description = "D",
+            Date = DateTime.UtcNow.AddDays(1), Location = "L",
+            OrganizerId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        _context.TicketTypes.Add(new TicketType
+        {
+            Id = ticketTypeId, EventId = eventId, Name = "GA",
+            Price = 80m, Quantity = 100, CreatedAt = DateTime.UtcNow
+        });
+        _context.Reservations.Add(new Reservation
+        {
+            Id = reservationId, EventId = eventId, TicketTypeId = ticketTypeId,
+            Quantity = 1, PurchaserDNI = "333", ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            Status = ReservationStatus.Confirmed, CreatedAt = DateTime.UtcNow
+        });
+        _context.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(), ReservationId = reservationId, MercadoPagoId = "pay-paid-retry",
+            Amount = 50m, ServiceFee = 5m, Status = TransactionStatus.Approved,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        _context.Tickets.Add(new Ticket
+        {
+            Id = ticketId, EventId = eventId, TicketTypeId = ticketTypeId,
+            ReservationId = reservationId, PurchaserEmail = "paid@test.com",
+            PurchaserDNI = "333", QRCodeData = "qr3", IsRefunded = false,
+            CreatedAt = DateTime.UtcNow
+        });
+        _context.PendingEmailSends.Add(new PendingEmailSend
+        {
+            Id = Guid.NewGuid(),
+            ReservationId = reservationId,
+            PaymentId = "pay-paid-retry",
+            RecipientEmail = "paid@test.com",
+            TicketIds = [ticketId],
+            Attempts = 1,
+            MaxAttempts = 5,
+            Status = "pending",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        await _paymentService.RetryPendingEmailsAsync();
+
+        _mockEmailService.Verify(e => e.SendTicketEmailAsync(
+            "paid@test.com",
+            It.IsAny<IEnumerable<Ticket>>(),
+            It.IsAny<Event>(),
+            It.IsAny<string?>(),
+            It.Is<PurchaseAmounts?>(a => a != null && a.Subtotal == 50m && a.ServiceFee == 5m)), Times.Once);
+    }
+
+    [Fact]
     public async Task RetryPendingEmailsAsync_Exhaustion_MarksExhausted()
     {
         // TRIANGULATION: row at max-1 attempts, send fails → becomes exhausted
@@ -213,7 +278,7 @@ public class PendingEmailRetryTests : IDisposable
         await _context.SaveChangesAsync();
 
         _mockEmailService
-            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
+            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()))
             .ThrowsAsync(new InvalidOperationException("Still failing"));
 
         var response = await _paymentService.RetryPendingEmailsAsync();

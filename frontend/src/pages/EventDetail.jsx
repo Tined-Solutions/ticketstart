@@ -3,6 +3,8 @@ import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Ticket } from 'lucide-react'
 import { useEvent } from '../hooks/useEvent.js'
+import { useCheckoutConfig } from '../hooks/useCheckoutConfig.js'
+import { calculateServiceFee } from '../lib/serviceFee.js'
 import { formatEventDate, formatCurrency } from '../lib/format.js'
 import GlassCard from '../components/ui/GlassCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
@@ -55,6 +57,12 @@ export default function EventDetail() {
   const navigate = useNavigate()
 
   const { data: event, isLoading, isError, error, refetch } = useEvent(id)
+  // Service fee percentage comes from the backend (the authority on what
+  // Mercado Pago charges). Reserving waits for it so the buyer always sees
+  // the real total before committing.
+  const { data: checkoutConfig } = useCheckoutConfig()
+  const serviceFeePercentage = checkoutConfig?.serviceFeePercentage
+  const isFeeReady = typeof serviceFeePercentage === 'number'
 
   const [selectedTicketTypeId, setSelectedTicketTypeId] = useState(null)
   const [quantities, setQuantities] = useState({})
@@ -147,10 +155,15 @@ export default function EventDetail() {
   const selectedQuantity = selectedTicketTypeId ? quantities[selectedTicketTypeId] || 0 : 0
 
   const totalTickets = selectedQuantity
-  const totalPrice = selectedTicketType ? selectedQuantity * (selectedTicketType.price || 0) : 0
+  const subtotal = selectedTicketType ? selectedQuantity * (selectedTicketType.price || 0) : 0
+  const serviceFee = isFeeReady ? calculateServiceFee(subtotal, serviceFeePercentage) : null
+  const totalPrice = subtotal + (serviceFee ?? 0)
+  const feeLabel = isFeeReady
+    ? `Cargo por servicio (${serviceFeePercentage.toLocaleString('es-AR')}%)`
+    : 'Cargo por servicio'
 
   const handleReserve = () => {
-    if (!selectedTicketType || selectedQuantity === 0) return
+    if (!selectedTicketType || selectedQuantity === 0 || !isFeeReady) return
 
     navigate('/checkout', {
       state: {
@@ -166,6 +179,9 @@ export default function EventDetail() {
           quantity: selectedQuantity,
         },
         totalTickets,
+        subtotal,
+        serviceFeePercentage,
+        serviceFee,
         totalPrice,
       },
     })
@@ -355,7 +371,7 @@ export default function EventDetail() {
             horizontal divider separates the ticket grid from the detail below.
             The CTA is a local button (not the shared Button) so its hover stays
             subtle — no lift/translate — and its size stays contained. */}
-            <div className="mt-10">
+            <section aria-label="Resumen de compra" className="mt-10">
               <div aria-hidden="true" className="h-px w-full bg-gris-oscuro/15" />
               <div className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-baseline sm:justify-between">
                 <div>
@@ -366,25 +382,32 @@ export default function EventDetail() {
                       : 'Ninguna'}
                   </p>
                 </div>
-                <div className="sm:text-right">
-                  <p className="text-sm text-text-2">Total</p>
-                  <p className="mt-1 font-display text-xl font-bold text-brand-1">
-                    {formatCurrency(totalPrice)}
-                  </p>
-                </div>
+                {/* Price breakdown: the service fee is shown BEFORE reserving
+                    (consumer-information requirement) and matches what
+                    Mercado Pago charges. */}
+                <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-6 gap-y-1 sm:justify-end">
+                  <dt className="text-sm text-text-2">Subtotal</dt>
+                  <dd className="text-right text-sm text-text-1">{formatCurrency(subtotal)}</dd>
+                  <dt className="text-sm text-text-2">{feeLabel}</dt>
+                  <dd className="text-right text-sm text-text-1">{formatCurrency(serviceFee)}</dd>
+                  <dt className="text-sm text-text-2">Total</dt>
+                  <dd className="text-right font-display text-xl font-bold text-brand-1">
+                    {isFeeReady ? formatCurrency(totalPrice) : formatCurrency(null)}
+                  </dd>
+                </dl>
               </div>
               <div className="mt-4 flex sm:justify-end">
                 <button
                   type="button"
                   onClick={handleReserve}
-                  disabled={!selectedTicketType || selectedQuantity === 0}
+                  disabled={!selectedTicketType || selectedQuantity === 0 || !isFeeReady}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-1 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   <Ticket className="h-4 w-4" aria-hidden="true" />
                   Reservar entradas
                 </button>
               </div>
-            </div>
+            </section>
           </>
         )}
       </section>

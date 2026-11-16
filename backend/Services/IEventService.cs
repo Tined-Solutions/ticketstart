@@ -50,15 +50,15 @@ public interface IEventService
     Task<IEnumerable<EventWithAvailability>> GetScannableEventsAsync();
 
     /// <summary>
-    /// Updates an event with ownership validation.
-    /// Only the event owner or Admin role can update events.
+    /// Updates an event. Admin-only: once created, an organizer changes their event
+    /// only through Ticket-Start support (the owner is NOT allowed).
     /// </summary>
     /// <param name="eventId">ID of the event to update</param>
     /// <param name="request">Update request containing modified event details</param>
     /// <param name="userId">ID of the user attempting the update</param>
     /// <param name="userRole">Role of the user attempting the update</param>
     /// <returns>The updated event</returns>
-    /// <exception cref="UnauthorizedAccessException">Thrown when user is not the owner and not an Admin</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when the user is not an Admin (editing is Admin-only, owner included)</exception>
     /// <exception cref="KeyNotFoundException">Thrown when event is not found</exception>
     Task<Event> UpdateEventAsync(Guid eventId, UpdateEventRequest request, Guid userId, UserRole userRole);
 

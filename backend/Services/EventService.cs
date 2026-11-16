@@ -74,8 +74,7 @@ public class EventService : IEventService
             if (string.IsNullOrWhiteSpace(ticketType.Name))
                 throw new ArgumentException("Ticket type name is required");
             
-            if (ticketType.Price < 0)
-                throw new ArgumentException("Ticket price cannot be negative");
+            TicketPriceRules.EnsureValid(ticketType.Price);
             
             if (ticketType.Quantity <= 0)
                 throw new ArgumentException("Ticket quantity must be greater than zero");
@@ -422,8 +421,7 @@ public class EventService : IEventService
                 if (name.Trim().Length > 100)
                     throw new ArgumentException("Ticket type name must not exceed 100 characters", nameof(name));
 
-                if (price < 0)
-                    throw new ArgumentException("Ticket price cannot be negative", nameof(price));
+                TicketPriceRules.EnsureValid(price, nameof(price));
 
                 if (quantity <= 0)
                     throw new ArgumentException("Ticket quantity must be greater than zero", nameof(quantity));
@@ -594,8 +592,7 @@ public class EventService : IEventService
             if (item.Name.Trim().Length > 100)
                 throw new ArgumentException("Ticket type name must not exceed 100 characters", nameof(item.Name));
 
-            if (item.Price < 0)
-                throw new ArgumentException("Ticket price cannot be negative", nameof(item.Price));
+            TicketPriceRules.EnsureValid(item.Price, nameof(item.Price));
 
             if (item.Quantity <= 0)
                 throw new ArgumentException("Ticket quantity must be greater than zero", nameof(item.Quantity));
@@ -668,12 +665,14 @@ public class EventService : IEventService
             throw new KeyNotFoundException($"Event with ID {eventId} not found");
         }
 
-        // Validate ownership (owner or admin can update)
-        if (eventEntity.OrganizerId != userId && userRole != UserRole.Admin)
+        // Editing is Admin-only — the owner organizer included: once created, an
+        // event changes only through Ticket-Start support. Runs BEFORE the
+        // finalized guard so a non-admin never gets 409; no side effects past here.
+        if (userRole != UserRole.Admin)
         {
-            _logger.LogWarning("User {UserId} unauthorized to update event {EventId} owned by {OrganizerId}", 
-                userId, eventId, eventEntity.OrganizerId);
-            throw new UnauthorizedAccessException("You do not have permission to update this event");
+            _logger.LogWarning("User {UserId} (role {UserRole}) denied update of event {EventId} owned by {OrganizerId} — Admin-only",
+                userId, userRole, eventId, eventEntity.OrganizerId);
+            throw new UnauthorizedAccessException("Only administrators have permission to update events");
         }
 
         // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
@@ -815,37 +814,35 @@ public class EventService : IEventService
     {
         _logger.LogInformation("User {UserId} attempting to delete event {EventId}", userId, eventId);
 
-        var eventEntity = await _context.Events.FindAsync(eventId);
+        // Untracked snapshot for the authorization decision only: the organizer path
+        // re-reads the row under a lock, so a tracked copy here would go stale.
+        var snapshot = await _context.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == eventId);
 
-        if (eventEntity == null)
+        if (snapshot == null)
         {
             _logger.LogWarning("Event {EventId} not found for deletion", eventId);
             throw new KeyNotFoundException($"Event with ID {eventId} not found");
         }
 
-        // ED-001: deletion is Admin-only — organizers lose delete authority for ANY
-        // event (any status/age). Runs BEFORE the finalized guard so an organizer
-        // never receives 409 from delete; no side effects can occur past this point.
-        if (userRole != UserRole.Admin)
+        string imageUrl;
+        if (userRole == UserRole.Admin)
         {
-            _logger.LogWarning("User {UserId} (role {UserRole}) denied delete of event {EventId} — Admin-only (ED-001)", userId, userRole, eventId);
-            throw new UnauthorizedAccessException("Only administrators can delete events");
+            imageUrl = await DeleteAsAdminAsync(eventId);
         }
-
-        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
-        // the Remove + SaveChanges + R2 image cleanup below.
-        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
-
-        // Store image URL for cleanup
-        var imageUrl = eventEntity.ImageUrl;
-
-        // Delete event (cascade will handle related entities)
-        _context.Events.Remove(eventEntity);
-        await _context.SaveChangesAsync();
+        else if (userRole == UserRole.Organizador && snapshot.OrganizerId == userId)
+        {
+            imageUrl = await DeleteOwnUnapprovedEventAsync(eventId, userId);
+        }
+        else
+        {
+            // Rejected BEFORE any guard/side effect: no 409 leaks to a non-owner.
+            _logger.LogWarning("User {UserId} (role {UserRole}) denied delete of event {EventId}", userId, userRole, eventId);
+            throw new UnauthorizedAccessException("You do not have permission to delete this event");
+        }
 
         _logger.LogInformation("Event {EventId} deleted successfully by user {UserId}", eventId, userId);
 
-        // Clean up associated image from R2 storage
+        // Clean up associated image from R2 storage (after the row is gone)
         if (!string.IsNullOrWhiteSpace(imageUrl))
         {
             var imageDeleted = await DeleteImageAsync(imageUrl);
@@ -854,6 +851,81 @@ public class EventService : IEventService
                 _logger.LogWarning("Failed to delete image for event {EventId}, but event was deleted successfully", eventId);
             }
         }
+    }
+
+    /// <summary>Admin: any event, any status (except finalized). Returns the image to clean up.</summary>
+    private async Task<string> DeleteAsAdminAsync(Guid eventId)
+    {
+        var eventEntity = await _context.Events.FindAsync(eventId)
+            ?? throw new KeyNotFoundException($"Event with ID {eventId} not found");
+
+        // PEM-001/ADR-6: a finalized event is immutable — the guard throws BEFORE
+        // the Remove + SaveChanges + R2 image cleanup.
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
+
+        var imageUrl = eventEntity.ImageUrl;
+        _context.Events.Remove(eventEntity); // cascade handles related entities
+        await _context.SaveChangesAsync();
+        return imageUrl;
+    }
+
+    /// <summary>
+    /// Organizer: their OWN event, only while it is NOT approved (Pending/Rejected).
+    /// An Admin may approve the same event at the same moment, so on PostgreSQL the
+    /// status is re-read under a row lock (SELECT ... FOR UPDATE) inside a
+    /// transaction: whichever commits first wins, and the loser gets a clean error —
+    /// the organizer a 409 "event-approved", the Admin a 404 (see ApproveEventAsync).
+    /// </summary>
+    private async Task<string> DeleteOwnUnapprovedEventAsync(Guid eventId, Guid userId)
+    {
+        if (!_context.Database.IsRelational())
+        {
+            // InMemory (tests): no locks/transactions; same checks, same outcome.
+            var entity = await _context.Events.FirstOrDefaultAsync(e => e.Id == eventId)
+                ?? throw new KeyNotFoundException($"Event with ID {eventId} not found");
+            var imageUrl = EnsureOrganizerCanDelete(entity, userId);
+            _context.Events.Remove(entity);
+            await _context.SaveChangesAsync();
+            return imageUrl;
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+
+            var locked = _context.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL"
+                ? await _context.Events
+                    .FromSqlInterpolated($"SELECT * FROM \"Events\" WHERE \"Id\" = {eventId} FOR UPDATE")
+                    .FirstOrDefaultAsync()
+                : await _context.Events.FirstOrDefaultAsync(e => e.Id == eventId);
+
+            if (locked == null)
+                throw new KeyNotFoundException($"Event with ID {eventId} not found");
+
+            var imageUrl = EnsureOrganizerCanDelete(locked, userId);
+            _context.Events.Remove(locked);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return imageUrl;
+        });
+    }
+
+    private string EnsureOrganizerCanDelete(Event eventEntity, Guid userId)
+    {
+        if (eventEntity.OrganizerId != userId)
+            throw new UnauthorizedAccessException("You do not have permission to delete this event");
+
+        // "Approved" is decided before "finalized": the organizer learns the real
+        // reason they can't delete it (only an Admin can, once approved).
+        if (eventEntity.Status == EventStatus.Approved)
+        {
+            _logger.LogInformation("Organizer {UserId} tried to delete approved event {EventId}", userId, eventEntity.Id);
+            throw new EventAlreadyApprovedException();
+        }
+
+        EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
+        return eventEntity.ImageUrl;
     }
 
     /// <summary>

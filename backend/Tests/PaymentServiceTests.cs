@@ -48,7 +48,8 @@ public class PaymentServiceTests : IDisposable
             new Mock<IEmailService>().Object,
             new Mock<ILogger<PaymentService>>().Object,
             TimeProvider.System,
-            Options.Create(new HideExpiredEventsOptions()));
+            Options.Create(new HideExpiredEventsOptions()),
+            Options.Create(new ServiceFeeOptions()));
 
         _reservationService = new ReservationService(
             _context,
@@ -187,7 +188,8 @@ public class PaymentServiceTests : IDisposable
         new Mock<IEmailService>().Object,
         new Mock<ILogger<PaymentService>>().Object,
         TimeProvider.System,
-        Options.Create(new HideExpiredEventsOptions()));
+        Options.Create(new HideExpiredEventsOptions()),
+            Options.Create(new ServiceFeeOptions()));
 
     #region WI7 — ConfirmPaymentAsync reasons (return from Mercado Pago)
 

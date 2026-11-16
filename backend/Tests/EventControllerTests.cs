@@ -209,42 +209,18 @@ public class EventControllerTests
 
     #endregion
 
-    #region Non-admin owner does not log audit
+    #region Editing is Admin-only
 
     [Fact]
-    public async Task UpdateEvent_OwnerRole_DoesNotLogAdminAudit()
+    public void UpdateEvent_RequiresAdminRolePolicy()
     {
-        // Arrange
-        var ownerId = Guid.NewGuid();
-        var eventId = Guid.NewGuid();
-        var request = new UpdateEventRequest
-        {
-            Name = "Updated Event",
-            Description = "Updated",
-            Date = DateTime.UtcNow.AddDays(60),
-            Location = "Updated Location"
-        };
-        var updatedEvent = new Event
-        {
-            Id = eventId,
-            Name = request.Name,
-            Description = request.Description,
-            Date = request.Date,
-            Location = request.Location,
-            OrganizerId = ownerId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        // Once created, an event changes only through Ticket-Start support (Admin):
+        // the owner organizer no longer passes the gate (EventOwnership was dropped).
+        var method = typeof(EventController).GetMethod(nameof(EventController.UpdateEvent))!;
+        var authorize = Assert.Single(method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>());
 
-        SetAuthenticatedUser(ownerId, UserRole.Organizador);
-        _mockEventService.Setup(s => s.UpdateEventAsync(eventId, request, ownerId, UserRole.Organizador)).ReturnsAsync(updatedEvent);
-        _mockEventService.Setup(s => s.GetEventByIdAsync(eventId, true)).ReturnsAsync(new EventWithAvailability { Id = eventId });
-
-        // Act
-        await _controller.UpdateEvent(eventId, request);
-
-        // Assert
-        _mockAuditLogService.Verify(s => s.LogActionAsync(It.IsAny<AuditLogContext>()), Times.Never);
+        Assert.Equal("RequireAdminRole", authorize.Policy);
     }
 
     #endregion
@@ -483,48 +459,67 @@ public class EventControllerTests
 
     #endregion
 
-    #region ED-001 — Organizer delete rejected for any status → 403 (WAF)
+    #region Organizer delete: own events only while NOT approved (WAF)
 
     [Fact]
-    public async Task DeleteEvent_OrganizerActiveEvent_403()
+    public async Task DeleteEvent_OrganizerOwnPendingEvent_204_Deleted()
     {
-        // ED-001: organizer deletes their own Approved future event → 403 Forbidden
-        // (EventOwnership lets the request reach the service; the Admin-only guard
-        // rejects it there) and the event survives.
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
-        var eventId = factory.SeedEvent("Active Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(2), organizerId, EventStatus.Approved);
+        var eventId = factory.SeedEvent("Pending Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(10), organizerId, EventStatus.Pending);
         var cookie = await factory.LoginAndGetCookieAsync(organizerId);
         using var client = factory.CreateClientWithCookie(cookie);
         client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
 
         var response = await client.DeleteAsync($"/api/events/{eventId}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        var after = await client.GetAsync($"/api/events/{eventId}/manage");
-        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Verified as an Admin (an organizer gets 403 for any event they don't own,
+        // including one that no longer exists).
+        var adminCookie = await factory.LoginAndGetCookieAsync(factory.SeedAdmin());
+        using var admin = factory.CreateClientWithCookie(adminCookie);
+        var after = await admin.GetAsync($"/api/events/{eventId}/manage");
+        Assert.Equal(HttpStatusCode.NotFound, after.StatusCode);
     }
 
     [Fact]
-    public async Task DeleteEvent_OrganizerPastEvent_403_Not409()
+    public async Task DeleteEvent_OrganizerForeignPendingEvent_403_Survives()
     {
-        // ED-001 precedence: organizer + past event → 403 from the Admin-only guard,
-        // NOT 409 event-finalized (authorization is decided before the finalized guard).
+        using var factory = new EventCatalogApiFactory();
+        var ownerId = factory.SeedOrganizer();
+        var otherOrganizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Someone Else's", factory.Clock.GetUtcNow().UtcDateTime.AddDays(10), ownerId, EventStatus.Pending);
+        var cookie = await factory.LoginAndGetCookieAsync(otherOrganizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.DeleteAsync($"/api/events/{eventId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(2)]   // active approved event
+    [InlineData(-2)]  // past approved event: "approved" is decided before "finalized"
+    public async Task DeleteEvent_OrganizerOwnApprovedEvent_409_EventApproved_Survives(int daysFromNow)
+    {
+        // Once approved, only an Admin can delete it. 409 + a typed problem lets the
+        // UI explain it (e.g. an Admin approved it right before the organizer clicked).
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
-        var pastId = factory.SeedEvent("Past Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
+        var eventId = factory.SeedEvent("Approved Own Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(daysFromNow), organizerId, EventStatus.Approved);
         var cookie = await factory.LoginAndGetCookieAsync(organizerId);
         using var client = factory.CreateClientWithCookie(cookie);
         client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
 
-        var response = await client.DeleteAsync($"/api/events/{pastId}");
+        var response = await client.DeleteAsync($"/api/events/{eventId}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        // A bare Forbid() carries no problem+json body — a problem+json content type
-        // here would mean the PEM-002 409 path fired, which ED-001 forbids.
-        Assert.NotEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemDetailsAsync(response);
+        Assert.Equal("event-approved", problem!.Type);
 
-        var after = await client.GetAsync($"/api/events/{pastId}/manage");
+        var after = await client.GetAsync($"/api/events/{eventId}/manage");
         Assert.Equal(HttpStatusCode.OK, after.StatusCode);
     }
 
@@ -542,11 +537,13 @@ public class EventControllerTests
     [Fact]
     public async Task UpdateEvent_PastEvent_409_EventFinalized_NoSave()
     {
-        // PEM-002/003: PUT on a past event → 409 event-finalized, no row change.
+        // PEM-002/003: an ADMIN PUT on a past event → 409 event-finalized, no row change.
+        // (Editing is Admin-only; the organizer half is UpdateEvent_OwnerOrganizer_403_NoSave.)
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
+        var adminId = factory.SeedAdmin();
         var pastId = factory.SeedEvent("Past To Update", factory.Clock.GetUtcNow().UtcDateTime.AddDays(-2), organizerId);
-        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(adminId);
         using var client = factory.CreateClientWithCookie(cookie);
         client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
 
@@ -579,11 +576,41 @@ public class EventControllerTests
     }
 
     [Fact]
+    public async Task UpdateEvent_OwnerOrganizer_403_NoSave()
+    {
+        // Editing is Admin-only: once created, the owner organizer changes their
+        // event only through Ticket-Start support. End-to-end through the real
+        // auth pipeline (cookie + CSRF + policy).
+        using var factory = new EventCatalogApiFactory();
+        var organizerId = factory.SeedOrganizer();
+        var eventId = factory.SeedEvent("Owned Event", factory.Clock.GetUtcNow().UtcDateTime.AddDays(10), organizerId);
+        var cookie = await factory.LoginAndGetCookieAsync(organizerId);
+        using var client = factory.CreateClientWithCookie(cookie);
+        client.DefaultRequestHeaders.Add("X-CSRF-PROTECT", "1");
+
+        var response = await client.PutAsJsonAsync($"/api/events/{eventId}", new
+        {
+            name = "Mutated Name",
+            description = "x",
+            date = factory.Clock.GetUtcNow().UtcDateTime.AddDays(20),
+            location = "Y"
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        // The owner can still CONSULT the event, and nothing changed.
+        var after = await client.GetAsync($"/api/events/{eventId}/manage");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        var body = await after.Content.ReadFromJsonAsync<EventWithAvailability>();
+        Assert.Equal("Owned Event", body!.Name);
+    }
+
+    [Fact]
     public async Task DeleteEvent_PastEvent_409_EventFinalized()
     {
         // PEM-002 (ED-002): an ADMIN deleting a past event → 409; the row survives.
-        // (The organizer half is covered by DeleteEvent_OrganizerPastEvent_403_Not409
-        // — organizers are rejected by the ED-001 guard before the finalized guard.)
+        // (The organizer half is covered by DeleteEvent_OrganizerOwnApprovedEvent_409_EventApproved_Survives
+        // — for an organizer, "already approved" is decided before the finalized guard.)
         using var factory = new EventCatalogApiFactory();
         var organizerId = factory.SeedOrganizer();
         var adminId = factory.SeedAdmin();

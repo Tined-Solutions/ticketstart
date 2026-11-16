@@ -50,14 +50,12 @@ function previewItems() {
 }
 
 describe('EventForm — ticket-type ordering preview (create mode)', () => {
-  it('shows the ordering hint in create mode', () => {
+  it('does not show a fixed ordering hint (the live preview is enough)', () => {
     renderCreateForm()
 
     expect(
-      screen.getByText(
-        'En la página del evento se muestran de la más cara a la más barata.'
-      )
-    ).toBeInTheDocument()
+      screen.queryByText(/en la página del evento se muestran de la más cara a la más barata/i)
+    ).not.toBeInTheDocument()
   })
 
   it('previews valid ticket types by price descending, ties by name ascending', async () => {

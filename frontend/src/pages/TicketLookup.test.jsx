@@ -642,11 +642,13 @@ describe('TicketLookup', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('shows Verified text after Turnstile success', async () => {
+  it('does not show a "Verified" label after Turnstile success', async () => {
     render(<TicketLookup />)
 
     await activateTurnstile()
 
-    expect(screen.getByText(/✓ Verified/)).toBeInTheDocument()
+    // The invisible CAPTCHA passes on page load; a label there means nothing to the user.
+    expect(screen.queryByText(/verified/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reenviar entradas/i })).toBeEnabled()
   })
 })

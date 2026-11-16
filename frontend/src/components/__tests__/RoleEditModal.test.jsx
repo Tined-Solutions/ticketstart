@@ -30,6 +30,8 @@ describe('RoleEditModal', () => {
     // Display copy renders SinAcceso as "Sin acceso"
     const labels = Array.from(select.options).map((option) => option.textContent)
     expect(labels).toContain('Sin acceso')
+    expect(labels).toContain('Productor/Organizador')
+    expect(labels).toContain('Staff/Acomodador')
   })
 
   it('pre-selects the current role and PUTs the new role on confirm, then fires success', async () => {

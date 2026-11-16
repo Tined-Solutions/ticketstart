@@ -509,7 +509,10 @@ public class EventServiceTicketStockTests : IDisposable
     [Theory]
     [InlineData(-1)]
     [InlineData(-0.01)]
-    public async Task AddTicketTypeAsync_NegativePrice_ThrowsArgumentException_AndCreatesNoRow(decimal price)
+    [InlineData(0)]       // prices are natural numbers: zero is not allowed
+    [InlineData(1.5)]     // no decimals
+    [InlineData(1500.5)]
+    public async Task AddTicketTypeAsync_NonNaturalPrice_ThrowsArgumentException_AndCreatesNoRow(decimal price)
     {
         // Arrange (ATS-004 invalid payload)
         var (eventEntity, _, _) = await CreateTestEventWithTicketType(100);
@@ -698,16 +701,32 @@ public class EventServiceTicketStockTests : IDisposable
         Assert.Equal(1500, persisted.Quantity);
     }
 
-    [Fact]
-    public async Task ReplaceTicketTypesAsync_PriceZero_IsAccepted()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1.5)]
+    public async Task ReplaceTicketTypesAsync_NonNaturalPrice_ThrowsArgumentException_NoMutation(decimal price)
     {
-        // ATE-004: price >= 0 parity with CreateEventAsync
+        // Prices are natural numbers (integer >= 1), same rule as create/add.
+        var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
+        var before = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
+                new ReplaceTicketTypeRequest(typeA.Id, "A", price, 10))));
+
+        var after = await _context.TicketTypes.AsNoTracking().SingleAsync(tt => tt.Id == typeA.Id);
+        Assert.Equal(before.Price, after.Price);
+    }
+
+    [Fact]
+    public async Task ReplaceTicketTypesAsync_WholePrice_IsAccepted()
+    {
         var (eventEntity, typeA, _) = await CreateEventWithTwoTicketTypes();
 
         var result = await _eventService.ReplaceTicketTypesAsync(eventEntity.Id, ReplaceRequest(
-            new ReplaceTicketTypeRequest(typeA.Id, "Free", 0m, 10)));
+            new ReplaceTicketTypeRequest(typeA.Id, "A", 1500m, 10)));
 
-        Assert.Equal(0m, result.Single().Price);
+        Assert.Equal(1500m, result.Single().Price);
     }
 
     [Fact]

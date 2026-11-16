@@ -1,10 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import EventForm from '../components/EventForm.jsx'
+import { useAuth } from '../context/auth.js'
 import { fadeIn } from '../lib/motion.js'
 
 export default function OrganizerEventNew() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  // Organizers can't edit the event afterwards (Admin-only), so they confirm first.
+  const confirmBeforeCreate = user?.role === 'Organizador'
 
   function handleSuccess() {
     navigate('/organizer/dashboard', { replace: true })
@@ -15,7 +19,7 @@ export default function OrganizerEventNew() {
       <h1 className="text-4xl font-display font-bold text-text-1 text-center mb-8">
         Nuevo evento
       </h1>
-      <EventForm mode="create" onSuccess={handleSuccess} />
+      <EventForm mode="create" confirmBeforeCreate={confirmBeforeCreate} onSuccess={handleSuccess} />
     </motion.div>
   )
 }

@@ -13,6 +13,11 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
   const reduced = useReducedMotion()
   const available = ticketType.available ?? ticketType.quantity ?? 0
   const isSoldOut = available <= 0
+  // The exact remaining count is never shown; buyers only get a low-stock
+  // notice once 20% or less of the type's total stock is left. Integer math
+  // (available * 5 <= quantity) avoids float rounding at the boundary.
+  const total = ticketType.quantity ?? 0
+  const isLowStock = !isSoldOut && total > 0 && available * 5 <= total
   const priceText = formatCurrency(ticketType.price)
   // Long prices (5+ digits, e.g. "$ 25.000") get a slightly smaller size so
   // the amount stays on ONE line. formatCurrency emits "$ 25.000" with a
@@ -46,8 +51,10 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
         onClick={() => !isSoldOut && onSelect(ticketType.id)}
       >
         <div className="flex h-full w-full flex-col items-center justify-center">
-          {/* Ticket head: name + price (the ENTRADA band sits above, full width) */}
-          <div className="w-full px-2 pb-2 pt-9 text-center">
+          {/* Ticket head: name + price (the ENTRADA band sits above, full width).
+              flex-1 takes all free space above the perforation so the block
+              stays centered both ways regardless of the availability line. */}
+          <div className="flex w-full flex-1 flex-col items-center justify-center px-2 pb-2 pt-9 text-center">
             <h3 className="line-clamp-2 font-display text-base font-semibold leading-snug text-gris-oscuro">
               {ticketType.name}
             </h3>
@@ -67,10 +74,12 @@ export default function TicketTypeTicket({ ticketType, isSelected, quantity, onS
             className="mx-auto my-1 h-0.5 w-[calc(100%-24px)] rounded-full bg-[repeating-linear-gradient(90deg,rgba(74,74,74,0.28)_0_8px,transparent_8px_16px)]"
           />
 
-          {/* Availability text */}
-          <p className="w-full whitespace-nowrap px-2 pb-1.5 pt-1 text-center text-sm text-text-2">
-            {isSoldOut ? 'Sin stock' : `${available} disponibles`}
-          </p>
+          {/* Availability text: sold out or low-stock notice only */}
+          {(isSoldOut || isLowStock) && (
+            <p className="w-full whitespace-nowrap px-2 pb-1.5 pt-1 text-center text-sm text-text-2">
+              {isSoldOut ? 'Sin stock' : 'Últimas disponibles'}
+            </p>
+          )}
 
           {/* Ticket foot: quantity controls / choose CTA / sold out.
               Fixed h-14 + w-[120px] slots so switching between the CTA and the

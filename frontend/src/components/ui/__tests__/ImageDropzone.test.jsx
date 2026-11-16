@@ -164,7 +164,7 @@ describe('ImageDropzone — inline error prop', () => {
     expect(root.className).toContain('bg-danger/5')
   })
 
-  it('keeps the preview layout while the red error signal wins over it', () => {
+  it('lets the red error signal win over the loaded state', () => {
     renderDropzone({
       error: 'La imagen debe tener proporción 16:9.',
       preview: 'https://example.com/img.jpg',
@@ -173,10 +173,17 @@ describe('ImageDropzone — inline error prop', () => {
     const root = screen.getByLabelText(/imagen del evento/i).parentElement
     expect(root.className).toContain('border-danger')
     expect(root.className).toContain('bg-danger/5')
-    // Preview keeps its zero padding; only the transparent border/bg is
-    // swapped for the error tint.
-    expect(root.className).toContain('p-0')
-    expect(root.className).not.toContain('border-transparent')
-    expect(root.className).not.toContain('bg-transparent')
+  })
+
+  it('shows a compact loaded state instead of the full image once one is chosen', () => {
+    const props = renderDropzone({ preview: 'https://example.com/img.jpg' })
+
+    // The crop previews below already show the image; no duplicate here.
+    expect(screen.queryByRole('img', { name: /vista previa/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Imagen cargada')).toBeInTheDocument()
+    expect(screen.getByText(/tocá o arrastrá otra para cambiarla/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /quitar imagen/i }))
+    expect(props.onClear).toHaveBeenCalledTimes(1)
   })
 })

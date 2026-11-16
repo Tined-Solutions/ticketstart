@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '../api/client.js'
 import { getErrorMessage } from '../lib/apiError.js'
 import { queryKeys } from '../lib/queryKeys.js'
+import { getTicketPriceError, ticketPriceInputProps } from '../lib/ticketPrice.js'
 import { useEvent } from '../hooks/useEvent.js'
 import { useDialog } from '../hooks/useDialog.js'
 import Button from './Button.jsx'
@@ -60,8 +61,9 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
       if (!newName.trim()) {
         errors.newName = 'El nombre es obligatorio'
       }
-      if (newPrice === '' || Number.isNaN(priceNum) || priceNum <= 0) {
-        errors.newPrice = 'El precio debe ser mayor a 0'
+      const priceError = getTicketPriceError(newPrice)
+      if (priceError) {
+        errors.newPrice = priceError
       }
       if (newQuantity === '' || !Number.isInteger(newQtyNum) || newQtyNum <= 0) {
         errors.newQuantity = 'La cantidad debe ser un número entero mayor a 0'
@@ -137,7 +139,9 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
   }
 
   const increaseQtyInvalid = additionalQuantity !== '' && (!Number.isInteger(quantityNum) || quantityNum <= 0)
-  const newPriceInvalid = newPrice !== '' && (Number.isNaN(priceNum) || priceNum <= 0)
+  // Live hint while typing (empty is only an error on submit).
+  const newPriceLiveError = newPrice !== '' ? getTicketPriceError(newPrice) : null
+  const newPriceInvalid = Boolean(newPriceLiveError)
   const newQtyInvalid = newQuantity !== '' && (!Number.isInteger(newQtyNum) || newQtyNum <= 0)
 
   return (
@@ -265,9 +269,7 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
                 <label htmlFor="ats-new-price">Precio ($)</label>
                 <input
                   id="ats-new-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  {...ticketPriceInputProps}
                   value={newPrice}
                   onChange={(e) => {
                     setNewPrice(e.target.value)
@@ -280,7 +282,7 @@ export default function AddTicketsModal({ eventId, eventName, onClose, onSuccess
                 />
                 {(formErrors.newPrice || newPriceInvalid) && (
                   <span id="ats-new-price-error" className="form-error" role="alert">
-                    El precio debe ser mayor a 0
+                    {formErrors.newPrice || newPriceLiveError}
                   </span>
                 )}
               </div>

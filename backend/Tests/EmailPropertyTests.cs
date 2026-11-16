@@ -288,6 +288,51 @@ public class EmailPropertyTests
 
     #endregion
 
+    #region Service fee in the confirmation email
+
+    [Fact]
+    public async Task SendTicketEmail_WithPaidAmounts_ShowsWhatWasPaidNotCurrentPrice()
+    {
+        var eventEntity = CreateEvent("Fee Event");
+        var reservationId = Guid.NewGuid();
+        // Price was raised AFTER the purchase: the email must still show 15000.
+        var ticketType = new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "Platea", Price = 20000m, Quantity = 10 };
+        var paid = new PurchaseAmounts(30000m, 3000m, new Dictionary<Guid, decimal> { [reservationId] = 15000m });
+        var tickets = Enumerable.Range(0, 2).Select(i => new Ticket
+        {
+            Id = Guid.NewGuid(),
+            EventId = eventEntity.Id,
+            ReservationId = reservationId,
+            TicketTypeId = ticketType.Id,
+            PurchaserEmail = "fee@example.com",
+            PurchaserDNI = "12345678",
+            QRCodeData = $"qr-fee-{i}",
+            CreatedAt = DateTime.UtcNow,
+            Event = eventEntity,
+            TicketType = ticketType
+        }).ToArray();
+
+        _mockTicketService.Setup(t => t.GenerateQRCodeImage(It.IsAny<string>())).Returns("base64-fee-qr");
+
+        ResendEmailRequest? captured = null;
+        _mockResendClient
+            .Setup(c => c.SendEmailAsync(It.IsAny<ResendEmailRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ResendEmailRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(new ResendEmailResponse { Id = "email-fee" });
+
+        var result = await _emailService.SendTicketEmailAsync("fee@example.com", tickets, eventEntity, amounts: paid);
+
+        Assert.True(result.Success);
+        Assert.NotNull(captured);
+        Assert.Contains("<strong>Precio:</strong> $15000.00", captured!.Html);
+        Assert.DoesNotContain("$20000.00", captured.Html);
+        Assert.Contains("<strong>Subtotal:</strong> $30000.00", captured.Html);
+        Assert.Contains("<strong>Cargo por servicio:</strong> $3000.00", captured.Html);
+        Assert.Contains("<strong>Monto total:</strong> $33000.00", captured.Html);
+    }
+
+    #endregion
+
     #region Property 23: Email Contains Event Details
 
     [Fact]

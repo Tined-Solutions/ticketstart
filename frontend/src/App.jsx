@@ -87,7 +87,9 @@ function App() {
             path="/organizer/events/:id"
             element={
               <ProtectedRoute>
-                <RoleGuard allowedRoles={['Organizador', 'Admin']}>
+                {/* Editing is Admin-only: once created, an organizer changes
+                    their event only through Ticket-Start support. */}
+                <RoleGuard allowedRoles={['Admin']}>
                   <OrganizerEventDetail />
                 </RoleGuard>
               </ProtectedRoute>

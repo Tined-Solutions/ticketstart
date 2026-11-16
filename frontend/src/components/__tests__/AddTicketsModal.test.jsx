@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AddTicketsModal from '../AddTicketsModal.jsx'
 import { queryKeys } from '../../lib/queryKeys.js'
@@ -90,6 +90,22 @@ describe('AddTicketsModal', () => {
       queryKey: queryKeys.managementEvent('event-1'),
     })
     expect(onSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a decimal price for a new type and does not post', async () => {
+    renderModal()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Nuevo tipo de entrada' }))
+    await userEvent.type(screen.getByLabelText('Nombre'), 'VIP')
+    // The keyboard guard drops the "."; paste-like input still gets validated.
+    fireEvent.change(screen.getByLabelText('Precio ($)'), { target: { value: '1.5' } })
+    await userEvent.type(screen.getByLabelText('Cantidad'), '20')
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(
+      await screen.findAllByText('El precio debe ser un número entero, sin decimales')
+    ).not.toHaveLength(0)
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('shows the backend error and neither invalidates nor succeeds', async () => {

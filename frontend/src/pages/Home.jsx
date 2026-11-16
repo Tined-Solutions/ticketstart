@@ -4,7 +4,6 @@ import GradientHero from '../components/ui/GradientHero.jsx'
 import EventCard from '../components/events/EventCard.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
 import { useEvents } from '../hooks/useEvents.js'
-import { categoriesWithChipClass } from '../data/categories.js'
 import { staggerContainer, staggerItem } from '../lib/motion.js'
 
 export default function Home() {
@@ -13,11 +12,10 @@ export default function Home() {
 
   return (
     <div className="home-page">
-      {/* Full-viewport GradientHero with logo + category chips */}
+      {/* Full-viewport GradientHero with logo */}
       <GradientHero
         imageUrl={null}
         logo="/ticketera-logo.webp"
-        chips={categoriesWithChipClass}
         subtitle="La plataforma mas simple para descubrir eventos, reservar entradas y gestionar tus propios shows."
         cta={
           <Link

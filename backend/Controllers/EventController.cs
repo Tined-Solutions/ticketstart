@@ -116,8 +116,10 @@ public class EventController : TicketeraControllerBase
         }
     }
 
+    // Editing is Admin-only: once created, an organizer changes their event only
+    // through Ticket-Start support. The service enforces the same rule.
     [HttpPut("{id:guid}")]
-    [Authorize(Policy = "EventOwnership")]
+    [Authorize(Policy = "RequireAdminRole")]
     public async Task<IActionResult> UpdateEvent(Guid id, [FromBody] UpdateEventRequest request)
     {
         if (request == null)
@@ -134,7 +136,7 @@ public class EventController : TicketeraControllerBase
         {
             var updatedEvent = await _eventService.UpdateEventAsync(id, request, userId, userRole);
             // EHE-006: includeExpired — an organizer editing a PAST event must get
-            // the result back, not a null → 500. EventOwnership already gated access.
+            // the result back, not a null → 500. RequireAdminRole already gated access.
             var eventDetails = await _eventService.GetEventByIdAsync(updatedEvent.Id, includeExpired: true);
 
             if (userRole == UserRole.Admin)
@@ -187,14 +189,12 @@ public class EventController : TicketeraControllerBase
         {
             await _eventService.DeleteEventAsync(id, userId, userRole);
 
-            // ED-001: success now implies an Admin requester (the service guard
-            // rejects everyone else), so this audit branch is the only reachable
-            // delete path. Kept conditional defensively in case owner-delete is
-            // ever restored — organizer deletes were already unaudited before ED-001.
-            if (userRole == UserRole.Admin)
-            {
-                await TryLogAuditAsync(userId, new AuditLogContext(userId, AuditActionType.DeleteEvent, AuditResourceType.Event, id, "Admin deleted event"));
-            }
+            // Success means an Admin (any event) or the owner organizer (event not
+            // approved yet). Both are audited; the detail says which.
+            var auditDetail = userRole == UserRole.Admin
+                ? "Admin deleted event"
+                : "Organizer deleted own unapproved event";
+            await TryLogAuditAsync(userId, new AuditLogContext(userId, AuditActionType.DeleteEvent, AuditResourceType.Event, id, auditDetail));
 
             return NoContent();
         }
@@ -205,6 +205,16 @@ public class EventController : TicketeraControllerBase
         catch (UnauthorizedAccessException)
         {
             return Forbid();
+        }
+        // The organizer's event was approved (possibly moments ago by an Admin):
+        // only an Admin can delete it now — 409 RFC 7807 the UI can explain.
+        catch (EventAlreadyApprovedException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Event already approved",
+                type: "event-approved");
         }
         // PEM-002/ADR-5: a finalized event is immutable — 409 RFC 7807.
         catch (EventFinalizedException)

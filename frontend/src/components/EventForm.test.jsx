@@ -309,7 +309,9 @@ describe('EventForm — create mode', () => {
     render(<EventForm mode="create" />)
 
     await fillBasicFields(userEvent.setup())
-    await fillTicketType(userEvent.setup(), { price: '-5', quantity: '10' })
+    // The keyboard guard drops "-", so a negative can't even be typed; 0 is
+    // the remaining non-natural value reachable by keyboard.
+    await fillTicketType(userEvent.setup(), { price: '0', quantity: '10' })
 
     await userEvent.click(
       screen.getByRole('button', { name: /crear evento/i })
@@ -490,7 +492,7 @@ describe('EventForm — create mode', () => {
     ).not.toBeDisabled()
   })
 
-  it('shows "Subiendo imagen…" and disables the submit while uploading', async () => {
+  it('shows "Creando evento…" and disables the submit while uploading', async () => {
     // Upload never resolves so we can observe the uploading phase
     mockPost.mockImplementation(() => new Promise(() => {}))
 
@@ -510,12 +512,13 @@ describe('EventForm — create mode', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /subiendo imagen/i })
+        screen.getByRole('button', { name: /creando evento…/i })
       ).toBeDisabled()
     })
+    expect(screen.queryByText(/subiendo imagen/i)).not.toBeInTheDocument()
   })
 
-  it('shows "Guardando…" after the upload completes', async () => {
+  it('keeps "Creando evento…" after the upload completes', async () => {
     mockPost
       .mockResolvedValueOnce({ data: { imageUrl: 'https://r2.example.com/img.jpg' } }) // upload resolves
       .mockImplementation(() => new Promise(() => {})) // save hangs
@@ -535,10 +538,11 @@ describe('EventForm — create mode', () => {
     fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /guardando/i })
-      ).toBeDisabled()
+      expect(mockPost).toHaveBeenCalledTimes(2) // upload, then create
     })
+    expect(
+      screen.getByRole('button', { name: /creando evento…/i })
+    ).toBeDisabled()
   })
 
   it('validates image file type inline under the dropzone, not in the banner', async () => {
@@ -760,6 +764,24 @@ describe('EventForm — create mode', () => {
     expect(nameInput).not.toHaveAttribute('aria-invalid')
   })
 
+  it('rejects a decimal ticket price and does not submit', async () => {
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+
+    fillBasicFieldsFire()
+    fillTicketTypeFire({ price: '1.5' })
+
+    const priceInput = document.querySelector('input[id^="tt-price-"]')
+    expect(priceInput).toHaveAttribute('step', '1')
+    expect(priceInput).toHaveAttribute('min', '1')
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(
+      await screen.findByText('El precio debe ser un número entero, sin decimales')
+    ).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('keeps ticket-type row errors while the new value is still invalid', async () => {
     render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
 
@@ -894,9 +916,82 @@ describe('EventForm — create mode', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/nombre del evento/i)).toBeDisabled()
       expect(
-        screen.getByRole('button', { name: /guardando/i })
+        screen.getByRole('button', { name: /creando evento…/i })
       ).toBeInTheDocument()
     })
+  })
+})
+
+const CONFIRM_MESSAGE =
+  'Por favor, revise que todos los datos ingresados para el evento sean correctos. Una vez creado, sólo se podrá modificar comunicándose con el soporte de Ticket-Start'
+
+describe('EventForm — confirm before create (organizer)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPost.mockReset()
+    mockOnSuccess.mockReset()
+  })
+
+  it('asks for confirmation with the support warning and does not create yet', async () => {
+    render(<EventForm mode="create" confirmBeforeCreate onSuccess={mockOnSuccess} />)
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(CONFIRM_MESSAGE)).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('creates the event only after "Confirmar y crear"', async () => {
+    mockPost.mockResolvedValue({ data: { id: 'event-new' } })
+    render(<EventForm mode="create" confirmBeforeCreate onSuccess={mockOnSuccess} />)
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /confirmar y crear/i }))
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/events', expect.any(Object)))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('"Revisar datos" closes the dialog and keeps the form as is', async () => {
+    render(<EventForm mode="create" confirmBeforeCreate onSuccess={mockOnSuccess} />)
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /revisar datos/i }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/nombre del evento/i)).toHaveValue('Nuevo Evento')
+  })
+
+  it('shows validation errors instead of the dialog when the form is invalid', async () => {
+    render(<EventForm mode="create" confirmBeforeCreate onSuccess={mockOnSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    expect(await screen.findByText(/el nombre del evento es obligatorio/i)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('creates directly without a dialog when confirmation is not requested (admin)', async () => {
+    mockPost.mockResolvedValue({ data: { id: 'event-new' } })
+    render(<EventForm mode="create" onSuccess={mockOnSuccess} />)
+    fillBasicFieldsFire()
+    fillTicketTypeFire()
+
+    fireEvent.click(screen.getByRole('button', { name: /crear evento/i }))
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/events', expect.any(Object)))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 
@@ -921,10 +1016,13 @@ describe('EventForm — edit mode', () => {
     )
     expect(screen.getByLabelText(/descripcion/i)).toHaveValue('Un gran recital')
 
-    // Should show existing image preview
-    const preview = screen.getByAltText(/vista previa/i)
-    expect(preview).toBeInTheDocument()
-    expect(preview.src).toBe('https://example.com/rock.jpg')
+    // The existing image shows only in the crop previews; the dropzone keeps
+    // a compact "loaded" state instead of repeating the full image.
+    expect(screen.queryByAltText(/vista previa/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/imagen cargada/i)).toBeInTheDocument()
+    const crops = screen.getAllByAltText(/recital de rock nacional/i)
+    expect(crops).toHaveLength(3)
+    crops.forEach((img) => expect(img.src).toBe('https://example.com/rock.jpg'))
 
     // Crop previews appear once there is an image, so the organizer sees how
     // the photo will be cut in each production context before saving.

@@ -70,6 +70,16 @@ if (!hideExpiredSection.Exists())
     throw new InvalidOperationException("HideExpiredEvents configuration section is required");
 builder.Services.Configure<HideExpiredEventsOptions>(hideExpiredSection);
 
+// Service fee charged to the buyer on top of the ticket subtotal. REQUIRED
+// section (fail fast) so a missing key can never silently drop the fee.
+var serviceFeeSection = builder.Configuration.GetSection(ServiceFeeOptions.SectionName);
+if (!serviceFeeSection.Exists())
+    throw new InvalidOperationException("ServiceFee configuration section is required");
+var serviceFeePercentage = serviceFeeSection.GetValue<decimal>(nameof(ServiceFeeOptions.Percentage));
+if (serviceFeePercentage < 0 || serviceFeePercentage > 100)
+    throw new InvalidOperationException("ServiceFee:Percentage must be between 0 and 100");
+builder.Services.Configure<ServiceFeeOptions>(serviceFeeSection);
+
 // Single shared clock (ADR-3): services read "now" exclusively through the
 // injected TimeProvider so tests can freeze/advance time with FakeTimeProvider.
 // TimeProvider.System.GetUtcNow() is DateTime.UtcNow semantically.

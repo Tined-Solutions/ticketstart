@@ -153,6 +153,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(t => t.MercadoPagoId).IsUnique();
             entity.Property(t => t.MercadoPagoId).IsRequired().HasMaxLength(255);
             entity.Property(t => t.Amount).IsRequired().HasColumnType("decimal(18,2)");
+            entity.Property(t => t.ServiceFee).IsRequired().HasColumnType("decimal(18,2)").HasDefaultValue(0m);
             entity.Property(t => t.Status).IsRequired();
             entity.Property(t => t.CreatedAt).IsRequired();
             entity.Property(t => t.UpdatedAt).IsRequired();

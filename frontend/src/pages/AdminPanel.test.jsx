@@ -227,8 +227,8 @@ describe('AdminPanel', () => {
 
     // Check role badges exist
     const adminBadges = screen.getAllByText('Admin')
-    const orgBadges = screen.getAllByText('Organizador')
-    const staffBadges = screen.getAllByText('Staff')
+    const orgBadges = screen.getAllByText('Productor/Organizador')
+    const staffBadges = screen.getAllByText('Staff/Acomodador')
 
     // At least one user with each role
     expect(adminBadges.length).toBeGreaterThanOrEqual(1)
@@ -665,8 +665,8 @@ describe('AdminPanel', () => {
       const roleSelect = screen.getByLabelText('Rol')
       const options = within(roleSelect).getAllByRole('option')
       const optionTexts = options.map((o) => o.textContent)
-      expect(optionTexts).toContain('Organizador')
-      expect(optionTexts).toContain('Staff')
+      expect(optionTexts).toContain('Productor/Organizador')
+      expect(optionTexts).toContain('Staff/Acomodador')
       expect(optionTexts).not.toContain('Admin')
 
       expect(
@@ -982,6 +982,23 @@ describe('AdminPanel', () => {
     expect(screen.getByRole('button', { name: /aprobar feria de emprendedores/i })).toBeInTheDocument()
     const feriaRow = eventRow('feria de emprendedores')
     expect(within(feriaRow).getByText('Pendiente')).toBeInTheDocument()
+  })
+
+  it('approve on an event the organizer just deleted (404) explains it and reloads', async () => {
+    mockPost.mockRejectedValue({ response: { status: 404, data: { error: 'Event not found' } } })
+
+    render(<AdminPanel />)
+    await waitFor(() => {
+      expect(screen.getByText(/feria de emprendedores/i)).toBeInTheDocument()
+    })
+    const fetchesBefore = mockGet.mock.calls.length
+
+    await userEvent.click(screen.getByRole('button', { name: /aprobar feria de emprendedores/i }))
+
+    expect(
+      await screen.findByText('El evento "Feria de Emprendedores" ya no existe: su organizador lo eliminó.')
+    ).toBeInTheDocument()
+    await waitFor(() => expect(mockGet.mock.calls.length).toBeGreaterThan(fetchesBefore))
   })
 
   it('keeps past events read-only: Ver + Finalizado, mutations disabled (PEM-002)', async () => {
@@ -1661,8 +1678,8 @@ describe('AdminPanel — Visual Regression', () => {
 
     // Badge renders as <span> with role labels; getAllByText finds the text
     const adminBadges = screen.getAllByText('Admin')
-    const orgBadges = screen.getAllByText('Organizador')
-    const staffBadges = screen.getAllByText('Staff')
+    const orgBadges = screen.getAllByText('Productor/Organizador')
+    const staffBadges = screen.getAllByText('Staff/Acomodador')
 
     expect(adminBadges.length).toBeGreaterThanOrEqual(1)
     expect(orgBadges.length).toBeGreaterThanOrEqual(1)

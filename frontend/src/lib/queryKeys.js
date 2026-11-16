@@ -17,4 +17,6 @@ export const queryKeys = {
   // EA-008: admin event moderation list (v1 AdminPanel stays manual-fetch, but the
   // key documents the invalidation target for catalog queries ['events']/['event', id]).
   adminEvents: ['admin-events'],
+  // Public checkout settings (service fee percentage).
+  checkoutConfig: ['checkout-config'],
 }

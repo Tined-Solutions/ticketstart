@@ -1250,12 +1250,73 @@ public class TicketServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ResendTicketsByEmailAsync_SendsAmountsActuallyPaid_NotCurrentPrice()
+    {
+        // Arrange — bought 2 × 15000 + 3000 fee; the price was raised to 20000 later.
+        var emailServiceMock = new Mock<IEmailService>();
+        PurchaseAmounts? sentAmounts = null;
+        emailServiceMock
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()))
+            .Callback<string, IEnumerable<Ticket>, Event, string?, PurchaseAmounts?>((_, _, _, _, a) => sentAmounts = a)
+            .ReturnsAsync(new EmailResult { Success = true });
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);
+        var ticketService = new TicketService(
+            _context, _configuration, _mockLogger.Object, serviceCollection.BuildServiceProvider());
+
+        var organizer = new User { Id = Guid.NewGuid(), Email = "org@test.com", PasswordHash = "hash", Role = UserRole.Organizador, CreatedAt = DateTime.UtcNow };
+        var eventEntity = new Event
+        {
+            Id = Guid.NewGuid(), Name = "Paid Event", Description = "d", Date = DateTime.UtcNow.AddDays(30),
+            Location = "l", OrganizerId = organizer.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            Status = EventStatus.Approved
+        };
+        var ticketType = new TicketType { Id = Guid.NewGuid(), EventId = eventEntity.Id, Name = "Platea", Price = 20000m, Quantity = 10, CreatedAt = DateTime.UtcNow };
+        var reservation = new Reservation
+        {
+            Id = Guid.NewGuid(), EventId = eventEntity.Id, TicketTypeId = ticketType.Id, Quantity = 2,
+            PurchaserDNI = "12345678", PurchaserEmail = "buyer@test.com",
+            ExpiresAt = DateTime.UtcNow.AddMinutes(-5), Status = ReservationStatus.Confirmed, CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(organizer);
+        _context.Events.Add(eventEntity);
+        _context.TicketTypes.Add(ticketType);
+        _context.Reservations.Add(reservation);
+        _context.Transactions.Add(new Transaction
+        {
+            Id = Guid.NewGuid(), ReservationId = reservation.Id, MercadoPagoId = "pay-paid",
+            Amount = 30000m, ServiceFee = 3000m, Status = TransactionStatus.Approved,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        for (var i = 0; i < 2; i++)
+        {
+            _context.Tickets.Add(new Ticket
+            {
+                Id = Guid.NewGuid(), EventId = eventEntity.Id, TicketTypeId = ticketType.Id, ReservationId = reservation.Id,
+                PurchaserEmail = "buyer@test.com", PurchaserDNI = "12345678",
+                QRCodeData = _ticketService.GenerateQRCode(Guid.NewGuid()), CreatedAt = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await ticketService.ResendTicketsByEmailAsync("buyer@test.com");
+
+        // Assert — the resend carries the paid amounts, not 2 × 20000 nor a recomputed fee
+        Assert.True(result);
+        Assert.NotNull(sentAmounts);
+        Assert.Equal(30000m, sentAmounts!.Subtotal);
+        Assert.Equal(3000m, sentAmounts.ServiceFee);
+        Assert.Equal(15000m, sentAmounts.UnitPriceByReservation[reservation.Id]);
+    }
+
+    [Fact]
     public async Task ResendTicketsByEmailAsync_ExcludesRefundedTickets()
     {
         // Arrange — APR-005: refunded tickets are not re-sent
         var emailServiceMock = new Mock<IEmailService>();
         emailServiceMock
-            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()))
             .ReturnsAsync(new EmailResult { Success = true });
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);
@@ -1329,7 +1390,7 @@ public class TicketServiceTests : IDisposable
             "buyer@test.com",
             It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1 && tickets.All(t => !t.IsRefunded)),
             It.IsAny<Event>(),
-            It.IsAny<string?>()), Times.Once);
+            It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Once);
     }
 
     [Fact]
@@ -1351,7 +1412,7 @@ public class TicketServiceTests : IDisposable
             "juan@mail.com",
             It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1),
             It.IsAny<Event>(),
-            It.IsAny<string?>()), Times.Once);
+            It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Once);
     }
 
     [Fact]
@@ -1381,9 +1442,9 @@ public class TicketServiceTests : IDisposable
             It.Is<IEnumerable<Ticket>>(tickets =>
                 tickets.Count() == 1 && !tickets.Single().IsUsed && !tickets.Single().IsRefunded),
             It.Is<Event>(e => e.Id == activeEvent.Id),
-            It.IsAny<string?>()), Times.Once);
+            It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Once);
         emailServiceMock.Verify(s => s.SendResendEmailAsync(
-            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()), Times.Once);
+            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Once);
     }
 
     [Fact]
@@ -1406,7 +1467,7 @@ public class TicketServiceTests : IDisposable
             "buyer@test.com",
             It.Is<IEnumerable<Ticket>>(tickets => tickets.Count() == 1),
             It.IsAny<Event>(),
-            It.IsAny<string?>()), Times.Once);
+            It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Once);
     }
 
     [Fact]
@@ -1424,7 +1485,7 @@ public class TicketServiceTests : IDisposable
         // Assert
         Assert.True(result);
         emailServiceMock.Verify(s => s.SendResendEmailAsync(
-            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()), Times.Never);
+            It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()), Times.Never);
     }
 
     /// <summary>Builds a TicketService whose IEmailService is a capturing mock.</summary>
@@ -1432,7 +1493,7 @@ public class TicketServiceTests : IDisposable
     {
         var emailServiceMock = new Mock<IEmailService>();
         emailServiceMock
-            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
+            .Setup(s => s.SendResendEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()))
             .ReturnsAsync(new EmailResult { Success = true });
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddSingleton<IEmailService>(emailServiceMock.Object);

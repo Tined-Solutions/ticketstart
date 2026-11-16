@@ -444,9 +444,6 @@ export default function TicketLookup() {
                 onError={() => setResendError('CAPTCHA verification failed. Please try again.')}
                 onExpire={() => setTurnstileToken('')}
               />
-              {turnstileToken && (
-                <p className="text-success text-xs mt-2">✓ Verified</p>
-              )}
             </div>
 
             <div className="flex justify-center pt-1">

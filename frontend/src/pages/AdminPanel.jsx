@@ -20,6 +20,7 @@ import RoleEditModal from '../components/RoleEditModal.jsx'
 import ResetPasswordModal from '../components/ResetPasswordModal.jsx'
 import AdminMetricsTab from '../components/admin/AdminMetricsTab.jsx'
 import { fadeIn } from '../lib/motion.js'
+import { ROLE_LABELS, roleLabel } from '../lib/roles.js'
 
 // Shared hover treatment for the events action buttons: grow a soft shadow on
 // hover (combined with the base lift) and honor prefers-reduced-motion by
@@ -58,17 +59,6 @@ function formatDate(dateString) {
     month: 'long',
     day: 'numeric',
   })
-}
-
-function roleLabel(role) {
-  if (!role) return ''
-  const labels = {
-    Organizador: 'Organizador',
-    Staff: 'Staff',
-    Admin: 'Admin',
-    SinAcceso: 'Sin acceso',
-  }
-  return labels[role] || role
 }
 
 function roleBadgeVariant(role) {
@@ -198,6 +188,21 @@ export default function AdminPanel() {
 
   // EA-008: moderation actions. Success → invalidate catalog/detail queries
   // (D-6) + re-run the manual admin list fetch; failure → feedback, no mutation.
+  // The owner organizer may delete a NOT-approved event at the very moment an
+  // Admin moderates it: the backend answers 404. Explain it and drop the stale row.
+  const handleModerationError = (err, event) => {
+    if (err?.response?.status === 404) {
+      setFeedback({
+        type: 'error',
+        message: `El evento "${event.name}" ya no existe: su organizador lo eliminó.`,
+      })
+      const controller = new AbortController()
+      loadData(controller)
+      return
+    }
+    setFeedback({ type: 'error', message: getErrorMessage(err) })
+  }
+
   const handleApprove = async (event) => {
     setFeedback({ type: '', message: '' })
     setBusyApprovalId(event.id)
@@ -212,7 +217,7 @@ export default function AdminPanel() {
       const controller = new AbortController()
       loadData(controller)
     } catch (err) {
-      setFeedback({ type: 'error', message: getErrorMessage(err) })
+      handleModerationError(err, event)
     } finally {
       setBusyApprovalId(null)
     }
@@ -232,7 +237,7 @@ export default function AdminPanel() {
       const controller = new AbortController()
       loadData(controller)
     } catch (err) {
-      setFeedback({ type: 'error', message: getErrorMessage(err) })
+      handleModerationError(err, event)
     } finally {
       setBusyApprovalId(null)
     }
@@ -937,8 +942,8 @@ export default function AdminPanel() {
                           className="w-full px-3 py-2 bg-surface-elevated border border-gris-oscuro/15 rounded-lg text-sm text-text-1 focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
                         >
                           <option value="">Seleccionar rol</option>
-                          <option value="Organizador">Organizador</option>
-                          <option value="Staff">Staff</option>
+                          <option value="Organizador">{ROLE_LABELS.Organizador}</option>
+                          <option value="Staff">{ROLE_LABELS.Staff}</option>
                         </select>
                         {formErrors.role && (
                           <span className="form-error">{formErrors.role}</span>
@@ -986,10 +991,10 @@ export default function AdminPanel() {
                           className="bg-white/60 border border-gris-oscuro/15 rounded-lg px-3 py-2 text-sm text-gris-oscuro focus:outline-none focus:ring-2 focus:ring-brand-1 focus:border-transparent"
                         >
                           <option value="">Todos</option>
-                          <option value="Admin">Admin</option>
-                          <option value="Staff">Staff</option>
-                          <option value="Organizador">Organizador</option>
-                          <option value="SinAcceso">Sin acceso</option>
+                          <option value="Admin">{ROLE_LABELS.Admin}</option>
+                          <option value="Staff">{ROLE_LABELS.Staff}</option>
+                          <option value="Organizador">{ROLE_LABELS.Organizador}</option>
+                          <option value="SinAcceso">{ROLE_LABELS.SinAcceso}</option>
                         </select>
                         <Button
                           variant="accent"

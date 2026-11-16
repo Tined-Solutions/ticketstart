@@ -6,6 +6,9 @@ import { prefersReducedMotion } from '../lib/motion.js'
 import ImageDropzone from './ui/ImageDropzone.jsx'
 import ImageCropPreviews from './ui/ImageCropPreviews.jsx'
 import DateTimePicker from './ui/DateTimePicker.jsx'
+import Modal from './Modal.jsx'
+import Button from './Button.jsx'
+import { getTicketPriceError, ticketPriceInputProps } from '../lib/ticketPrice.js'
 
 let ticketTypeCounter = 0
 function nextTicketTypeKey() {
@@ -41,14 +44,6 @@ function getTicketNameError(value) {
   return value.trim() ? null : 'El nombre es obligatorio'
 }
 
-function getTicketPriceError(value) {
-  if (value === '' || Number.isNaN(Number(value))) {
-    return 'El precio es obligatorio'
-  }
-  if (Number(value) <= 0) return 'El precio debe ser mayor a 0'
-  return null
-}
-
 function getTicketQuantityError(value) {
   if (value === '' || Number.isNaN(Number(value))) {
     return 'La cantidad es obligatoria'
@@ -74,6 +69,9 @@ export default function EventForm({
   // button and the image upload control (preview stays). Used by
   // EventReadOnlyView for past/finalized events.
   readOnly = false,
+  // Organizers can't edit an event once created (only Ticket-Start support
+  // can), so their create flow asks for an explicit confirmation first.
+  confirmBeforeCreate = false,
 }) {
   const [name, setName] = useState(initialData?.name || '')
   const [date, setDate] = useState(toDateTimeLocalValue(initialData?.date) || '')
@@ -245,6 +243,8 @@ export default function EventForm({
       : null
   }
 
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
   async function handleSubmit(event) {
     event.preventDefault()
     setFeedback({ type: '', message: '' })
@@ -257,6 +257,22 @@ export default function EventForm({
       return
     }
 
+    // Only a VALID form reaches the confirmation: the organizer reviews data
+    // that can actually be created.
+    if (isCreate && confirmBeforeCreate) {
+      setConfirmOpen(true)
+      return
+    }
+
+    await submitEvent()
+  }
+
+  async function handleConfirmCreate() {
+    setConfirmOpen(false)
+    await submitEvent()
+  }
+
+  async function submitEvent() {
     const payload = {
       name: name.trim(),
       date: new Date(date).toISOString(),
@@ -535,10 +551,6 @@ export default function EventForm({
             <h2>Tipos de entrada</h2>
           </legend>
 
-          <p className="ticket-types-hint">
-            En la página del evento se muestran de la más cara a la más barata.
-          </p>
-
           {typeof errors.ticketTypes === 'string' && (
             <div className="error-container" role="alert">
               <p>{errors.ticketTypes}</p>
@@ -575,14 +587,12 @@ export default function EventForm({
                   <label htmlFor={`tt-price-${tt.key}`}>Precio ($)</label>
                   <input
                     id={`tt-price-${tt.key}`}
-                    type="number"
+                    {...ticketPriceInputProps}
                     value={tt.price}
                     onChange={(e) =>
                       handleTicketTypeChange(index, 'price', e.target.value)
                     }
                     placeholder="15000"
-                    min="0"
-                    step="0.01"
                     required
                     disabled={submitting}
                     aria-invalid={
@@ -698,9 +708,11 @@ export default function EventForm({
             className="button-accent"
             disabled={submitting}
           >
+            {/* One label for the whole submit (upload + save): the organizer
+                cares that the event is being created, not about the steps. */}
             {submitting
-              ? phase === 'uploading'
-                ? 'Subiendo imagen…'
+              ? isCreate
+                ? 'Creando evento…'
                 : 'Guardando…'
               : isCreate
                 ? 'Crear evento'
@@ -708,6 +720,30 @@ export default function EventForm({
           </button>
         </div>
       )}
+
+      {/* Organizer-only confirmation: after creation the event can only be
+          changed through Ticket-Start support. Buttons are type="button" so
+          they never re-submit the surrounding form. */}
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Antes de crear el evento"
+        footer={
+          <>
+            <Button type="button" variant="glass" onClick={() => setConfirmOpen(false)}>
+              Revisar datos
+            </Button>
+            <Button type="button" variant="primary" onClick={handleConfirmCreate}>
+              Confirmar y crear
+            </Button>
+          </>
+        }
+      >
+        <p className="text-text-2">
+          Por favor, revise que todos los datos ingresados para el evento sean correctos. Una vez
+          creado, sólo se podrá modificar comunicándose con el soporte de Ticket-Start
+        </p>
+      </Modal>
     </form>
   )
 }

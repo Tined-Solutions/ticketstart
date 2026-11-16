@@ -11,6 +11,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import { TicketIcon } from '../components/icons/ticket.jsx'
 import Button from '../components/Button.jsx'
 import Skeleton from '../components/ui/Skeleton.jsx'
+import Modal from '../components/Modal.jsx'
 import { fadeIn } from '../lib/motion.js'
 
 // Shared hover treatment for the row action buttons (same classes as
@@ -26,6 +27,10 @@ export default function OrganizerDashboard() {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Organizer delete: own events only while NOT approved (Pending/Rejected).
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [feedback, setFeedback] = useState({ type: '', message: '' })
 
   const loadMetrics = useCallback((controller) => {
     apiClient
@@ -48,6 +53,36 @@ export default function OrganizerDashboard() {
     loadMetrics(controller)
     return () => controller.abort()
   }, [loadMetrics])
+
+  const reloadMetrics = () => {
+    const controller = new AbortController()
+    loadMetrics(controller)
+  }
+
+  const handleConfirmDelete = async () => {
+    const target = deleteTarget
+    setDeleting(true)
+    try {
+      await apiClient.delete(`/events/${target.eventId}`)
+      setFeedback({ type: 'success', message: `Evento "${target.eventName}" eliminado` })
+    } catch (err) {
+      // An Admin may approve the event right before the organizer confirms:
+      // the backend answers 409 "event-approved". Explain it in plain words.
+      const approvedMeanwhile =
+        err?.response?.status === 409 && err?.response?.data?.type === 'event-approved'
+      setFeedback({
+        type: 'error',
+        message: approvedMeanwhile
+          ? 'Este evento fue aprobado mientras tanto y ya no se puede eliminar. Si necesitás darlo de baja, comunicate con el soporte de Ticket-Start.'
+          : getErrorMessage(err),
+      })
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+      // Either way the list may be stale (row gone, or status changed).
+      reloadMetrics()
+    }
+  }
 
   const handleRetry = () => {
     setLoading(true)
@@ -86,6 +121,19 @@ export default function OrganizerDashboard() {
         </h1>
         <p className="text-text-2 text-center">Gestiona tus eventos y consulta las metricas</p>
       </header>
+
+      {feedback.message && (
+        <div
+          className={`text-center py-3 px-4 rounded-lg mb-4 font-medium ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'
+              : 'bg-rose-500/10 text-rose-600 border border-rose-500/30'
+          }`}
+          role={feedback.type === 'error' ? 'alert' : 'status'}
+        >
+          {feedback.message}
+        </div>
+      )}
 
       {loading ? (
         <GlassCard className="py-6">
@@ -184,8 +232,23 @@ export default function OrganizerDashboard() {
                       >
                         Ver
                       </Button>
-                      {/* EA-009: editing is Admin-only and lives in the AdminPanel —
-                          the organizer dashboard offers no edit affordance. */}
+                      {/* An organizer may delete their event only while it is not
+                          approved yet (and has not happened). Editing stays
+                          Admin-only (EA-009): no edit affordance here. */}
+                      {m.status !== 'Approved' && !isPast && (
+                        <Button
+                          variant="glass"
+                          size="sm"
+                          onClick={() => {
+                            setFeedback({ type: '', message: '' })
+                            setDeleteTarget(m)
+                          }}
+                          aria-label={`Eliminar ${m.eventName}`}
+                          className={ACTION_HOVER}
+                        >
+                          Eliminar
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )
@@ -195,6 +258,26 @@ export default function OrganizerDashboard() {
         </GlassCard>
       )}
       </motion.div>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        title="Eliminar evento"
+        footer={
+          <>
+            <Button type="button" variant="glass" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="primary" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? 'Eliminando…' : 'Eliminar evento'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-text-2">
+          ¿Querés eliminar el evento "{deleteTarget?.eventName}"? Esta acción no se puede deshacer.
+        </p>
+      </Modal>
     </div>
   )
 }

@@ -194,6 +194,36 @@ describe('Navbar', () => {
     removeListenerSpy.mockRestore()
   })
 
+  it.each(['Staff', 'Organizador'])(
+    'hides "Mis Entradas" for %s users, in the desktop and mobile menus',
+    async (role) => {
+      useAuth.mockReturnValue({
+        user: { email: 'u@example.com', name: 'User', role },
+        isAuthenticated: true,
+        logout: vi.fn(),
+      })
+      renderNavbar()
+
+      expect(screen.queryByRole('link', { name: /mis entradas/i })).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: /abrir menú/i }))
+      expect(screen.queryByRole('link', { name: /mis entradas/i })).not.toBeInTheDocument()
+    }
+  )
+
+  it.each([
+    ['a guest', null],
+    ['an admin', { email: 'a@example.com', name: 'Admin', role: 'Admin' }],
+  ])('keeps "Mis Entradas" for %s', (_, user) => {
+    useAuth.mockReturnValue({ user, isAuthenticated: Boolean(user), logout: vi.fn() })
+    renderNavbar()
+
+    expect(screen.getByRole('link', { name: /mis entradas/i })).toHaveAttribute(
+      'href',
+      '/tickets/lookup'
+    )
+  })
+
   it('renders Staff link only for staff users', () => {
     useAuth.mockReturnValue({
       user: { email: 'user@example.com', name: 'User', role: 'Comun' },

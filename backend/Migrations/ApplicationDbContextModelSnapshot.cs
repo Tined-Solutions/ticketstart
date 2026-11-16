@@ -451,6 +451,11 @@ namespace TicketeraOnline.Api.Migrations
                     b.Property<Guid>("ReservationId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("ServiceFee")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 

@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { ImagePlus, X } from 'lucide-react'
+import { Image as ImageIcon, ImagePlus, X } from 'lucide-react'
 import { readImageDimensions } from '../../lib/readImageDimensions.js'
 
 const ACCEPT = { 'image/jpeg': [], 'image/png': [], 'image/webp': [] }
@@ -92,13 +92,12 @@ export default function ImageDropzone({
             !preview && !isDragActive && !isDragReject ? 'border-gris-oscuro/25' : '',
             isDragActive && !isDragReject ? 'border-purpura-dark bg-purpura-dark/10' : '',
             isDragReject ? 'border-danger bg-danger/5' : '',
-            // Keep the preview layout (no padding) but swap the transparent
-            // border/background for the red error signal — the error is the
-            // primary visual cue and must win over the preview state.
+            // Loaded state is a compact bar (the crop previews below show the
+            // image). The red error signal must still win over it.
             preview
               ? error
-                ? 'p-0'
-                : 'border-transparent bg-transparent p-0'
+                ? 'px-4 py-3'
+                : 'border-gris-oscuro/25 px-4 py-3'
               : 'p-6',
             error ? 'border-danger bg-danger/5' : '',
           ].join(' '),
@@ -106,12 +105,16 @@ export default function ImageDropzone({
       >
         <input {...getInputProps({ id: 'eventImage', 'aria-describedby': 'eventImage-hint' })} />
         {preview ? (
-          <div className="relative">
-            <img
-              src={preview}
-              alt="Vista previa"
-              className="h-56 w-full rounded-xl border border-gris-oscuro/15 object-cover"
-            />
+          // Compact loaded state: the image itself is shown only once, in the
+          // crop previews rendered by the parent below the dropzone.
+          <div className="flex items-center gap-3 text-left">
+            <ImageIcon className="h-6 w-6 shrink-0 text-purpura-dark" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-gris-oscuro">Imagen cargada</p>
+              <p id="eventImage-hint" className="text-[13px] text-text-2">
+                Tocá o arrastrá otra para cambiarla.
+              </p>
+            </div>
             <button
               type="button"
               aria-label="Quitar imagen"
@@ -120,7 +123,7 @@ export default function ImageDropzone({
                 e.stopPropagation()
                 onClear?.()
               }}
-              className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-gris-oscuro/80 text-white transition-colors hover:bg-gris-oscuro disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gris-oscuro/80 text-white transition-colors hover:bg-gris-oscuro disabled:cursor-not-allowed disabled:opacity-60"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>

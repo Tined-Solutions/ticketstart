@@ -5,6 +5,7 @@ import OrganizerDashboard from './OrganizerDashboard.jsx'
 
 const mockNavigate = vi.fn()
 const mockGet = vi.fn()
+const mockDelete = vi.fn()
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -13,6 +14,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../api/client.js', () => ({
   default: {
     get: (...args) => mockGet(...args),
+    delete: (...args) => mockDelete(...args),
   },
 }))
 
@@ -68,8 +70,82 @@ describe('OrganizerDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockReset()
+    mockDelete.mockReset()
     mockNavigate.mockReset()
     mockGet.mockResolvedValue({ data: mockMetrics })
+  })
+
+  // ── Organizer delete: own events only while NOT approved ──────────
+
+  it('offers "Eliminar" only on events that are not approved yet', async () => {
+    render(<OrganizerDashboard />)
+    await screen.findByText(/recital de rock nacional/i)
+
+    expect(within(eventRow('recital de rock nacional')).queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument()
+    expect(within(eventRow('feria de emprendedores')).getByRole('button', { name: /eliminar feria de emprendedores/i })).toBeEnabled()
+    expect(within(eventRow('workshop de fotografia')).getByRole('button', { name: /eliminar workshop de fotografia/i })).toBeEnabled()
+  })
+
+  it('does not offer "Eliminar" on a past event, even if never approved', async () => {
+    mockGet.mockResolvedValue({
+      data: [{ ...mockMetrics[1], eventDate: new Date(Date.now() - 2 * 86400000).toISOString() }],
+    })
+    render(<OrganizerDashboard />)
+    await screen.findByText(/feria de emprendedores/i)
+
+    expect(screen.queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument()
+  })
+
+  it('asks for confirmation, deletes and reloads the list', async () => {
+    mockDelete.mockResolvedValue({ status: 204 })
+    render(<OrganizerDashboard />)
+    await screen.findByText(/feria de emprendedores/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /eliminar feria de emprendedores/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/esta acción no se puede deshacer/i)).toBeInTheDocument()
+    expect(mockDelete).not.toHaveBeenCalled()
+
+    mockGet.mockResolvedValue({ data: mockMetrics.filter((m) => m.eventId !== 'event-2') })
+    await userEvent.click(within(dialog).getByRole('button', { name: /^eliminar evento$/i }))
+
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('/events/event-2'))
+    expect(await screen.findByText('Evento "Feria de Emprendedores" eliminado')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/feria de emprendedores/i, { selector: 'h3' })).not.toBeInTheDocument())
+    expect(mockGet).toHaveBeenCalledTimes(2)
+  })
+
+  it('"Cancelar" closes the confirmation without deleting', async () => {
+    render(<OrganizerDashboard />)
+    await screen.findByText(/feria de emprendedores/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /eliminar feria de emprendedores/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: /cancelar/i }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('explains it when an Admin approved the event in the meantime (409 event-approved) and reloads', async () => {
+    mockDelete.mockRejectedValue({ response: { status: 409, data: { type: 'event-approved' } } })
+    render(<OrganizerDashboard />)
+    await screen.findByText(/feria de emprendedores/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /eliminar feria de emprendedores/i }))
+    mockGet.mockResolvedValue({
+      data: mockMetrics.map((m) => (m.eventId === 'event-2' ? { ...m, status: 'Approved' } : m)),
+    })
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /^eliminar evento$/i }))
+
+    expect(
+      await screen.findByText(
+        'Este evento fue aprobado mientras tanto y ya no se puede eliminar. Si necesitás darlo de baja, comunicate con el soporte de Ticket-Start.'
+      )
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(within(eventRow('feria de emprendedores')).queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument()
+    )
   })
 
   // ── Event list display ────────────────────────────────────────────
@@ -240,7 +316,7 @@ describe('OrganizerDashboard', () => {
     expect(within(recitalRow).queryByRole('button', { name: /^acciones/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^acciones/i })).not.toBeInTheDocument()
 
-    // Eliminar / Metricas are removed change-wide for every role and status
+    // No kebab menu items: "Eliminar" is a standalone button on not-approved rows only
     expect(screen.queryByRole('menuitem', { name: /eliminar/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /ver metricas/i })).not.toBeInTheDocument()
 

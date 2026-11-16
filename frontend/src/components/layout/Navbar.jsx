@@ -95,6 +95,9 @@ export default function Navbar() {
   const showScan = role === 'Staff' || role === 'Organizador' || role === 'Admin'
   const showOrganizer = role === 'Organizador' || role === 'Admin'
   const showAdmin = role === 'Admin'
+  // Staff and organizers work the events, they don't buy tickets as part of
+  // their role: "Mis Entradas" (buyer lookup) stays for guests and admins.
+  const showMyTickets = role !== 'Staff' && role !== 'Organizador'
 
   return (
     <nav
@@ -137,9 +140,11 @@ export default function Navbar() {
             <NavLink to="/events" className={navLinkClass}>
               Eventos
             </NavLink>
-            <NavLink to="/tickets/lookup" className={navLinkClass}>
-              Mis Entradas
-            </NavLink>
+            {showMyTickets && (
+              <NavLink to="/tickets/lookup" className={navLinkClass}>
+                Mis Entradas
+              </NavLink>
+            )}
             {showScan && (
               <NavLink to="/staff/scan" className={navLinkClass}>
                 Escanear
@@ -292,13 +297,15 @@ export default function Navbar() {
               >
                 Eventos
               </NavLink>
-              <NavLink
-                to="/tickets/lookup"
-                className={navLinkClass}
-                onClick={() => setMobileOpen(false)}
-              >
-                Mis Entradas
-              </NavLink>
+              {showMyTickets && (
+                <NavLink
+                  to="/tickets/lookup"
+                  className={navLinkClass}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Mis Entradas
+                </NavLink>
+              )}
               {showScan && (
                 <NavLink
                   to="/staff/scan"

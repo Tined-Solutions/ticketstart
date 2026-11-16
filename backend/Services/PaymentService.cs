@@ -21,6 +21,7 @@ public class PaymentService : IPaymentService
     private readonly ILogger<PaymentService> _logger;
     private readonly TimeProvider _clock;
     private readonly IOptions<HideExpiredEventsOptions> _hideExpiredOptions;
+    private readonly ServiceFeeOptions _serviceFee;
 
     public PaymentService(
         ApplicationDbContext context,
@@ -31,7 +32,8 @@ public class PaymentService : IPaymentService
         IEmailService emailService,
         ILogger<PaymentService> logger,
         TimeProvider timeProvider,
-        IOptions<HideExpiredEventsOptions> hideExpiredOptions)
+        IOptions<HideExpiredEventsOptions> hideExpiredOptions,
+        IOptions<ServiceFeeOptions> serviceFeeOptions)
     {
         _context = context;
         _mercadoPagoClient = mercadoPagoClient;
@@ -42,6 +44,7 @@ public class PaymentService : IPaymentService
         _logger = logger;
         _clock = timeProvider;
         _hideExpiredOptions = hideExpiredOptions;
+        _serviceFee = serviceFeeOptions.Value;
     }
 
     /// <inheritdoc />
@@ -169,6 +172,19 @@ public class PaymentService : IPaymentService
             // in local dev — so only request it for https frontends.
             AutoReturn = _options.FrontendUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? "approved" : null
         };
+
+        // Service fee goes as its own line so the buyer sees it itemized in
+        // Mercado Pago. Skipped when 0 (MP rejects zero-priced items).
+        var serviceFee = _serviceFee.Calculate(reservation.Quantity * reservation.TicketType.Price);
+        if (serviceFee > 0)
+        {
+            request.Items.Add(new MercadoPagoItemRequest
+            {
+                Title = "Cargo por servicio",
+                Quantity = 1,
+                UnitPrice = serviceFee
+            });
+        }
 
         var response = await _mercadoPagoClient.CreatePreferenceAsync(request);
 
@@ -307,6 +323,8 @@ public class PaymentService : IPaymentService
 
     private async Task<WebhookResult> ProcessApprovedPaymentAsync(Reservation reservation, string paymentId, decimal amount)
     {
+        var serviceFee = _serviceFee.Calculate(amount);
+
         // B4.5: Check idempotency — if a transaction with this MercadoPagoId already exists, return 200
         var existingTransaction = await _context.Transactions
             .FirstOrDefaultAsync(t => t.MercadoPagoId == paymentId);
@@ -342,6 +360,7 @@ public class PaymentService : IPaymentService
                         ReservationId = reservation.Id,
                         MercadoPagoId = paymentId,
                         Amount = amount,
+                        ServiceFee = serviceFee,
                         Status = TransactionStatus.Approved,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -360,7 +379,9 @@ public class PaymentService : IPaymentService
                         try
                         {
                             var eventEntity = tickets[0].Event ?? reservation.Event;
-                            await _emailService.SendTicketEmailAsync(email, tickets, eventEntity, reservation.PurchaserName ?? reservation.User?.Name);
+                            await _emailService.SendTicketEmailAsync(
+                                email, tickets, eventEntity, reservation.PurchaserName ?? reservation.User?.Name,
+                                PurchaseAmounts.ForReservation(reservation.Id, reservation.Quantity, amount, serviceFee));
                         }
                         catch (Exception ex)
                         {
@@ -400,7 +421,8 @@ public class PaymentService : IPaymentService
             "Stock failure for reservation {ReservationId}; payment {PaymentId} will be refunded",
             reservation.Id, paymentId);
 
-        var refund = await InitiateRefundAsync(paymentId, amount, reservation.Id);
+        // No tickets are delivered, so the buyer gets everything back — fee included.
+        var refund = await InitiateRefundAsync(paymentId, amount, reservation.Id, serviceFee);
 
         if (reservation.Status == ReservationStatus.Active)
         {
@@ -435,6 +457,7 @@ public class PaymentService : IPaymentService
             ReservationId = reservation.Id,
             MercadoPagoId = paymentId,
             Amount = amount,
+            ServiceFee = _serviceFee.Calculate(amount),
             Status = TransactionStatus.Rejected,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -449,13 +472,13 @@ public class PaymentService : IPaymentService
     }
 
     /// <inheritdoc />
-    public async Task<RefundResult> InitiateRefundAsync(string mercadoPagoId, decimal amount, Guid reservationId)
+    public async Task<RefundResult> InitiateRefundAsync(string mercadoPagoId, decimal amount, Guid reservationId, decimal serviceFee = 0m)
     {
         _logger.LogInformation(
-            "Initiating refund for payment {PaymentId}, reservation {ReservationId}, amount {Amount}",
-            mercadoPagoId, reservationId, amount);
+            "Initiating refund for payment {PaymentId}, reservation {ReservationId}, amount {Amount}, service fee {ServiceFee}",
+            mercadoPagoId, reservationId, amount, serviceFee);
 
-        var response = await _mercadoPagoClient.RefundPaymentAsync(mercadoPagoId, amount);
+        var response = await _mercadoPagoClient.RefundPaymentAsync(mercadoPagoId, amount + serviceFee);
 
         _context.Transactions.Add(new Transaction
         {
@@ -463,6 +486,7 @@ public class PaymentService : IPaymentService
             ReservationId = reservationId,
             MercadoPagoId = mercadoPagoId,
             Amount = amount,
+            ServiceFee = serviceFee,
             Status = TransactionStatus.Refunded,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -651,7 +675,11 @@ public class PaymentService : IPaymentService
                     continue;
                 }
 
-                await _emailService.SendTicketEmailAsync(row.RecipientEmail, tickets, tickets[0].Event, reservation.PurchaserName ?? reservation.User?.Name);
+                // Amounts come from the persisted transaction: the retry may run after
+                // a price or fee change and must still show what the buyer paid.
+                var paidAmounts = await PurchaseAmounts.LoadAsync(_context, [reservation.Id]);
+                await _emailService.SendTicketEmailAsync(
+                    row.RecipientEmail, tickets, tickets[0].Event, reservation.PurchaserName ?? reservation.User?.Name, paidAmounts);
 
                 row.Attempts++;
                 row.Status = "sent";

@@ -100,7 +100,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
 
         // Act
         var result = await _eventService.UpdateEventAsync(
-            eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+            eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         // Assert: EventService enqueued TWO notifications
         Assert.NotNull(result);
@@ -159,7 +159,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
         };
 
         await _eventService.UpdateEventAsync(
-            eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+            eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         _mockQueue.Verify(
             q => q.EnqueueAsync(It.IsAny<EventNotification>()),
@@ -210,7 +210,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
         };
 
         await _eventService.UpdateEventAsync(
-            eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+            eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         // Only one enqueue, and it's for alice
         _mockQueue.Verify(
@@ -252,7 +252,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
         };
 
         await _eventService.UpdateEventAsync(
-            eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+            eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         _mockQueue.Verify(
             q => q.EnqueueAsync(It.IsAny<EventNotification>()),
@@ -347,7 +347,7 @@ public class EventServiceDateChangeNotificationTests : IDisposable
         };
 
         await _eventService.UpdateEventAsync(
-            eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+            eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         // Only ONE notification despite two tickets
         _mockQueue.Verify(

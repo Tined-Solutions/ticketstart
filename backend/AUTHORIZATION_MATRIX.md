@@ -14,7 +14,7 @@
 
 | Política | Regla | Uso principal |
 |----------|-------|---------------|
-| `EventOwnership` | Handler custom: dueño del evento o Admin | Editar/eliminar evento, métricas por evento |
+| `EventOwnership` | Handler custom: dueño del evento o Admin | Consultar evento (`GET /{id}/manage`), métricas por evento |
 | `RequireOrganizadorRole` | Rol `Organizador` o `Admin` | Crear eventos, upload de imagen (event-agnostic), métricas de organizador |
 | `RequireScanAccessRole` | Rol `Staff`, `Organizador` o `Admin` | Validar QR, lista de eventos escaneables |
 | `RequireAdminRole` | Solo rol `Admin` | Todo `AdminController`, reintento de envío de emails |
@@ -50,7 +50,7 @@
 | Controlador | Endpoints y autorización |
 |-------------|--------------------------|
 | `AuthController` | `POST /login` y `POST /logout` públicos; `GET /me` autenticado |
-| `EventController` | `GET /` y `GET /{id}` públicos; `GET /manage` Staff/Organizador/Admin; `GET /{id}/manage` EventOwnership; `POST` RequireOrganizadorRole; `PUT /{id}`, `DELETE /{id}` EventOwnership |
+| `EventController` | `GET /` y `GET /{id}` públicos; `GET /manage` Staff/Organizador/Admin; `GET /{id}/manage` EventOwnership; `POST` RequireOrganizadorRole; `PUT /{id}` RequireAdminRole (editar es solo Admin); `DELETE /{id}` EventOwnership + guard en el servicio: Admin cualquier evento; el Organizador dueño solo si NO está aprobado (bloqueo de fila para la carrera con la aprobación) |
 | `UploadsController` | `POST /event-image` RequireOrganizadorRole (Organizador/Admin) + rate limit `EventImageUpload` (10/min) |
 | `ReservationController` | `POST /` (crear) y `PATCH /{id}` (actualizar comprador vía token de reserva) públicos |
 | `PaymentController` | `POST /create-preference`, `POST /webhook`, `POST /confirm` públicos; `POST /emails/retry-pending` Admin |
@@ -91,8 +91,8 @@ per-method overrides. Mutating verbs additionally require the `X-CSRF-PROTECT` h
 | Reserve tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Lookup tickets | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Create events | ❌ | ✅ | ❌ | ✅ | ❌ |
-| Edit own events | ❌ | ✅ | ❌ | ✅ | ❌ |
-| Delete own events | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Edit own events (once created, organizers go through support) | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Delete own events (organizer: only while NOT approved — 409 `event-approved` otherwise) | ❌ | ✅ | ❌ | ✅ | ❌ |
 | View own metrics | ❌ | ✅ | ❌ | ✅ | ❌ |
 | Scan tickets | ❌ | ✅ | ✅ | ✅ | ❌ |
 | Validate tickets | ❌ | ✅ | ✅ | ✅ | ❌ |

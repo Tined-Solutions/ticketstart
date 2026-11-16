@@ -767,7 +767,7 @@ public class ImageStoragePropertyTests : IDisposable
         };
 
         // Act
-        await eventService.UpdateEventAsync(eventEntity.Id, request, organizerId, UserRole.Organizador);
+        await eventService.UpdateEventAsync(eventEntity.Id, request, organizerId, UserRole.Admin);
 
         // Assert — the invariant: delete called exactly when the guard fires
         var oldIsNonEmpty = !string.IsNullOrWhiteSpace(previousImageUrl);
@@ -841,7 +841,7 @@ public class ImageStoragePropertyTests : IDisposable
         };
 
         // Act — the new URL is attached via PUT; no upload happens in UpdateEventAsync
-        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         // Assert — event points at the new image and the previous object is gone
         var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);
@@ -902,7 +902,7 @@ public class ImageStoragePropertyTests : IDisposable
         };
 
         // Act
-        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Organizador);
+        await eventService.UpdateEventAsync(eventEntity.Id, updateRequest, organizerId, UserRole.Admin);
 
         // Assert — nothing to clean up
         var updatedEvent = await _context.Events.FindAsync(eventEntity.Id);

@@ -38,5 +38,8 @@
   },
   "Reservation": {
     "TokenSecretKey": "YOUR_RESERVATION_TOKEN_SECRET_KEY_MINIMUM_32_CHARACTERS_LONG"
+  },
+  "ServiceFee": {
+    "Percentage": 10
   }
 }

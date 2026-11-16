@@ -18,6 +18,7 @@ namespace TicketeraOnline.Api.Tests;
 public class AdminServiceTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
+    private readonly DbContextOptions<ApplicationDbContext> _options;
     private readonly FakeTimeProvider _clock;
 
     public AdminServiceTests()
@@ -26,6 +27,7 @@ public class AdminServiceTests : IDisposable
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
 
+        _options = options;
         _context = new ApplicationDbContext(options);
         _clock = new FakeTimeProvider(new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
     }
@@ -106,6 +108,34 @@ public class AdminServiceTests : IDisposable
         Assert.Equal(EventStatus.Approved, summary.Status);
         var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == evt.Id);
         Assert.Equal(EventStatus.Approved, persisted.Status);
+    }
+
+    // Race: the organizer deletes their (not yet approved) event while an Admin is
+    // approving/rejecting it. The Admin already holds the event in memory; the
+    // save finds no row. That must surface as "not found" (404), never a 500.
+    [Fact]
+    public async Task ApproveEventAsync_EventDeletedConcurrently_ThrowsKeyNotFound()
+    {
+        var evt = await SeedEvent(_clock.GetUtcNow().UtcDateTime.AddDays(10));
+        await DeleteFromAnotherContext(evt.Id);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateService().ApproveEventAsync(evt.Id));
+    }
+
+    [Fact]
+    public async Task RejectEventAsync_EventDeletedConcurrently_ThrowsKeyNotFound()
+    {
+        var evt = await SeedEvent(_clock.GetUtcNow().UtcDateTime.AddDays(10));
+        await DeleteFromAnotherContext(evt.Id);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateService().RejectEventAsync(evt.Id, null));
+    }
+
+    private async Task DeleteFromAnotherContext(Guid eventId)
+    {
+        await using var other = new ApplicationDbContext(_options);
+        other.Events.Remove(await other.Events.SingleAsync(e => e.Id == eventId));
+        await other.SaveChangesAsync();
     }
 
     #endregion

@@ -11,8 +11,8 @@ namespace TicketeraOnline.Api.Controllers;
 /// and stores it under a fresh <c>events/{{guid}}.{{ext}}</c> key (EIM-007: an
 /// organizer cannot use this endpoint to target a specific event's image).
 /// Attaching the returned <c>imageUrl</c> to an event still flows through
-/// POST /events (creator becomes owner) or PUT /events/{id} (EventOwnership +
-/// EnsureMutable, both untouched).
+/// POST /events (creator becomes owner) or PUT /events/{id} (Admin-only +
+/// EnsureMutable).
 /// </summary>
 [ApiController]
 [Route("api/uploads")]

@@ -13,6 +13,7 @@ export default function EventSummaryTicket({
   selectionName,
   quantity,
   totalPrice,
+  serviceFee = null,
   className = '',
 }) {
   return (
@@ -80,6 +81,13 @@ export default function EventSummaryTicket({
           </p>
         </div>
       </div>
+
+      {/* Service fee disclosure — the total above already includes it */}
+      {serviceFee > 0 && (
+        <p className="px-4 pb-3 text-right text-xs text-text-2">
+          Incluye cargo por servicio de {formatCurrency(serviceFee)}
+        </p>
+      )}
 
       {/* Brand edge — always spans the full card width */}
       <div aria-hidden="true" className="flex h-1.5">

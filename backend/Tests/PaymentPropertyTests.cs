@@ -59,17 +59,22 @@ public class PaymentPropertyTests : IDisposable
         _ticketService = new TicketService(_context, ticketConfig, ticketLogger,
             new ServiceCollection().BuildServiceProvider());
 
-        _paymentService = new PaymentService(
-            _context,
-            _mockMpClient.Object,
-            _options,
-            _tokenOptions,
-            _ticketService,
-            _mockEmailService.Object,
-            _mockLogger.Object,
-            TimeProvider.System,
-            Options.Create(new HideExpiredEventsOptions()));
+        // Legacy properties assert ticket-only amounts, so the shared service
+        // runs with a 0% fee; service-fee tests build their own instance.
+        _paymentService = CreatePaymentService(serviceFeePercentage: 0m);
     }
+
+    private PaymentService CreatePaymentService(decimal serviceFeePercentage) => new(
+        _context,
+        _mockMpClient.Object,
+        _options,
+        _tokenOptions,
+        _ticketService,
+        _mockEmailService.Object,
+        _mockLogger.Object,
+        TimeProvider.System,
+        Options.Create(new HideExpiredEventsOptions()),
+        Options.Create(new ServiceFeeOptions { Percentage = serviceFeePercentage }));
 
     public void Dispose()
     {
@@ -158,6 +163,127 @@ public class PaymentPropertyTests : IDisposable
             Data = new MercadoPagoWebhookData { Id = paymentId }
         };
     }
+
+    #region Service fee (cargo por servicio)
+
+    [Theory]
+    [InlineData(100, 10, 10)]
+    [InlineData(1.5, 10, 0.15)]
+    [InlineData(33.33, 10, 3.33)]
+    [InlineData(0.05, 10, 0.01)] // 0.005 rounds away from zero
+    [InlineData(100, 0, 0)]
+    [InlineData(0, 10, 0)]
+    public void ServiceFee_Calculate_RoundsToCents(decimal subtotal, decimal percentage, decimal expected)
+    {
+        Assert.Equal(expected, ServiceFeeOptions.Calculate(subtotal, percentage));
+    }
+
+    [Fact]
+    public async Task ServiceFee_CreatePreference_AddsFeeAsSeparateItem()
+    {
+        var (_, _, ticketType, reservation) = await SetupReservationAsync(quantity: 2, price: 50m);
+
+        MercadoPagoPreferenceRequest? capturedRequest = null;
+        _mockMpClient
+            .Setup(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<MercadoPagoPreferenceRequest, CancellationToken>((r, _) => capturedRequest = r)
+            .ReturnsAsync(new MercadoPagoPreferenceResponse { Id = "pref-fee", InitPoint = "https://mp.test/pref-fee" });
+
+        var service = CreatePaymentService(serviceFeePercentage: 10m);
+        await service.CreatePaymentPreferenceAsync(reservation.Id, GenerateReservationToken(reservation.Id));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(2, capturedRequest!.Items.Count);
+
+        var ticketsItem = capturedRequest.Items[0];
+        Assert.Contains(ticketType.Name, ticketsItem.Title);
+        Assert.Equal(2, ticketsItem.Quantity);
+        Assert.Equal(50m, ticketsItem.UnitPrice);
+
+        var feeItem = capturedRequest.Items[1];
+        Assert.Equal("Cargo por servicio", feeItem.Title);
+        Assert.Equal(1, feeItem.Quantity);
+        Assert.Equal(10m, feeItem.UnitPrice);
+
+        // Buyer pays subtotal + 10%.
+        Assert.Equal(110m, capturedRequest.Items.Sum(i => i.Quantity * i.UnitPrice));
+    }
+
+    [Fact]
+    public async Task ServiceFee_CreatePreference_ZeroFee_SendsTicketsOnly()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2, price: 50m);
+
+        MercadoPagoPreferenceRequest? capturedRequest = null;
+        _mockMpClient
+            .Setup(c => c.CreatePreferenceAsync(It.IsAny<MercadoPagoPreferenceRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<MercadoPagoPreferenceRequest, CancellationToken>((r, _) => capturedRequest = r)
+            .ReturnsAsync(new MercadoPagoPreferenceResponse { Id = "pref-0", InitPoint = "https://mp.test/pref-0" });
+
+        await _paymentService.CreatePaymentPreferenceAsync(reservation.Id, GenerateReservationToken(reservation.Id));
+
+        Assert.Single(capturedRequest!.Items);
+    }
+
+    [Fact]
+    public async Task ServiceFee_ApprovedPayment_StoresTicketAmountAndFeeSeparately()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 2, price: 50m);
+        SetupGetPaymentById("pay-fee", "approved", reservation.Id.ToString(), 110m);
+
+        var service = CreatePaymentService(serviceFeePercentage: 10m);
+        var envelope = CreateEnvelope("pay-fee");
+        var result = await service.ProcessWebhookAsync(envelope, ComputeSignature(envelope, _options.Value.WebhookSecret));
+
+        Assert.True(result.Success);
+        var transaction = await _context.Transactions.SingleAsync(t => t.MercadoPagoId == "pay-fee");
+        // Amount stays the ticket subtotal (organizer revenue); the fee lives apart.
+        Assert.Equal(100m, transaction.Amount);
+        Assert.Equal(10m, transaction.ServiceFee);
+        Assert.Equal(TransactionStatus.Approved, transaction.Status);
+
+        // The confirmation email carries exactly the amounts charged.
+        _mockEmailService.Verify(e => e.SendTicketEmailAsync(
+            It.IsAny<string>(),
+            It.IsAny<IEnumerable<Ticket>>(),
+            It.IsAny<Event>(),
+            It.IsAny<string?>(),
+            It.Is<PurchaseAmounts?>(a => a != null && a.Subtotal == 100m && a.ServiceFee == 10m
+                && a.UnitPriceByReservation[reservation.Id] == 50m)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ServiceFee_StockFailure_RefundsTicketsAndFee()
+    {
+        var (_, _, _, reservation) = await SetupReservationAsync(quantity: 5, ticketQuantity: 5, price: 50m);
+        reservation.Status = ReservationStatus.Expired;
+        await _context.SaveChangesAsync();
+
+        _mockMpClient
+            .Setup(c => c.RefundPaymentAsync("pay-fee-stock", 275m, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MercadoPagoRefundResponse
+            {
+                Id = "refund-fee",
+                PaymentId = "pay-fee-stock",
+                Amount = 275m,
+                Status = "approved"
+            });
+        SetupGetPaymentById("pay-fee-stock", "approved", reservation.Id.ToString(), 275m);
+
+        var service = CreatePaymentService(serviceFeePercentage: 10m);
+        var envelope = CreateEnvelope("pay-fee-stock");
+        var result = await service.ProcessWebhookAsync(envelope, ComputeSignature(envelope, _options.Value.WebhookSecret));
+
+        Assert.True(result.Success);
+        // Platform failed to deliver tickets: the buyer gets everything back, fee included.
+        _mockMpClient.Verify(c => c.RefundPaymentAsync("pay-fee-stock", 275m, It.IsAny<CancellationToken>()), Times.Once);
+        var refund = await _context.Transactions.SingleAsync(
+            t => t.MercadoPagoId == "pay-fee-stock" && t.Status == TransactionStatus.Refunded);
+        Assert.Equal(250m, refund.Amount);
+        Assert.Equal(25m, refund.ServiceFee);
+    }
+
+    #endregion
 
     #region Property 14: Payment Preference Contains Complete Data
 

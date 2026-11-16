@@ -16,19 +16,30 @@ public static class TicketConfirmationTemplate
     /// </summary>
     /// <param name="eventDetails">Event information</param>
     /// <param name="tickets">Tickets with their QR image source (public R2 URL, or data URI fallback)</param>
-    /// <param name="totalAmount">Total purchase amount</param>
+    /// <param name="amounts">Amounts actually paid (persisted transactions). When null, falls
+    /// back to the ticket prices with no service fee (legacy / manually created tickets).</param>
     /// <param name="recipientEmail">Purchaser email address</param>
     /// <param name="recipientName">Optional recipient name for the greeting</param>
     /// <returns>HTML email body</returns>
     public static string Render(
         Event eventDetails,
         IEnumerable<(Ticket Ticket, string QrImageSrc)> tickets,
-        decimal totalAmount,
+        PurchaseAmounts? amounts,
         string recipientEmail,
         string? recipientName = null)
     {
         var ticketList = tickets.ToList();
         var html = new StringBuilder();
+
+        // What the buyer paid, never the live price: a resend after a price or
+        // fee change must show the original purchase values.
+        decimal PaidPrice(Ticket ticket) =>
+            amounts != null && ticket.ReservationId is Guid reservationId
+                && amounts.UnitPriceByReservation.TryGetValue(reservationId, out var unitPrice)
+                ? unitPrice
+                : ticket.TicketType?.Price ?? 0m;
+        var subtotal = amounts?.Subtotal ?? ticketList.Sum(t => PaidPrice(t.Ticket));
+        var serviceFee = amounts?.ServiceFee ?? 0m;
 
         html.AppendLine("<p>¡Tu compra está confirmada!</p>");
 
@@ -48,7 +59,7 @@ public static class TicketConfirmationTemplate
         {
             var (ticket, qrImageSrc) = ticketList[i];
             var ticketTypeName = ticket.TicketType?.Name ?? "Entrada";
-            var ticketPrice = ticket.TicketType?.Price.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00";
+            var ticketPrice = PaidPrice(ticket).ToString("0.00", CultureInfo.InvariantCulture);
 
             html.AppendLine("<div class=\"ticket\">");
             html.AppendLine($"<h3>Entrada {i + 1}: {HtmlEncoder.Escape(ticketTypeName)}</h3>");
@@ -64,7 +75,12 @@ public static class TicketConfirmationTemplate
         html.AppendLine("<div class=\"block accent\">");
         html.AppendLine("<h2>Confirmación de compra</h2>");
         html.AppendLine($"<p><strong>Total de entradas:</strong> {ticketList.Count}</p>");
-        html.AppendLine($"<p><strong>Monto total:</strong> ${totalAmount.ToString("0.00", CultureInfo.InvariantCulture)}</p>");
+        if (serviceFee > 0)
+        {
+            html.AppendLine($"<p><strong>Subtotal:</strong> ${subtotal.ToString("0.00", CultureInfo.InvariantCulture)}</p>");
+            html.AppendLine($"<p><strong>Cargo por servicio:</strong> ${serviceFee.ToString("0.00", CultureInfo.InvariantCulture)}</p>");
+        }
+        html.AppendLine($"<p><strong>Monto total:</strong> ${(subtotal + serviceFee).ToString("0.00", CultureInfo.InvariantCulture)}</p>");
         html.AppendLine($"<p><strong>Email de confirmación:</strong> {HtmlEncoder.Escape(recipientEmail)}</p>");
         html.AppendLine("</div>");
 

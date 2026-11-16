@@ -16,8 +16,10 @@ public interface IEmailService
     /// <param name="tickets">Confirmed tickets to include in the email</param>
     /// <param name="eventDetails">Event associated with the tickets</param>
     /// <param name="recipientName">Optional recipient name used to personalize the greeting</param>
+    /// <param name="amounts">Amounts actually paid (from the persisted transactions). When null
+    /// the email falls back to ticket prices with no service fee.</param>
     /// <returns>Email delivery result</returns>
-    Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null);
+    Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null, PurchaseAmounts? amounts = null);
 
     /// <summary>
     /// Sends a ticket resend email with embedded QR codes. Identical to
@@ -27,8 +29,10 @@ public interface IEmailService
     /// <param name="tickets">Tickets to include in the email</param>
     /// <param name="eventDetails">Event associated with the tickets</param>
     /// <param name="recipientName">Optional recipient name used to personalize the greeting</param>
+    /// <param name="amounts">Amounts actually paid (from the persisted transactions), so a resend
+    /// shows exactly what the buyer paid. When null the email falls back to ticket prices with no fee.</param>
     /// <returns>Email delivery result</returns>
-    Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null);
+    Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null, PurchaseAmounts? amounts = null);
 
     /// <summary>
     /// Sends a refund notification email explaining the refund reason and amount.

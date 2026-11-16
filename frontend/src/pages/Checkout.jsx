@@ -581,6 +581,7 @@ export default function Checkout() {
             selectionName={selection.name}
             quantity={selection.quantity}
             totalPrice={cart.totalPrice}
+            serviceFee={cart.serviceFee}
           />
 
           {/* Purchaser form */}
@@ -836,6 +837,7 @@ export default function Checkout() {
             selectionName={selection.name}
             quantity={reservation.quantity}
             totalPrice={cart.totalPrice}
+            serviceFee={cart.serviceFee}
           />
 
           {/* Right column: single glass card — countdown + purchaser data + actions */}

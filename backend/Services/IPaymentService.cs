@@ -34,10 +34,12 @@ public interface IPaymentService
     /// Validates: Requirements 12.2, 12.3
     /// </summary>
     /// <param name="mercadoPagoId">Mercado Pago payment identifier</param>
-    /// <param name="amount">Amount to refund</param>
+    /// <param name="amount">Ticket amount to refund (excludes the service fee)</param>
     /// <param name="reservationId">Reservation associated with the payment</param>
+    /// <param name="serviceFee">Service fee to refund on top of <paramref name="amount"/>
+    /// (the stock-failure path refunds it because no tickets are delivered)</param>
     /// <returns>Refund result</returns>
-    Task<RefundResult> InitiateRefundAsync(string mercadoPagoId, decimal amount, Guid reservationId);
+    Task<RefundResult> InitiateRefundAsync(string mercadoPagoId, decimal amount, Guid reservationId, decimal serviceFee = 0m);
 
     /// <summary>
     /// Confirms a payment by preference ID. Called by the frontend after the user

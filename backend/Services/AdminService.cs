@@ -134,7 +134,7 @@ public class AdminService : IAdminService
         EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         eventEntity.Status = EventStatus.Approved;
-        await _context.SaveChangesAsync();
+        await SaveStatusChangeAsync(eventId);
 
         _logger.LogInformation("Admin approved event {EventId}", eventId);
         return ToSummary(eventEntity);
@@ -155,10 +155,29 @@ public class AdminService : IAdminService
         EventFinalizedGuard.EnsureMutable(eventEntity, _clock);
 
         eventEntity.Status = EventStatus.Rejected;
-        await _context.SaveChangesAsync();
+        await SaveStatusChangeAsync(eventId);
 
         _logger.LogInformation("Admin rejected event {EventId}", eventId);
         return ToSummary(eventEntity);
+    }
+
+    /// <summary>
+    /// Saves an approve/reject flip. The owner organizer may delete a NOT-approved
+    /// event at the same moment; then the UPDATE finds no row and EF raises a
+    /// concurrency exception. That is "the event no longer exists" (404 upstream),
+    /// never a 500.
+    /// </summary>
+    private async Task SaveStatusChangeAsync(Guid eventId)
+    {
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _logger.LogWarning("Event {EventId} was deleted while its status was being changed", eventId);
+            throw new KeyNotFoundException($"Event {eventId} not found");
+        }
     }
 
     /// <summary>

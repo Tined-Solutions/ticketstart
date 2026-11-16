@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App.jsx'
+import { renderWithQueryClient } from './test/queryClientUtils.jsx'
 
 vi.mock('./context/auth.js', () => ({
   useAuth: vi.fn(),
@@ -41,5 +42,22 @@ describe('App routing', () => {
 
     expect(screen.getByText(/404/i)).toBeInTheDocument()
     expect(screen.getByText(/la página que buscás no existe/i)).toBeInTheDocument()
+  })
+
+  it('denies the event edit page to organizers (editing is Admin-only)', () => {
+    useAuth.mockReturnValue({
+      user: { email: 'org@example.com', name: 'Org', role: 'Organizador' },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+    })
+
+    renderWithQueryClient(
+      <MemoryRouter initialEntries={['/organizer/events/event-1']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText(/403 — acceso denegado/i)).toBeInTheDocument()
   })
 })

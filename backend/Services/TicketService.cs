@@ -621,7 +621,12 @@ public class TicketService : ITicketService
                     var recipientName = eventTickets
                         .Select(t => t.Reservation?.PurchaserName)
                         .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
-                    var result = await emailService.SendResendEmailAsync(trimmedEmail, eventTickets, eventDetails, recipientName);
+                    // A resend must show exactly what was paid, so amounts come from the
+                    // persisted transactions, never from the current price or fee.
+                    var paidAmounts = await PurchaseAmounts.LoadAsync(
+                        _context,
+                        eventTickets.Where(t => t.ReservationId.HasValue).Select(t => t.ReservationId!.Value));
+                    var result = await emailService.SendResendEmailAsync(trimmedEmail, eventTickets, eventDetails, recipientName, paidAmounts);
 
                     if (!result.Success)
                     {

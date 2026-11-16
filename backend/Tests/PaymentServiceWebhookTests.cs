@@ -69,7 +69,8 @@ public class PaymentServiceWebhookTests : IDisposable
             _mockEmailService.Object,
             _mockLogger.Object,
             TimeProvider.System,
-            Options.Create(new HideExpiredEventsOptions()));
+            Options.Create(new HideExpiredEventsOptions()),
+            Options.Create(new ServiceFeeOptions()));
     }
 
     public void Dispose()
@@ -209,7 +210,7 @@ public class PaymentServiceWebhookTests : IDisposable
         Assert.Equal(reservation.Quantity, tickets.Count);
 
         _mockEmailService.Verify(
-            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()),
             Times.Once);
     }
 
@@ -435,7 +436,7 @@ public class PaymentServiceWebhookTests : IDisposable
         Assert.Single(approvedTxs);
 
         _mockEmailService.Verify(
-            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()),
             Times.Once);
     }
 
@@ -503,7 +504,7 @@ public class PaymentServiceWebhookTests : IDisposable
             });
 
         _mockEmailService
-            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()))
+            .Setup(e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()))
             .ThrowsAsync(new InvalidOperationException("SMTP failure"));
 
         var envelope = new MercadoPagoWebhookEnvelope
@@ -535,7 +536,8 @@ public class PaymentServiceWebhookTests : IDisposable
     private PaymentService CreateService(TimeProvider clock, bool flagEnabled = true) => new(
         _context, _mockMpClient.Object, _options, _tokenOptions, _ticketService,
         _mockEmailService.Object, _mockLogger.Object, clock,
-        Options.Create(new HideExpiredEventsOptions { Enabled = flagEnabled }));
+        Options.Create(new HideExpiredEventsOptions { Enabled = flagEnabled }),
+            Options.Create(new ServiceFeeOptions()));
 
     private static string GenerateReservationToken(Guid reservationId, DateTimeOffset now, string secret)
     {
@@ -734,7 +736,7 @@ public class PaymentServiceWebhookTests : IDisposable
         var tickets = await _context.Tickets.Where(t => t.EventId == eventEntity.Id).ToListAsync();
         Assert.Equal(reservation.Quantity, tickets.Count);
         _mockEmailService.Verify(
-            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>()),
+            e => e.SendTicketEmailAsync(It.IsAny<string>(), It.IsAny<IEnumerable<Ticket>>(), It.IsAny<Event>(), It.IsAny<string?>(), It.IsAny<PurchaseAmounts?>()),
             Times.Once);
     }
 

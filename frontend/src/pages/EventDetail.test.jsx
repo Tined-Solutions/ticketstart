@@ -13,9 +13,14 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }))
 
+// Checkout config (service fee) is served apart from the event; every test
+// gets a 10% fee unless it overrides mockGet for that URL.
 vi.mock('../api/client.js', () => ({
   default: {
-    get: (...args) => mockGet(...args),
+    get: (url, ...rest) =>
+      url === '/config/checkout'
+        ? Promise.resolve({ data: { serviceFeePercentage: 10 } })
+        : mockGet(url, ...rest),
   },
 }))
 
@@ -66,10 +71,43 @@ describe('EventDetail', () => {
     })
 
     expect(screen.getByText(/\$\s*15\.000/)).toBeInTheDocument()
-    expect(screen.getByText('80 disponibles')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /campo/i })).toBeInTheDocument()
     expect(screen.getByText(/\$\s*25\.000/)).toBeInTheDocument()
-    expect(screen.getByText('150 disponibles')).toBeInTheDocument()
+    // The remaining stock count is never shown to the buyer.
+    expect(screen.queryByText(/\d+\s+disponibles/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/últimas disponibles/i)).not.toBeInTheDocument()
+  })
+
+  it('shows "Últimas disponibles" only when 20% or less of the stock remains', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        ...mockEvent,
+        ticketTypes: [
+          { id: 'tt-1', name: 'Platea', price: 15000, quantity: 100, available: 21 },
+          { id: 'tt-2', name: 'Campo', price: 25000, quantity: 100, available: 20 },
+          { id: 'tt-3', name: 'VIP', price: 40000, quantity: 50, available: 3 },
+          { id: 'tt-4', name: 'Pullman', price: 30000, quantity: 10, available: 0 },
+        ],
+      },
+    })
+
+    renderWithQueryClient(<EventDetail />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    })
+
+    const cardOf = (name) => screen.getByRole('heading', { name }).closest('.ticket-type-row')
+
+    // 21% left: no notice at all.
+    expect(within(cardOf('Platea')).queryByText(/últimas disponibles/i)).not.toBeInTheDocument()
+    // Exactly 20% and below: the low-stock notice.
+    expect(within(cardOf('Campo')).getByText('Últimas disponibles')).toBeInTheDocument()
+    expect(within(cardOf('VIP')).getByText('Últimas disponibles')).toBeInTheDocument()
+    // Sold out keeps its own state instead of the low-stock notice.
+    expect(within(cardOf('Pullman')).getByText('Sin stock')).toBeInTheDocument()
+    expect(within(cardOf('Pullman')).queryByText(/últimas disponibles/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\d+\s+disponibles/i)).not.toBeInTheDocument()
   })
 
   it('renders the ticket types in a focusable horizontal scroll region', async () => {
@@ -177,6 +215,30 @@ describe('EventDetail', () => {
     expect(increaseButton).toBeDisabled()
   })
 
+  it('shows the subtotal, the 10% service fee and the total before reserving', async () => {
+    mockGet.mockResolvedValue({ data: mockEvent })
+
+    renderWithQueryClient(<EventDetail />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /platea/i })).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('radio', { name: /platea/i }))
+    const selectedRow = screen.getByRole('heading', { name: /platea/i }).closest('.ticket-type-row')
+    const [, increaseButton] = selectedRow.querySelectorAll('button')
+    await userEvent.click(increaseButton)
+
+    // 2 × $15.000 = $30.000 + 10% ($3.000) = $33.000
+    const summary = screen.getByRole('region', { name: /resumen de compra/i })
+    expect(within(summary).getByText('Subtotal')).toBeInTheDocument()
+    expect(within(summary).getByText(/\$\s*30\.000/)).toBeInTheDocument()
+    expect(within(summary).getByText('Cargo por servicio (10%)')).toBeInTheDocument()
+    expect(within(summary).getByText(/\$\s*3\.000/)).toBeInTheDocument()
+    expect(within(summary).getByText('Total')).toBeInTheDocument()
+    expect(within(summary).getByText(/\$\s*33\.000/)).toBeInTheDocument()
+  })
+
   it('navigates to checkout with a single selection when clicking reserve', async () => {
     mockGet.mockResolvedValue({ data: mockEvent })
 
@@ -205,7 +267,10 @@ describe('EventDetail', () => {
           eventLocation: 'Estadio Luna Park, Buenos Aires',
           eventImageUrl: 'https://example.com/rock.jpg',
           totalTickets: 3,
-          totalPrice: 45000,
+          subtotal: 45000,
+          serviceFeePercentage: 10,
+          serviceFee: 4500,
+          totalPrice: 49500,
           selection: {
             ticketTypeId: 'tt-1',
             name: 'Platea',

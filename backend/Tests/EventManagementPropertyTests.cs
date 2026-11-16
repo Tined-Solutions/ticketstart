@@ -802,10 +802,8 @@ public class EventManagementPropertyTests : IDisposable
             async () => await _eventService.DeleteEventAsync(createdEvent.Id, nonOwner.Id, nonOwner.Role)
         );
 
-        // ED-001: the delete guard is now Admin-only and its message changed from
-        // the owner-permission wording to the Admin-only wording (no "permission"
-        // substring anymore) — assertion updated to the new contract.
-        Assert.Contains("administrator", exception.Message, StringComparison.OrdinalIgnoreCase);
+        // Only the owner (while not approved) or an Admin may delete.
+        Assert.Contains("permission", exception.Message, StringComparison.OrdinalIgnoreCase);
 
         // Verify event was NOT deleted
         var stillExists = await _context.Events.FindAsync(createdEvent.Id);
@@ -871,7 +869,7 @@ public class EventManagementPropertyTests : IDisposable
     }
 
     [Fact]
-    public async Task OwnerModification_IsAllowed()
+    public async Task OwnerModification_IsRejected_ForOrganizadorRole()
     {
         // Arrange - Create organizer
         var owner = new User
@@ -912,13 +910,12 @@ public class EventManagementPropertyTests : IDisposable
             ImageUrl = "https://example.com/updated.jpg"
         };
 
-        var updatedEvent = await _eventService.UpdateEventAsync(createdEvent.Id, updateRequest, owner.Id, owner.Role);
+        // Assert - editing is Admin-only, even for the event's owner
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _eventService.UpdateEventAsync(createdEvent.Id, updateRequest, owner.Id, owner.Role));
 
-        // Assert - Update should succeed
-        Assert.NotNull(updatedEvent);
-        Assert.Equal("Updated Event", updatedEvent.Name);
-        Assert.Equal("Updated description", updatedEvent.Description);
-        Assert.Equal("Updated Location", updatedEvent.Location);
+        var persisted = await _context.Events.AsNoTracking().SingleAsync(e => e.Id == createdEvent.Id);
+        Assert.Equal("Original Event", persisted.Name);
     }
 
     [Fact]

@@ -38,7 +38,7 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null)
+    public async Task<EmailResult> SendTicketEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null, PurchaseAmounts? amounts = null)
     {
         _logger.LogInformation(
             "Sending ticket confirmation email to {Recipient} for event {EventId}",
@@ -65,11 +65,10 @@ public class EmailService : IEmailService
             ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
-        var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
             ticketQrCodes,
-            totalAmount,
+            amounts,
             recipientEmail,
             recipientName);
 
@@ -101,7 +100,7 @@ public class EmailService : IEmailService
     }
 
     /// <inheritdoc />
-    public async Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null)
+    public async Task<EmailResult> SendResendEmailAsync(string recipientEmail, IEnumerable<Ticket> tickets, Event eventDetails, string? recipientName = null, PurchaseAmounts? amounts = null)
     {
         _logger.LogInformation(
             "Sending ticket resend email to {Recipient} for event {EventId}",
@@ -128,11 +127,10 @@ public class EmailService : IEmailService
             ticketQrCodes.Add((ticket, GetQrImageSrc(ticket, imageBase64)));
         }
 
-        var totalAmount = ticketList.Sum(t => t.TicketType?.Price ?? 0m);
         var html = TicketConfirmationTemplate.Render(
             eventDetails,
             ticketQrCodes,
-            totalAmount,
+            amounts,
             recipientEmail,
             recipientName);
 
